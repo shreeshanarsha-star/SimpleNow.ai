@@ -33,11 +33,21 @@ until it's actually built.
      snapshot IDs periodically, so check
      [docs.claude.com/en/docs/about-claude/models](https://docs.claude.com/en/docs/about-claude/models)
      if AI polish starts failing with a "model not found" error.
-3. **Create your owner login** — this app has exactly one real user (you). In the
-   Supabase dashboard → Authentication → Users → **Add user**, create yourself with
-   an email + password directly in Supabase's own UI (never share that password with
-   an AI assistant, including this one). That's the account you sign in with at `/login`.
+3. **Create your owner login** — in the Supabase dashboard → Authentication → Users →
+   **Add user**, create yourself with an email + password directly in Supabase's own UI
+   (never share that password with an AI assistant, including this one). The **first**
+   user ever created in the project is automatically made admin (see `profiles` table /
+   the `handle_new_user` trigger) — so do this before anyone else signs up.
 4. `npm run dev` and open `/admin` — you'll be redirected to `/login` until step 3 is done.
+
+## Multi-user access model
+
+Anyone can register at `/signup`, but a brand-new account starts with **nothing enabled**.
+As the admin, go to `/admin/users` and grant access one tool at a time — only tools that
+are actually built (currently just Job Postings.ai) show up there. A user without a grant
+sees an honest "access needed" message instead of the tool. Approving/rejecting/publishing
+what a tool produces stays admin-only regardless of grants — grants only control who can
+*use* a tool, not who can approve its output.
 
 ## Deploying
 
