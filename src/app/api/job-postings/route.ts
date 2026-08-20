@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/supabase/requireAdmin";
+import { requireFeatureAccess, requireUser } from "@/lib/supabase/requireAdmin";
 
 export const maxDuration = 15;
+
+const FEATURE_KEY = "Job Postings.ai";
 
 export async function POST(request: Request) {
   let user, supabase;
   try {
-    ({ user, supabase } = await requireAdmin());
+    ({ user, supabase } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
@@ -54,10 +56,12 @@ export async function POST(request: Request) {
   return NextResponse.json({ jobPosting: data }, { status: 201 });
 }
 
+// RLS already scopes results correctly (admin sees all, a granted user sees
+// only their own postings) — this route just needs a signed-in user.
 export async function GET() {
   let supabase;
   try {
-    ({ supabase } = await requireAdmin());
+    ({ supabase } = await requireUser());
   } catch (res) {
     return res as Response;
   }

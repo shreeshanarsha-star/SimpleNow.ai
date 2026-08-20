@@ -2,6 +2,7 @@ import AppShell from "@/components/AppShell";
 import { createClient } from "@/lib/supabase/server";
 import JobPostingApprovalRow from "@/components/admin/JobPostingApprovalRow";
 import SignOutButton from "@/components/admin/SignOutButton";
+import AdminNav from "@/components/admin/AdminNav";
 import { DEPARTMENTS } from "@/lib/departments";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +27,7 @@ export default async function AdminPage() {
 
   return (
     <AppShell title="Admin">
+      <AdminNav />
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="m-0 text-[19px] font-bold">Approval queues</h2>

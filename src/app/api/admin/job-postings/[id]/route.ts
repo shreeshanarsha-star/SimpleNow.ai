@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/supabase/requireAdmin";
+import { requireAdminUser } from "@/lib/supabase/requireAdmin";
 
 export const maxDuration = 15;
 
 // PATCH { action: "approve" | "reject" | "publish", rejectionReason?: string }
+// Admin only — approving/rejecting/publishing what a tool produces is not
+// something a feature-granted user can do to their own submissions.
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   let user, supabase;
   try {
-    ({ user, supabase } = await requireAdmin());
+    ({ user, supabase } = await requireAdminUser());
   } catch (res) {
     return res as Response;
   }

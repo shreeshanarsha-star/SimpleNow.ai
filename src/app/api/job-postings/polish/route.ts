@@ -1,16 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/supabase/requireAdmin";
+import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
 
 // AI calls get real time to think, but never hang the request indefinitely —
 // explicit per-call timeout + a visible error the UI can show, never a
 // silent empty result.
 export const maxDuration = 30;
 const REQUEST_TIMEOUT_MS = 25_000;
+const FEATURE_KEY = "Job Postings.ai";
 
 export async function POST(request: Request) {
   try {
-    await requireAdmin();
+    await requireFeatureAccess(FEATURE_KEY);
   } catch (res) {
     return res as Response;
   }
