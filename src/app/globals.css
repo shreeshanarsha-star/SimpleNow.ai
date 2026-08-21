@@ -2,13 +2,184 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   Theme tokens -- four selectable themes (Gold / Blue / Dark / Teal), all
+   sharing one layout and one component set. Every chrome color in the app
+   (Tailwind's surface/page/ink/brand/border tokens + the soft/button/emblem
+   shadows) resolves through these custom properties, so switching themes is
+   a single `data-theme` attribute flip on <html> -- no per-page styling.
+   Default (no attribute, or data-theme="gold") matches the original design.
+   ========================================================================== */
+
+:root,
+[data-theme="gold"] {
+  --page-grad-1: #fbf3de;
+  --page-grad-2: #f3e4bc;
+  --page: #f7f4ec;
+  --surface: #fffdf9;
+
+  --ink: #211f1a;
+  --ink-2: #5c584c;
+  --ink-muted: #8c8776;
+
+  --border-rgb: 233 227 211;
+  --border-strong: rgba(48, 40, 16, 0.14);
+
+  --brand-rgb: 138 106 16;
+  --brand-wash: #f6efdb;
+  --brand-dark: #5c4813;
+
+  --nav-active-1: #f9edc9;
+  --nav-active-2: #eeda9e;
+  --search-bg-1: #fffef9;
+  --search-bg-2: #fdf6e3;
+
+  --wave-1: rgba(248, 236, 201, 0.9);
+  --wave-2: rgba(243, 224, 166, 0.55);
+
+  --badge-bg: #ffffff;
+  --badge-icon: #3a352c;
+  --badge-dot: #a9821c;
+
+  --accent-btn-1: #f0b878;
+  --accent-btn-2: #d97a2e;
+
+  --shadow-soft: 0 1px 1px rgba(92, 72, 19, 0.06), 0 14px 30px -8px rgba(92, 72, 19, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --shadow-soft-sm: 0 2px 6px rgba(154, 120, 20, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --shadow-panel-right: 4px 0 24px rgba(90, 68, 10, 0.14);
+  --shadow-button: 0 3px 8px rgba(217, 122, 46, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.25);
+  --shadow-emblem: 0 3px 8px rgba(90, 68, 10, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.6);
+}
+
+[data-theme="blue"] {
+  --page-grad-1: #f3f7fd;
+  --page-grad-2: #e1ecfb;
+  --page: #eef3fb;
+  --surface: #ffffff;
+
+  --ink: #1c2430;
+  --ink-2: #55606f;
+  --ink-muted: #8b93a3;
+
+  --border-rgb: 223 230 242;
+  --border-strong: rgba(20, 45, 95, 0.14);
+
+  --brand-rgb: 37 99 220;
+  --brand-wash: #e4edfd;
+  --brand-dark: #1a3f8a;
+
+  --nav-active-1: #dbe9fe;
+  --nav-active-2: #c3ddfd;
+  --search-bg-1: #ffffff;
+  --search-bg-2: #eef4fe;
+
+  --wave-1: rgba(219, 234, 254, 0.9);
+  --wave-2: rgba(191, 220, 251, 0.55);
+
+  --badge-bg: #ffffff;
+  --badge-icon: #2f5fc7;
+  --badge-dot: #2563dc;
+
+  --accent-btn-1: #5b93f2;
+  --accent-btn-2: #2f66d6;
+
+  --shadow-soft: 0 1px 1px rgba(30, 64, 140, 0.06), 0 14px 30px -8px rgba(30, 64, 140, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --shadow-soft-sm: 0 2px 6px rgba(37, 99, 220, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --shadow-panel-right: 4px 0 24px rgba(30, 64, 140, 0.12);
+  --shadow-button: 0 3px 10px rgba(37, 99, 220, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.25);
+  --shadow-emblem: 0 3px 8px rgba(30, 64, 140, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.6);
+}
+
+[data-theme="dark"] {
+  --page-grad-1: #0d0b16;
+  --page-grad-2: #1a1428;
+  --page: #201a30;
+  --surface: #161222;
+
+  --ink: #f3f0fa;
+  --ink-2: #b8b2c9;
+  --ink-muted: #7a748c;
+
+  --border-rgb: 47 40 68;
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  --brand-rgb: 156 122 232;
+  --brand-wash: #2a2244;
+  --brand-dark: #4b2f96;
+
+  --nav-active-1: #3a2f58;
+  --nav-active-2: #2c2444;
+  --search-bg-1: #201a30;
+  --search-bg-2: #171225;
+
+  --wave-1: rgba(109, 79, 209, 0.35);
+  --wave-2: rgba(74, 47, 176, 0.5);
+
+  --badge-bg: #241c38;
+  --badge-icon: #c3aef8;
+  --badge-dot: #9c7ae8;
+
+  --accent-btn-1: #a78bfa;
+  --accent-btn-2: #7c4fe0;
+
+  --shadow-soft: 0 1px 1px rgba(0, 0, 0, 0.3), 0 20px 40px -10px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-soft-sm: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-panel-right: 4px 0 30px rgba(0, 0, 0, 0.5);
+  --shadow-button: 0 3px 12px rgba(124, 79, 224, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  --shadow-emblem: 0 3px 10px rgba(124, 79, 224, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+}
+
+[data-theme="teal"] {
+  --page-grad-1: #eefaf6;
+  --page-grad-2: #dbf2ea;
+  --page: #e9f7f1;
+  --surface: #ffffff;
+
+  --ink: #14261f;
+  --ink-2: #4c6058;
+  --ink-muted: #85978f;
+
+  --border-rgb: 220 236 229;
+  --border-strong: rgba(10, 60, 45, 0.14);
+
+  --brand-rgb: 20 154 128;
+  --brand-wash: #dff5ef;
+  --brand-dark: #0d6b57;
+
+  --nav-active-1: #cdf0e6;
+  --nav-active-2: #b3e6d8;
+  --search-bg-1: #ffffff;
+  --search-bg-2: #eafbf5;
+
+  --wave-1: rgba(205, 240, 230, 0.9);
+  --wave-2: rgba(168, 226, 208, 0.55);
+
+  --badge-bg: #ffffff;
+  --badge-icon: #0f7d67;
+  --badge-dot: #149a80;
+
+  --accent-btn-1: #34d8ae;
+  --accent-btn-2: #0f9c7d;
+
+  --shadow-soft: 0 1px 1px rgba(10, 110, 90, 0.06), 0 14px 30px -8px rgba(10, 110, 90, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --shadow-soft-sm: 0 2px 6px rgba(20, 154, 128, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --shadow-panel-right: 4px 0 24px rgba(10, 110, 90, 0.12);
+  --shadow-button: 0 3px 10px rgba(20, 154, 128, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.25);
+  --shadow-emblem: 0 3px 8px rgba(10, 110, 90, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.6);
+}
+
 html,
 body {
   margin: 0;
   padding: 0;
-  background: linear-gradient(160deg, #fbf3de, #f3e4bc);
+  background: linear-gradient(160deg, var(--page-grad-1), var(--page-grad-2));
   background-attachment: fixed;
-  color: #211f1a;
+  color: var(--ink);
+  transition: background 0.25s ease;
 }
 
 * {
