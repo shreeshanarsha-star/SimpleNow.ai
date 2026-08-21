@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
+import HRDepartmentView from "@/components/departments/HRDepartmentView";
 import { ALL_ITEMS } from "@/lib/departments";
 
 export function generateStaticParams() {
@@ -16,6 +17,14 @@ export default async function DepartmentPage({
   const { id } = await params;
   const dept = ALL_ITEMS.find((d) => d.id === id);
   if (!dept) notFound();
+
+  // Human Resources gets its own information architecture (workflow-based
+  // Talent Acquisition journey, contextual prompt, live-vs-soon visual
+  // weighting) per the HR redesign brief -- every other department keeps
+  // the existing generic grouped-card list below unchanged.
+  if (dept.id === "hr") {
+    return <HRDepartmentView dept={dept} />;
+  }
 
   const groups = new Map<string | undefined, typeof dept.tools>();
   for (const tool of dept.tools) {

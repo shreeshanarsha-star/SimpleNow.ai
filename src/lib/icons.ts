@@ -34,6 +34,12 @@ export const ICONS: Record<string, string> = {
   x: "M18 6 6 18M6 6l12 12",
   chevronLeft: "M15 18l-6-6 6-6",
   arrowUp: "M12 19V5 M5 12l7-7 7 7",
+  fileText:
+    "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8",
+  filter: "M22 3H2l8 9.46V19l4 2v-8.54L22 3z",
+  calendar:
+    "M8 2v4 M16 2v4 M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
+  flag: "M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z M4 22V3",
 };
 
 export function iconPaths(name: string): string[] {
