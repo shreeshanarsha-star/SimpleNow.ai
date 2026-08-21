@@ -48,7 +48,7 @@ export const DEPARTMENTS: Department[] = [
       { n: "Apply.ai", s: "live", group: "Talent Acquisition", href: "/apply" },
       { n: "Smart Source.ai", s: "soon", group: "Talent Acquisition" },
       { n: "Smart Hunt.ai", s: "soon", group: "Talent Acquisition" },
-      { n: "Smart Screen.ai", s: "soon", group: "Talent Acquisition" },
+      { n: "Smart Screen.ai", s: "live", group: "Talent Acquisition", href: "/tools/smart-screen-ai" },
       { n: "Assessment.ai", s: "soon", group: "Talent Acquisition" },
       { n: "Offer.ai", s: "soon", group: "Talent Acquisition" },
       { n: "Interview.ai", s: "soon", group: "Talent Acquisition" },
