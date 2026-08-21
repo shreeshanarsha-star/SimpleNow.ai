@@ -1,6 +1,7 @@
 import AppShell from "@/components/AppShell";
 import { createClient } from "@/lib/supabase/server";
 import JobPostingApprovalRow from "@/components/admin/JobPostingApprovalRow";
+import ApplicationApprovalRow from "@/components/admin/ApplicationApprovalRow";
 import SignOutButton from "@/components/admin/SignOutButton";
 import AdminNav from "@/components/admin/AdminNav";
 import { DEPARTMENTS } from "@/lib/departments";
@@ -18,9 +19,21 @@ export default async function AdminPage() {
   const pending = (jobPostings ?? []).filter((p) => p.status === "pending_approval");
   const decided = (jobPostings ?? []).filter((p) => p.status !== "pending_approval");
 
-  // Every HR tool that isn't Job Postings.ai yet — shown honestly as "not
-  // built" rather than pretending there's a queue for something that
-  // doesn't exist.
+  const { data: applications, error: applicationsError } = await supabase
+    .from("job_applications")
+    .select("*, job_postings(title)")
+    .order("created_at", { ascending: false });
+
+  const pendingApplications = (applications ?? []).filter(
+    (a) => a.status === "pending_approval"
+  );
+  const decidedApplications = (applications ?? []).filter(
+    (a) => a.status !== "pending_approval"
+  );
+
+  // Every HR tool that isn't built yet — shown honestly as "not built"
+  // rather than pretending there's a queue for something that doesn't
+  // exist.
   const notBuiltYet = DEPARTMENTS.flatMap((d) => d.tools)
     .filter((t) => t.s === "soon")
     .slice(0, 6);
@@ -70,6 +83,44 @@ export default async function AdminPage() {
             <div className="flex flex-col gap-2 mt-2">
               {decided.map((posting) => (
                 <JobPostingApprovalRow key={posting.id} posting={posting} readOnly />
+              ))}
+            </div>
+          </details>
+        )}
+      </section>
+
+      <section className="mb-8">
+        <div className="flex items-center gap-2 mb-3">
+          <h3 className="m-0 text-[14px] font-bold">Apply.ai</h3>
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-good-wash text-good-text">
+            {pendingApplications.length} pending
+          </span>
+        </div>
+
+        {applicationsError && (
+          <div className="bg-critical-wash text-critical text-[12.5px] rounded-sm px-3 py-2 mb-4">
+            Could not load applications: {applicationsError.message}
+          </div>
+        )}
+
+        {pendingApplications.length === 0 ? (
+          <EmptyState text="Nothing waiting on you right now." />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {pendingApplications.map((application) => (
+              <ApplicationApprovalRow key={application.id} application={application} />
+            ))}
+          </div>
+        )}
+
+        {decidedApplications.length > 0 && (
+          <details className="mt-4">
+            <summary className="text-[12px] font-bold text-ink-muted cursor-pointer">
+              {decidedApplications.length} decided
+            </summary>
+            <div className="flex flex-col gap-2 mt-2">
+              {decidedApplications.map((application) => (
+                <ApplicationApprovalRow key={application.id} application={application} readOnly />
               ))}
             </div>
           </details>

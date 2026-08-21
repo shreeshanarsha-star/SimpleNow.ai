@@ -45,7 +45,7 @@ export const DEPARTMENTS: Department[] = [
     desc: "Recruiting, talent, learning and rewards — the full employee lifecycle.",
     tools: [
       { n: "Job Postings.ai", s: "live", group: "Talent Acquisition", href: "/tools/job-postings-ai" },
-      { n: "Apply.ai", s: "soon", group: "Talent Acquisition" },
+      { n: "Apply.ai", s: "live", group: "Talent Acquisition", href: "/apply" },
       { n: "Smart Source.ai", s: "soon", group: "Talent Acquisition" },
       { n: "Smart Hunt.ai", s: "soon", group: "Talent Acquisition" },
       { n: "Smart Screen.ai", s: "soon", group: "Talent Acquisition" },
