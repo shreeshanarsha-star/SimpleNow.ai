@@ -2,6 +2,7 @@ import AppShell from "@/components/AppShell";
 import { createClient } from "@/lib/supabase/server";
 import JobPostingApprovalRow from "@/components/admin/JobPostingApprovalRow";
 import ApplicationApprovalRow from "@/components/admin/ApplicationApprovalRow";
+import OfferApprovalRow from "@/components/admin/OfferApprovalRow";
 import SignOutButton from "@/components/admin/SignOutButton";
 import AdminNav from "@/components/admin/AdminNav";
 import { DEPARTMENTS } from "@/lib/departments";
@@ -30,6 +31,14 @@ export default async function AdminPage() {
   const decidedApplications = (applications ?? []).filter(
     (a) => a.status !== "pending_approval"
   );
+
+  const { data: offers, error: offersError } = await supabase
+    .from("offers")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  const pendingOffers = (offers ?? []).filter((o) => o.status === "pending_approval");
+  const decidedOffers = (offers ?? []).filter((o) => o.status !== "pending_approval");
 
   // Every HR tool that isn't built yet — shown honestly as "not built"
   // rather than pretending there's a queue for something that doesn't
@@ -121,6 +130,44 @@ export default async function AdminPage() {
             <div className="flex flex-col gap-2 mt-2">
               {decidedApplications.map((application) => (
                 <ApplicationApprovalRow key={application.id} application={application} readOnly />
+              ))}
+            </div>
+          </details>
+        )}
+      </section>
+
+      <section className="mb-8">
+        <div className="flex items-center gap-2 mb-3">
+          <h3 className="m-0 text-[14px] font-bold">Offer.ai</h3>
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-good-wash text-good-text">
+            {pendingOffers.length} pending
+          </span>
+        </div>
+
+        {offersError && (
+          <div className="bg-critical-wash text-critical text-[12.5px] rounded-sm px-3 py-2 mb-4">
+            Could not load offers: {offersError.message}
+          </div>
+        )}
+
+        {pendingOffers.length === 0 ? (
+          <EmptyState text="Nothing waiting on you right now." />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {pendingOffers.map((offer) => (
+              <OfferApprovalRow key={offer.id} offer={offer} />
+            ))}
+          </div>
+        )}
+
+        {decidedOffers.length > 0 && (
+          <details className="mt-4">
+            <summary className="text-[12px] font-bold text-ink-muted cursor-pointer">
+              {decidedOffers.length} decided
+            </summary>
+            <div className="flex flex-col gap-2 mt-2">
+              {decidedOffers.map((offer) => (
+                <OfferApprovalRow key={offer.id} offer={offer} readOnly />
               ))}
             </div>
           </details>
