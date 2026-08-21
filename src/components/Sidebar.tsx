@@ -13,7 +13,7 @@ export default function Sidebar() {
     pathname === href || pathname.startsWith(href + "/");
 
   return (
-    <aside className="w-[256px] flex-shrink-0 bg-gradient-to-b from-surface to-brand-wash border-r border-border flex flex-col sticky top-0 h-screen z-10 shadow-panel-right">
+    <aside className="w-[256px] flex-shrink-0 bg-gradient-to-b from-surface to-brand-wash flex flex-col h-full rounded-[28px] shadow-soft overflow-hidden">
       {/* Same vertical padding (py-3) as Topbar's px-[26px] py-3, so the
           brand block and the "Overview" title land on one continuous
           horizontal line across the sidebar/main-column seam. */}
