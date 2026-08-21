@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { DEPARTMENTS, PERSONAL_TOOLS } from "@/lib/departments";
 import Icon from "./Icon";
 import LogoMark from "./LogoMark";
+import ThemeSwitcher from "./ThemeSwitcher";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -51,13 +52,23 @@ export default function Sidebar() {
         ))}
       </nav>
 
+      {/* Theme picker -- sits just above the profile row so it's reachable
+          from every page (Sidebar is shared chrome via AppShell) without
+          taking the user to a separate settings screen. */}
+      <div className="px-4 pb-2 flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+          Theme
+        </span>
+        <ThemeSwitcher />
+      </div>
+
       {/* Bottom row -- deliberately left un-sticky/in-flow: nav above no
           longer scrolls (every item fits, no scrollbar), so this row
           naturally sits flush with the viewport bottom via the aside's
           own flex-col + h-screen, on the same line as GlobalSearchBar's
           sticky-bottom row in the main column. */}
       <div className="border-t border-border/70 px-4 py-3.5 flex items-center gap-2.5">
-        <div className="w-[30px] h-[30px] rounded-full bg-gradient-to-br from-brand to-[#5c4813] text-white text-[11.5px] font-semibold flex items-center justify-center flex-shrink-0 shadow-emblem">
+        <div className="w-[30px] h-[30px] rounded-full bg-gradient-to-br from-brand to-brand-dark text-white text-[11.5px] font-semibold flex items-center justify-center flex-shrink-0 shadow-emblem">
           SN
         </div>
         <div className="flex-1 min-w-0">
@@ -94,7 +105,7 @@ function SbLink({
       href={href}
       className={`flex items-center gap-2 px-2.5 py-[6px] rounded-md text-[12px] font-medium mb-[2px] transition-all ${
         active
-          ? "bg-gradient-to-br from-[#f9edc9] to-[#eeda9e] text-brand font-semibold shadow-soft-sm"
+          ? "bg-gradient-to-br from-[var(--nav-active-1)] to-[var(--nav-active-2)] text-brand font-semibold shadow-soft-sm"
           : "text-ink-2 hover:bg-page"
       }`}
     >
