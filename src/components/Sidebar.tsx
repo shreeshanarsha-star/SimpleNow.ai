@@ -18,7 +18,7 @@ export default function Sidebar() {
         <LogoMark size={30} />
         <div>
           <div className="font-bold text-[15.5px] leading-tight">Askshree</div>
-          <small className="block font-medium text-[10.5px] text-ink-muted tracking-wide">
+          <small className="block font-bold text-[10.5px] text-brand tracking-wide">
             AI SYSTEMS
           </small>
         </div>
@@ -49,7 +49,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="border-t border-border px-3.5 py-3 flex items-center gap-2.5">
-        <div className="w-[30px] h-[30px] rounded-full bg-ink text-white text-[11.5px] font-bold flex items-center justify-center flex-shrink-0">
+        <div className="w-[30px] h-[30px] rounded-full bg-brand text-white text-[11.5px] font-bold flex items-center justify-center flex-shrink-0">
           SN
         </div>
         <div className="flex-1 min-w-0">

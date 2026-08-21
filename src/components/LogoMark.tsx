@@ -1,17 +1,19 @@
-// Gold Sri Yantra medallion -- replaces the plain brand-blue square used
-// everywhere as a placeholder logo. Same 9-triangle (4 upward "Shiva" + 5
-// downward "Shakti") + bindu geometry used for the arc-reactor core in the
-// v1 build, redrawn here as a flat embossed medallion: a radial gradient
-// (light highlight upper-left, deep bronze shadow lower-right) fakes a
-// domed 24kt-gold surface without needing an actual 3D renderer for what
-// is, everywhere it's used, a ~26-40px icon.
+// Gold Sri Chakra (Sri Yantra) medallion -- the actual yantra structure,
+// not just an abstract triangle badge: a square gated frame (bhupura), a
+// ring of lotus petals, and the 9 interlocking triangles (4 upward
+// "Shiva" + 5 downward "Shakti") around a central bindu. Simplified from
+// a full traditional Sri Yantra (which has 8+16 petals and elaborate
+// T-shaped gates) because this renders at ~26-30px everywhere it's used
+// -- that detail would just be illegible pixel noise at this size. The
+// 3D read is a radial gradient (bright highlight upper-left fading to a
+// bronze shadow lower-right, single-light-source sphere shading) plus a
+// drop-shadow, not an actual 3D render.
 export default function LogoMark({ size = 26 }: { size?: number }) {
-  const R = 42; // triangle radius in the 100x100 viewBox, before the bindu
   const cx = 50;
   const cy = 50;
+  const discR = 33;
+  const triR = 29; // triangle radius, inside the disc
 
-  // Same normalized {apexY, baseY, hw} triangle set as OrbitalStageArc's
-  // Sri Chakra (4 upward Shiva + 5 downward Shakti), scaled to this viewBox.
   const triangles = [
     { apexY: -0.86, baseY: 0.84, hw: 0.92 },
     { apexY: -0.62, baseY: 0.7, hw: 0.72 },
@@ -23,6 +25,13 @@ export default function LogoMark({ size = 26 }: { size?: number }) {
     { apexY: 0.4, baseY: -0.28, hw: 0.42 },
     { apexY: 0.2, baseY: -0.1, hw: 0.2 },
   ];
+
+  const petalCount = 12;
+  const petalInner = discR - 1;
+  const petalOuter = discR + 9;
+  const petalHalfWidth = 5.2;
+  const petalMid = (petalInner + petalOuter) / 2;
+  const petalPath = `M ${cx},${cy - petalInner} Q ${cx + petalHalfWidth},${cy - petalMid} ${cx},${cy - petalOuter} Q ${cx - petalHalfWidth},${cy - petalMid} ${cx},${cy - petalInner} Z`;
 
   return (
     <svg
@@ -44,35 +53,61 @@ export default function LogoMark({ size = 26 }: { size?: number }) {
           <stop offset="70%" stopColor="#c99a2e" />
           <stop offset="100%" stopColor="#7a5a15" />
         </radialGradient>
+        <radialGradient id="lm-petal" cx="40%" cy="20%" r="90%">
+          <stop offset="0%" stopColor="#fff6d8" />
+          <stop offset="60%" stopColor="#d9ae3f" />
+          <stop offset="100%" stopColor="#8a6b1e" />
+        </radialGradient>
         <filter id="lm-shadow" x="-30%" y="-30%" width="160%" height="160%">
           <feDropShadow dx="0" dy="1" stdDeviation="1.2" floodColor="#3a2a08" floodOpacity="0.45" />
         </filter>
       </defs>
 
-      <rect x="3" y="3" width="94" height="94" rx="22" fill="url(#lm-frame)" filter="url(#lm-shadow)" />
-      <rect x="7" y="7" width="86" height="86" rx="18" fill="url(#lm-disc)" />
-      <rect
-        x="7"
-        y="7"
-        width="86"
-        height="86"
-        rx="18"
-        fill="none"
-        stroke="#5c4813"
-        strokeOpacity="0.35"
-        strokeWidth="1"
-      />
+      {/* Bhupura -- the square gated frame */}
+      <rect x="3" y="3" width="94" height="94" rx="10" fill="url(#lm-frame)" filter="url(#lm-shadow)" />
+      <rect x="7" y="7" width="86" height="86" rx="8" fill="#fdf7e6" />
+      <rect x="7" y="7" width="86" height="86" rx="8" fill="none" stroke="#5c4813" strokeOpacity="0.3" strokeWidth="1" />
+      {/* Small gate notches, top/right/bottom/left -- a hint of the
+          traditional T-gates without trying to render them at full detail */}
+      {[0, 90, 180, 270].map((deg) => (
+        <rect
+          key={deg}
+          x={cx - 5}
+          y="3"
+          width="10"
+          height="6"
+          fill="url(#lm-frame)"
+          transform={`rotate(${deg} ${cx} ${cy})`}
+        />
+      ))}
 
-      <g stroke="#5c4813" strokeWidth="1.6" strokeLinejoin="round" fill="none" opacity="0.85">
+      {/* Lotus petal ring */}
+      <g filter="url(#lm-shadow)">
+        {Array.from({ length: petalCount }).map((_, i) => (
+          <path
+            key={i}
+            d={petalPath}
+            fill="url(#lm-petal)"
+            stroke="#5c4813"
+            strokeOpacity="0.4"
+            strokeWidth="0.6"
+            transform={`rotate(${(360 / petalCount) * i} ${cx} ${cy})`}
+          />
+        ))}
+      </g>
+
+      {/* Central disc + interlocking triangles + bindu */}
+      <circle cx={cx} cy={cy} r={discR} fill="url(#lm-disc)" stroke="#5c4813" strokeOpacity="0.35" strokeWidth="1" />
+      <g stroke="#5c4813" strokeWidth="1.4" strokeLinejoin="round" fill="none" opacity="0.85">
         {triangles.map((t, i) => {
-          const ay = cy + t.apexY * R;
-          const by = cy + t.baseY * R;
-          const hw = t.hw * R;
+          const ay = cy + t.apexY * triR;
+          const by = cy + t.baseY * triR;
+          const hw = t.hw * triR;
           return <polygon key={i} points={`${cx},${ay} ${cx - hw},${by} ${cx + hw},${by}`} />;
         })}
       </g>
-      <circle cx={cx} cy={cy} r="3.2" fill="#5c4813" />
-      <circle cx={cx - 1} cy={cy - 1} r="1.3" fill="#fff6d8" />
+      <circle cx={cx} cy={cy} r="2.8" fill="#5c4813" />
+      <circle cx={cx - 0.9} cy={cy - 0.9} r="1.1" fill="#fff6d8" />
     </svg>
   );
 }
