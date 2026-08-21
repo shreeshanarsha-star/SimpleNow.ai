@@ -13,18 +13,18 @@ export default function Sidebar() {
     pathname === href || pathname.startsWith(href + "/");
 
   return (
-    <aside className="w-[252px] flex-shrink-0 bg-surface border-r border-border flex flex-col sticky top-0 h-screen shadow-soft z-10">
-      <div className="flex items-center gap-2.5 px-[18px] pt-5 pb-3.5">
-        <LogoMark size={30} />
+    <aside className="w-[256px] flex-shrink-0 bg-surface border-r border-border flex flex-col sticky top-0 h-screen z-10">
+      <div className="flex items-center gap-3 px-5 pt-7 pb-5">
+        <LogoMark size={32} />
         <div>
-          <div className="font-bold text-[15.5px] leading-tight">Askshree</div>
-          <small className="block font-bold text-[10.5px] text-brand tracking-wide">
+          <div className="font-semibold text-[16px] leading-tight text-ink">Askshree</div>
+          <small className="block font-semibold text-[10px] text-brand tracking-[0.08em] mt-0.5">
             AI SYSTEMS
           </small>
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2.5 pb-2.5 pt-1">
+      <nav className="flex-1 overflow-y-auto px-3 pb-3">
         <SbLink href="/" icon="grid" name="Overview" active={pathname === "/"} />
         <SbLink
           href={`/departments/${PERSONAL_TOOLS.id}`}
@@ -33,7 +33,7 @@ export default function Sidebar() {
           active={isActive(`/departments/${PERSONAL_TOOLS.id}`)}
         />
 
-        <div className="text-[10.5px] font-bold tracking-wider uppercase text-ink-muted px-2 pt-3.5 pb-1.5">
+        <div className="text-[10.5px] font-semibold tracking-wider uppercase text-ink-muted px-2.5 pt-5 pb-2">
           AI Systems — by department
         </div>
         {DEPARTMENTS.map((d) => (
@@ -48,12 +48,12 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-border px-3.5 py-3 flex items-center gap-2.5">
-        <div className="w-[30px] h-[30px] rounded-full bg-brand text-white text-[11.5px] font-bold flex items-center justify-center flex-shrink-0 shadow-soft-sm">
+      <div className="border-t border-border px-4 py-3.5 flex items-center gap-2.5">
+        <div className="w-[30px] h-[30px] rounded-full bg-brand/90 text-white text-[11.5px] font-semibold flex items-center justify-center flex-shrink-0">
           SN
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[12.5px] font-bold truncate">Shree</div>
+          <div className="text-[12.5px] font-semibold truncate text-ink">Shree</div>
           <div className="text-[11px] text-ink-muted">Owner</div>
         </div>
         <Link
@@ -84,9 +84,9 @@ function SbLink({
   return (
     <Link
       href={href}
-      className={`flex items-center gap-2.5 px-[9px] py-2 rounded-sm text-[13px] font-medium ${
+      className={`flex items-center gap-2.5 px-3 py-[9px] rounded-md text-[13px] font-medium mb-0.5 transition-colors ${
         active
-          ? "bg-brand-wash text-brand font-bold shadow-soft-sm"
+          ? "bg-brand-wash text-brand font-semibold"
           : "text-ink-2 hover:bg-page"
       }`}
     >
@@ -96,7 +96,7 @@ function SbLink({
       <span className="flex-1 truncate">{name}</span>
       {dotStatus && (
         <span
-          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+          className={`w-[5px] h-[5px] rounded-full flex-shrink-0 ${
             dotStatus === "live" ? "bg-good" : "bg-border-strong"
           }`}
         />

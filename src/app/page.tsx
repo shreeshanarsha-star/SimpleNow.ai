@@ -48,40 +48,45 @@ export default function OverviewPage() {
   return (
     <AppShell title="Overview">
       <div className="flex-1 flex flex-col min-h-0" id="overviewView">
-        <div className="flex-1 flex flex-col items-center justify-center text-center gap-2.5">
-          <GoldSearchGlyph size={72} />
-          <div className="text-[19px] font-bold mt-1">What do you need?</div>
-          <p className="text-[12.5px] text-ink-muted max-w-[320px] leading-relaxed">
+        <div className="flex-1 flex flex-col items-center justify-center text-center gap-3">
+          <GoldSearchGlyph size={44} />
+          <div className="text-[26px] font-semibold text-ink mt-2 tracking-tight">
+            What do you need?
+          </div>
+          <p className="text-[13px] text-ink-muted max-w-[340px] leading-relaxed">
             Search for a department or tool below, or pick one from the sidebar.
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-surface border border-border rounded-full pl-4 pr-2 py-2 mt-5 shadow-soft focus-within:border-brand">
-          <Icon name="search" className="w-4 h-4 text-ink-muted flex-shrink-0" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && runSearch()}
-            placeholder="Search departments or tools…"
-            className="border-none outline-none bg-transparent text-[13.5px] w-full"
-          />
-          <button
-            type="button"
-            aria-label="Ask Shree"
-            className="w-[34px] h-[34px] rounded-full border border-border bg-page flex items-center justify-center text-ink-2 hover:border-border-strong flex-shrink-0 shadow-soft-sm"
-          >
-            <Icon name="mic" className="w-[15px] h-[15px]" />
-          </button>
-          <button
-            onClick={runSearch}
-            aria-label="Search"
-            className="w-[34px] h-[34px] rounded-full bg-ink text-white border-none flex items-center justify-center flex-shrink-0 shadow-soft-sm"
-          >
-            <Icon name="arrowUp" className="w-[15px] h-[15px]" />
-          </button>
+
+        <div className="w-full max-w-[680px] mx-auto mb-10">
+          <div className="flex items-center gap-2.5 bg-surface border border-border rounded-2xl pl-5 pr-2.5 py-3 shadow-soft focus-within:border-brand/50 transition-colors">
+            <Icon name="search" className="w-4 h-4 text-ink-muted flex-shrink-0" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && runSearch()}
+              placeholder="Search departments or tools…"
+              className="border-none outline-none bg-transparent text-[14px] w-full py-1"
+            />
+            <button
+              type="button"
+              aria-label="Ask Shree"
+              className="w-9 h-9 rounded-full border border-border bg-page flex items-center justify-center text-ink-2 hover:border-border-strong hover:text-ink flex-shrink-0 transition-colors"
+            >
+              <Icon name="mic" className="w-[15px] h-[15px]" />
+            </button>
+            <button
+              onClick={runSearch}
+              aria-label="Search"
+              className="w-9 h-9 rounded-full bg-ink text-white border-none flex items-center justify-center flex-shrink-0 hover:bg-ink/85 transition-colors"
+            >
+              <Icon name="arrowUp" className="w-[15px] h-[15px]" />
+            </button>
+          </div>
+          {notFoundMsg && (
+            <p className="text-[12px] text-ink-muted mt-2.5 text-center">{notFoundMsg}</p>
+          )}
         </div>
-        {notFoundMsg && (
-          <p className="text-[12px] text-ink-muted mt-2">{notFoundMsg}</p>
-        )}
       </div>
     </AppShell>
   );
