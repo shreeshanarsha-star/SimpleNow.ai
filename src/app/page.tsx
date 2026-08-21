@@ -37,22 +37,27 @@ export default function OverviewPage() {
             Search for a department or tool below, or pick one from the sidebar.
           </p>
         </div>
-        <div className="flex gap-2.5 pt-5">
-          <div className="flex-1 flex items-center gap-2 bg-surface border border-border rounded-md px-4 py-3 focus-within:border-brand">
-            <Icon name="search" className="w-4 h-4 text-ink-muted flex-shrink-0" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && runSearch()}
-              placeholder="Search departments or tools…"
-              className="border-none outline-none bg-transparent text-[13.5px] w-full"
-            />
-          </div>
+        <div className="flex items-center gap-2 bg-surface border border-border rounded-md pl-4 pr-2 py-2 mt-5 focus-within:border-brand">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && runSearch()}
+            placeholder="Search departments or tools…"
+            className="border-none outline-none bg-transparent text-[13.5px] w-full"
+          />
+          <button
+            type="button"
+            aria-label="Ask Shree"
+            className="w-[34px] h-[34px] rounded-sm border border-border bg-page flex items-center justify-center text-ink-2 hover:border-border-strong flex-shrink-0"
+          >
+            <Icon name="mic" className="w-[15px] h-[15px]" />
+          </button>
           <button
             onClick={runSearch}
-            className="bg-brand text-white border-none px-4 py-2.5 rounded-sm text-[13px] font-bold"
+            aria-label="Search"
+            className="w-[34px] h-[34px] rounded-sm bg-accent text-white border-none flex items-center justify-center flex-shrink-0"
           >
-            Search
+            <Icon name="arrowUp" className="w-[15px] h-[15px]" />
           </button>
         </div>
       </div>

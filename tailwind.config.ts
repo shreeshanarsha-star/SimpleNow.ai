@@ -37,6 +37,12 @@ const config: Config = {
           DEFAULT: "#fab219",
           wash: "#fdf1da",
         },
+        // Warm orange-red for the Overview search bar's send button --
+        // none of the existing semantic tokens (brand blue, good green,
+        // warning yellow, critical red-pink) matched the reference design.
+        accent: {
+          DEFAULT: "#cc5a35",
+        },
       },
       borderRadius: {
         lg: "16px",

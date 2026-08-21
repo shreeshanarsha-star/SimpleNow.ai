@@ -33,6 +33,7 @@ export const ICONS: Record<string, string> = {
   check: "M20 6 9 17l-5-5",
   x: "M18 6 6 18M6 6l12 12",
   chevronLeft: "M15 18l-6-6 6-6",
+  arrowUp: "M12 19V5 M5 12l7-7 7 7",
 };
 
 export function iconPaths(name: string): string[] {
