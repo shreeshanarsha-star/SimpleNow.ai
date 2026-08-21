@@ -40,7 +40,7 @@ export default function GlobalSearchBar() {
   }
 
   return (
-    <div className="sticky bottom-0 z-[5] bg-page/85 backdrop-blur-sm border-t border-border/70 px-[26px] py-3.5">
+    <div className="px-[26px] pb-8 pt-2">
       <div className="w-full max-w-[680px] mx-auto relative">
         {notFoundMsg && (
           <p className="absolute bottom-[calc(100%+8px)] left-0 right-0 text-center text-[12px] text-ink-muted">
