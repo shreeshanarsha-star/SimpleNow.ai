@@ -105,7 +105,7 @@ export default function OfferAiForm() {
         <p className="m-0 mt-2 text-[13px] text-ink-muted max-w-sm">
           This offer is waiting in the admin&rsquo;s approval queue.
         </p>
-        <Link href="/" className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm mt-2">
+        <Link href="/" className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm mt-2 shadow-soft-sm">
           Back to Overview
         </Link>
       </div>
@@ -216,7 +216,7 @@ export default function OfferAiForm() {
           <button
             onClick={handlePolish}
             disabled={!candidateName || !roleTitle || step === "polishing"}
-            className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 self-start"
+            className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 self-start shadow-soft-sm"
           >
             {step === "polishing" ? "Polishing…" : "Polish with AI"}
           </button>
@@ -225,7 +225,7 @@ export default function OfferAiForm() {
 
       {step === "review" && (
         <div className="flex flex-col gap-4">
-          <div className="bg-surface border border-border rounded-md p-4">
+          <div className="bg-surface border border-border rounded-md p-4 shadow-soft-sm">
             <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-2">
               AI-drafted offer letter
             </div>
@@ -239,7 +239,7 @@ export default function OfferAiForm() {
             <button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50"
+              className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 shadow-soft-sm"
             >
               {isSubmitting ? "Submitting…" : "Submit for approval"}
             </button>

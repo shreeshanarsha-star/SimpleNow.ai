@@ -152,7 +152,7 @@ export default function SmartScreenAiForm() {
           <button
             onClick={handleStructure}
             disabled={busy}
-            className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 self-start"
+            className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 self-start shadow-soft-sm"
           >
             {busy ? "Structuring…" : "Structure with AI"}
           </button>
@@ -217,7 +217,7 @@ export default function SmartScreenAiForm() {
             <button
               onClick={handleRun}
               disabled={busy}
-              className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50"
+              className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 shadow-soft-sm"
             >
               Run screening
             </button>
@@ -267,7 +267,7 @@ export default function SmartScreenAiForm() {
               }
               const tier = r.next_action?.tier || "screen";
               return (
-                <div key={idx} className="border border-border rounded-md bg-surface">
+                <div key={idx} className="border border-border rounded-md bg-surface shadow-soft-sm">
                   <button
                     onClick={() => setOpenIdx(open ? null : idx)}
                     className="w-full flex items-center gap-3 px-4 py-3 text-left"

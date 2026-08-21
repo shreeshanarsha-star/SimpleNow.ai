@@ -54,7 +54,7 @@ export default function OfferApprovalRow({ offer, readOnly = false }: { offer: O
   }
 
   return (
-    <div className="border border-border rounded-md bg-surface">
+    <div className="border border-border rounded-md bg-surface shadow-soft-sm">
       <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-3 px-4 py-3 text-left">
         <span className="text-[13.5px] font-medium flex-1">
           {offer.candidate_name} — {offer.role_title}

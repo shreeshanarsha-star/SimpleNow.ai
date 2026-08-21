@@ -78,7 +78,7 @@ export default function ApplicationApprovalRow({
   }
 
   return (
-    <div className="border border-border rounded-md bg-surface">
+    <div className="border border-border rounded-md bg-surface shadow-soft-sm">
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-3 px-4 py-3 text-left"

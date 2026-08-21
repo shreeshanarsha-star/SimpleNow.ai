@@ -180,7 +180,7 @@ export default async function AdminPage() {
           {notBuiltYet.map((tool) => (
             <div
               key={tool.n}
-              className="border border-border rounded-md px-4 py-3 bg-surface text-[13px] text-ink-muted flex items-center justify-between"
+              className="border border-border rounded-md px-4 py-3 bg-surface text-[13px] text-ink-muted flex items-center justify-between shadow-soft-sm"
             >
               {tool.n}
               <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-page">

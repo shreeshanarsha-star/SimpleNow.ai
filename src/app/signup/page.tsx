@@ -50,7 +50,7 @@ export default function SignupPage() {
     <div className="min-h-screen flex items-center justify-center bg-page px-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm bg-surface border border-border rounded-lg p-8"
+        className="w-full max-w-sm bg-surface border border-border rounded-lg p-8 shadow-soft"
       >
         <LogoMark size={30} />
         <div className="mb-4" />
@@ -88,7 +88,7 @@ export default function SignupPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-brand text-white font-bold text-[13px] rounded-sm py-2.5 disabled:opacity-60"
+          className="w-full bg-brand text-white font-bold text-[13px] rounded-sm py-2.5 disabled:opacity-60 shadow-soft-sm"
         >
           {loading ? "Creating account…" : "Sign up"}
         </button>

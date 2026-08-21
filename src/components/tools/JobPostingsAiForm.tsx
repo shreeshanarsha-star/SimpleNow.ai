@@ -75,7 +75,7 @@ export default function JobPostingsAiForm() {
         <div className="flex gap-2 pt-2">
           <Link
             href="/"
-            className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm"
+            className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm shadow-soft-sm"
           >
             Back to Overview
           </Link>
@@ -163,7 +163,7 @@ export default function JobPostingsAiForm() {
             <button
               onClick={handlePolish}
               disabled={!title || !description || step === "polishing"}
-              className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50"
+              className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 shadow-soft-sm"
             >
               {step === "polishing" ? "Polishing…" : "Polish with AI"}
             </button>
@@ -173,7 +173,7 @@ export default function JobPostingsAiForm() {
 
       {step === "review" && (
         <div className="flex flex-col gap-4">
-          <div className="bg-surface border border-border rounded-md p-4">
+          <div className="bg-surface border border-border rounded-md p-4 shadow-soft-sm">
             <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-2">
               AI-polished description
             </div>
@@ -187,7 +187,7 @@ export default function JobPostingsAiForm() {
             <button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50"
+              className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 shadow-soft-sm"
             >
               {isSubmitting ? "Submitting…" : "Submit for approval"}
             </button>

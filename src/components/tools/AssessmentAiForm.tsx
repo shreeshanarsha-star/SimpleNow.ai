@@ -93,7 +93,7 @@ export default function AssessmentAiForm() {
         <button
           type="submit"
           disabled={busy}
-          className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 self-start"
+          className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 self-start shadow-soft-sm"
         >
           {busy ? "Creating…" : "Create assessment link"}
         </button>
@@ -115,7 +115,7 @@ export default function AssessmentAiForm() {
         {assignments.map((a) => {
           const response = a.assessment_responses?.[0];
           return (
-            <div key={a.id} className="border border-border rounded-md bg-surface px-4 py-3">
+            <div key={a.id} className="border border-border rounded-md bg-surface px-4 py-3 shadow-soft-sm">
               <div className="flex items-center gap-3">
                 <span className="text-[13.5px] font-medium flex-1">{a.candidate_name}</span>
                 <span

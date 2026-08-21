@@ -13,7 +13,7 @@ export default function Sidebar() {
     pathname === href || pathname.startsWith(href + "/");
 
   return (
-    <aside className="w-[252px] flex-shrink-0 bg-surface border-r border-border flex flex-col sticky top-0 h-screen">
+    <aside className="w-[252px] flex-shrink-0 bg-surface border-r border-border flex flex-col sticky top-0 h-screen shadow-soft z-10">
       <div className="flex items-center gap-2.5 px-[18px] pt-5 pb-3.5">
         <LogoMark size={30} />
         <div>
@@ -49,7 +49,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="border-t border-border px-3.5 py-3 flex items-center gap-2.5">
-        <div className="w-[30px] h-[30px] rounded-full bg-brand text-white text-[11.5px] font-bold flex items-center justify-center flex-shrink-0">
+        <div className="w-[30px] h-[30px] rounded-full bg-brand text-white text-[11.5px] font-bold flex items-center justify-center flex-shrink-0 shadow-soft-sm">
           SN
         </div>
         <div className="flex-1 min-w-0">
@@ -86,7 +86,7 @@ function SbLink({
       href={href}
       className={`flex items-center gap-2.5 px-[9px] py-2 rounded-sm text-[13px] font-medium ${
         active
-          ? "bg-brand-wash text-brand font-bold"
+          ? "bg-brand-wash text-brand font-bold shadow-soft-sm"
           : "text-ink-2 hover:bg-page"
       }`}
     >

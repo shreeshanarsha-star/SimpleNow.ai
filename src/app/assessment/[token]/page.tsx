@@ -101,7 +101,7 @@ export default function TakeAssessmentPage({ params }: { params: Promise<{ token
 
         <div className="flex flex-col gap-3 mt-5">
           {questions.map((q, idx) => (
-            <div key={q.id} className="border border-border rounded-md bg-surface px-4 py-3.5">
+            <div key={q.id} className="border border-border rounded-md bg-surface px-4 py-3.5 shadow-soft-sm">
               <div className="text-[13px] font-medium mb-2.5">
                 {idx + 1}. {q.text}
               </div>

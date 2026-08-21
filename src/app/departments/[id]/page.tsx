@@ -62,7 +62,7 @@ export default async function DepartmentPage({
               {tools.map((tool) => {
                 const row = (
                   <div
-                    className={`flex items-center gap-3 border border-border rounded-md px-4 py-3 bg-surface ${
+                    className={`flex items-center gap-3 border border-border rounded-md px-4 py-3 bg-surface shadow-soft-sm ${
                       tool.s === "live" ? "hover:border-brand cursor-pointer" : "opacity-70"
                     }`}
                   >

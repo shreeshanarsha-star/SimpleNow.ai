@@ -178,7 +178,7 @@ export default function ApplyForm({ jobs }: { jobs: Job[] }) {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 self-start"
+            className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 self-start shadow-soft-sm"
           >
             {isSubmitting ? "Submitting…" : "Submit application"}
           </button>
@@ -207,7 +207,7 @@ export default function ApplyForm({ jobs }: { jobs: Job[] }) {
       {jobs.map((job) => {
         const open = openId === job.id;
         return (
-          <div key={job.id} className="border border-border rounded-md bg-surface">
+          <div key={job.id} className="border border-border rounded-md bg-surface shadow-soft-sm">
             <button
               onClick={() => setOpenId(open ? null : job.id)}
               className="w-full flex items-center gap-3 px-4 py-3.5 text-left"

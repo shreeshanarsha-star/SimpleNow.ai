@@ -52,6 +52,18 @@ const config: Config = {
         md: "10px",
         sm: "7px",
       },
+      boxShadow: {
+        // Shared "soft 3D" treatment -- warm-toned (shadow color is the
+        // dark end of the gold gradient, #5c4813, not flat black) layered
+        // shadow with a faint inset highlight along the top edge, so
+        // surfaces read as gently raised/embossed instead of flat cards
+        // with a drop shadow bolted on. Two weights: `soft` for primary
+        // chrome (sidebar, search bar), `soft-sm` for secondary
+        // cards/rows/buttons so everything doesn't compete at the same
+        // depth.
+        soft: "0 1px 1px rgba(92,72,19,0.05), 0 10px 24px -6px rgba(92,72,19,0.16), inset 0 1px 0 rgba(255,255,255,0.75)",
+        "soft-sm": "0 1px 1px rgba(92,72,19,0.04), 0 4px 12px -3px rgba(92,72,19,0.12), inset 0 1px 0 rgba(255,255,255,0.7)",
+      },
       fontFamily: {
         sans: [
           "system-ui",
