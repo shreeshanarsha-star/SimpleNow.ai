@@ -53,7 +53,7 @@ export default function GlobalSearchBar() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runSearch()}
-            placeholder="Search departments or toolsâ¦"
+            placeholder="Search departments or tools…"
             className="border-none outline-none bg-transparent text-[13.5px] w-full py-1 text-ink placeholder:text-ink-muted"
           />
           <button
