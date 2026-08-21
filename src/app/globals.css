@@ -6,7 +6,8 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: #f7f4ec;
+  background: linear-gradient(160deg, #fbf3de, #f3e4bc);
+  background-attachment: fixed;
   color: #211f1a;
 }
 

@@ -13,9 +13,12 @@ export default function Sidebar() {
     pathname === href || pathname.startsWith(href + "/");
 
   return (
-    <aside className="w-[256px] flex-shrink-0 bg-surface border-r border-border flex flex-col sticky top-0 h-screen z-10">
-      <div className="flex items-center gap-3 px-5 pt-7 pb-5">
-        <LogoMark size={32} />
+    <aside className="w-[256px] flex-shrink-0 bg-gradient-to-b from-surface to-brand-wash border-r border-border flex flex-col sticky top-0 h-screen z-10 shadow-panel-right">
+      {/* Same vertical padding (py-3) as Topbar's px-[26px] py-3, so the
+          brand block and the "Overview" title land on one continuous
+          horizontal line across the sidebar/main-column seam. */}
+      <div className="flex items-center gap-3 px-5 py-3">
+        <LogoMark size={32} className="shadow-emblem" />
         <div>
           <div className="font-semibold text-[16px] leading-tight text-ink">Askshree</div>
           <small className="block font-semibold text-[10px] text-brand tracking-[0.08em] mt-0.5">
@@ -48,8 +51,12 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-border px-4 py-3.5 flex items-center gap-2.5">
-        <div className="w-[30px] h-[30px] rounded-full bg-brand/90 text-white text-[11.5px] font-semibold flex items-center justify-center flex-shrink-0">
+      {/* Bottom row -- deliberately left un-sticky/in-flow: the aside is
+          h-screen with only `nav` scrolling, so this row already sits
+          flush with the viewport bottom, on the same line as
+          GlobalSearchBar's sticky-bottom row in the main column. */}
+      <div className="border-t border-border/70 px-4 py-3.5 flex items-center gap-2.5">
+        <div className="w-[30px] h-[30px] rounded-full bg-gradient-to-br from-brand to-[#5c4813] text-white text-[11.5px] font-semibold flex items-center justify-center flex-shrink-0 shadow-emblem">
           SN
         </div>
         <div className="flex-1 min-w-0">
@@ -84,9 +91,9 @@ function SbLink({
   return (
     <Link
       href={href}
-      className={`flex items-center gap-2.5 px-3 py-[9px] rounded-md text-[13px] font-medium mb-0.5 transition-colors ${
+      className={`flex items-center gap-2.5 px-3 py-[9px] rounded-md text-[13px] font-medium mb-0.5 transition-all ${
         active
-          ? "bg-brand-wash text-brand font-semibold"
+          ? "bg-gradient-to-br from-[#f9edc9] to-[#eeda9e] text-brand font-semibold shadow-soft-sm"
           : "text-ink-2 hover:bg-page"
       }`}
     >

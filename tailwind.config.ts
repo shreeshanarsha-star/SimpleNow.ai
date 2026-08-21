@@ -52,14 +52,19 @@ const config: Config = {
         sm: "7px",
       },
       boxShadow: {
-        // Restrained, quiet elevation -- a single soft ambient shadow, no
-        // inset highlight/emboss. The goal is "sits gently above the
-        // page," not "raised metal object." Two weights so primary chrome
-        // (sidebar, search bar) can read as very slightly more present
-        // than secondary rows/buttons, without either one calling
-        // attention to itself.
-        soft: "0 1px 2px rgba(33,27,10,0.04), 0 8px 20px -10px rgba(33,27,10,0.10)",
-        "soft-sm": "0 1px 2px rgba(33,27,10,0.05)",
+        // "Rich dimensional" direction (approved from the A/B comparison):
+        // layered shadow + inset top highlight, so primary chrome reads as
+        // gently raised/embossed gold rather than a flat card with a
+        // drop-shadow filter. Two weights: `soft` for primary chrome
+        // (search bar, cards), `soft-sm` for secondary buttons/rows.
+        soft: "0 1px 1px rgba(92,72,19,0.06), 0 14px 30px -8px rgba(92,72,19,0.28), inset 0 1px 0 rgba(255,255,255,0.85)",
+        "soft-sm": "0 2px 6px rgba(154,120,20,0.25), inset 0 1px 0 rgba(255,255,255,0.8)",
+        // Directional shadow cast rightward by the sidebar panel, and
+        // downward by the topbar -- these read as physical panels sitting
+        // above the page, not just bordered rectangles.
+        "panel-right": "4px 0 24px rgba(90,68,10,0.14)",
+        button: "0 3px 8px rgba(0,0,0,0.35), inset 0 1px 1px rgba(255,255,255,0.15)",
+        emblem: "0 3px 8px rgba(90,68,10,0.4), inset 0 1px 1px rgba(255,255,255,0.6)",
       },
       fontFamily: {
         sans: [
