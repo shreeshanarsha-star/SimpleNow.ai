@@ -1,5 +1,6 @@
 "use client";
 
+import LogoMark from "@/components/LogoMark";
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -44,7 +45,8 @@ function LoginForm() {
         onSubmit={handleSubmit}
         className="w-full max-w-sm bg-surface border border-border rounded-lg p-8"
       >
-        <div className="w-7 h-7 rounded-lg bg-brand mb-4" />
+        <LogoMark size={30} />
+        <div className="mb-4" />
         <h1 className="text-[19px] font-bold m-0 mb-1">Owner sign in</h1>
         <p className="text-[12.5px] text-ink-muted m-0 mb-6">
           Admin access to Askshree.com — approvals and configuration.

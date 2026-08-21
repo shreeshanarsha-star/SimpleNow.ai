@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import ApplyForm from "@/components/tools/ApplyForm";
 import Icon from "@/components/Icon";
 import Link from "next/link";
+import LogoMark from "@/components/LogoMark";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export default async function ApplyPage() {
       <header className="border-b border-border bg-surface">
         <div className="max-w-[1000px] mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-[26px] h-[26px] rounded-lg bg-brand flex-shrink-0" />
+            <LogoMark size={30} />
             <div>
               <div className="font-bold text-[15.5px] leading-tight">Askshree</div>
               <small className="block font-medium text-[10.5px] text-ink-muted tracking-wide">

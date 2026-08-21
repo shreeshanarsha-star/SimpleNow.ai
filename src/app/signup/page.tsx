@@ -1,5 +1,6 @@
 "use client";
 
+import LogoMark from "@/components/LogoMark";
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -51,7 +52,8 @@ export default function SignupPage() {
         onSubmit={handleSubmit}
         className="w-full max-w-sm bg-surface border border-border rounded-lg p-8"
       >
-        <div className="w-7 h-7 rounded-lg bg-brand mb-4" />
+        <LogoMark size={30} />
+        <div className="mb-4" />
         <h1 className="text-[19px] font-bold m-0 mb-1">Create an account</h1>
         <p className="text-[12.5px] text-ink-muted m-0 mb-6">
           After you sign up, the admin grants access to specific tools — nothing is

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { DEPARTMENTS, PERSONAL_TOOLS } from "@/lib/departments";
 import Icon from "./Icon";
+import LogoMark from "./LogoMark";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -14,7 +15,7 @@ export default function Sidebar() {
   return (
     <aside className="w-[252px] flex-shrink-0 bg-surface border-r border-border flex flex-col sticky top-0 h-screen">
       <div className="flex items-center gap-2.5 px-[18px] pt-5 pb-3.5">
-        <div className="w-[26px] h-[26px] rounded-lg bg-brand flex-shrink-0" />
+        <LogoMark size={30} />
         <div>
           <div className="font-bold text-[15.5px] leading-tight">Askshree</div>
           <small className="block font-medium text-[10.5px] text-ink-muted tracking-wide">
