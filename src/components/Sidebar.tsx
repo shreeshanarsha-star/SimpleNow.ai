@@ -27,7 +27,7 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 pb-3">
+      <nav className="flex-1 overflow-hidden px-3 pt-1 pb-2">
         <SbLink href="/" icon="grid" name="Overview" active={pathname === "/"} />
         <SbLink
           href={`/departments/${PERSONAL_TOOLS.id}`}
@@ -36,7 +36,7 @@ export default function Sidebar() {
           active={isActive(`/departments/${PERSONAL_TOOLS.id}`)}
         />
 
-        <div className="text-[10.5px] font-semibold tracking-wider uppercase text-ink-muted px-2.5 pt-5 pb-2">
+        <div className="text-[10px] font-semibold tracking-wider uppercase text-ink-muted px-2.5 pt-3 pb-1.5">
           AI Systems — by department
         </div>
         {DEPARTMENTS.map((d) => (
@@ -51,10 +51,11 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Bottom row -- deliberately left un-sticky/in-flow: the aside is
-          h-screen with only `nav` scrolling, so this row already sits
-          flush with the viewport bottom, on the same line as
-          GlobalSearchBar's sticky-bottom row in the main column. */}
+      {/* Bottom row -- deliberately left un-sticky/in-flow: nav above no
+          longer scrolls (every item fits, no scrollbar), so this row
+          naturally sits flush with the viewport bottom via the aside's
+          own flex-col + h-screen, on the same line as GlobalSearchBar's
+          sticky-bottom row in the main column. */}
       <div className="border-t border-border/70 px-4 py-3.5 flex items-center gap-2.5">
         <div className="w-[30px] h-[30px] rounded-full bg-gradient-to-br from-brand to-[#5c4813] text-white text-[11.5px] font-semibold flex items-center justify-center flex-shrink-0 shadow-emblem">
           SN
@@ -91,14 +92,14 @@ function SbLink({
   return (
     <Link
       href={href}
-      className={`flex items-center gap-2.5 px-3 py-[9px] rounded-md text-[13px] font-medium mb-0.5 transition-all ${
+      className={`flex items-center gap-2 px-2.5 py-[6px] rounded-md text-[12px] font-medium mb-[2px] transition-all ${
         active
           ? "bg-gradient-to-br from-[#f9edc9] to-[#eeda9e] text-brand font-semibold shadow-soft-sm"
           : "text-ink-2 hover:bg-page"
       }`}
     >
-      <span className="w-4 h-4 flex-shrink-0">
-        <Icon name={icon} className="w-4 h-4" />
+      <span className="w-[13px] h-[13px] flex-shrink-0">
+        <Icon name={icon} className="w-[13px] h-[13px]" />
       </span>
       <span className="flex-1 truncate">{name}</span>
       {dotStatus && (
