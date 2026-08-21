@@ -10,21 +10,38 @@ export default function OverviewPage() {
   const router = useRouter();
   const [q, setQ] = useState("");
 
+  const [notFoundMsg, setNotFoundMsg] = useState<string | null>(null);
+
   function runSearch() {
     const query = q.trim().toLowerCase();
     if (!query) return;
+    setNotFoundMsg(null);
 
     for (const dept of ALL_ITEMS) {
+      // A live tool with its own page is the actual result someone typed a
+      // tool name for -- take them straight there instead of dropping them
+      // on the department list and making them find it themselves again.
+      const tool = dept.tools.find((t) => t.n.toLowerCase().includes(query));
+      if (tool && tool.s === "live" && tool.href) {
+        router.push(tool.href);
+        return;
+      }
+      if (tool) {
+        // Matched a real tool, but it's not live yet (no page to land on)
+        // -- go to its department, scrolled/highlighted, not just the
+        // param-less department page.
+        router.push(`/departments/${dept.id}?tool=${encodeURIComponent(tool.n)}`);
+        return;
+      }
       if (dept.name.toLowerCase().includes(query)) {
         router.push(`/departments/${dept.id}`);
         return;
       }
-      const tool = dept.tools.find((t) => t.n.toLowerCase().includes(query));
-      if (tool) {
-        router.push(`/departments/${dept.id}?tool=${encodeURIComponent(tool.n)}`);
-        return;
-      }
     }
+
+    // Never a silent no-op -- if nothing matched, say so instead of just
+    // sitting there looking like the button didn't work.
+    setNotFoundMsg(`No department or tool matches "${q.trim()}".`);
   }
 
   return (
@@ -55,11 +72,14 @@ export default function OverviewPage() {
           <button
             onClick={runSearch}
             aria-label="Search"
-            className="w-[34px] h-[34px] rounded-sm bg-accent text-white border-none flex items-center justify-center flex-shrink-0"
+            className="w-[34px] h-[34px] rounded-sm bg-ink text-white border-none flex items-center justify-center flex-shrink-0"
           >
             <Icon name="arrowUp" className="w-[15px] h-[15px]" />
           </button>
         </div>
+        {notFoundMsg && (
+          <p className="text-[12px] text-ink-muted mt-2">{notFoundMsg}</p>
+        )}
       </div>
     </AppShell>
   );

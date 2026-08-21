@@ -37,16 +37,6 @@ const config: Config = {
           DEFAULT: "#fab219",
           wash: "#fdf1da",
         },
-        // Warm coral-orange for the Overview search bar's send button --
-        // none of the existing semantic tokens (brand blue, good green,
-        // warning yellow, critical red-pink) matched the reference design.
-        // Picked as brand blue's complement on the color wheel (blue
-        // #2a78d6 vs. orange ~#20deg hue) rather than the earlier muted
-        // brick tone, which read too brown/dull against the cool blue and
-        // warm off-white surface (#fcfcfb) it sits next to.
-        accent: {
-          DEFAULT: "#e8602e",
-        },
       },
       borderRadius: {
         lg: "16px",
