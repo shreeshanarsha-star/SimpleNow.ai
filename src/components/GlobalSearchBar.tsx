@@ -47,14 +47,14 @@ export default function GlobalSearchBar() {
             {notFoundMsg}
           </p>
         )}
-        <div className="flex items-center gap-2.5 bg-gradient-to-b from-[#fffef9] to-[#fdf6e3] border border-brand/[0.18] rounded-full pl-5 pr-2 py-2.5 shadow-soft focus-within:border-brand/40 transition-colors">
+        <div className="flex items-center gap-2.5 bg-gradient-to-b from-[var(--search-bg-1)] to-[var(--search-bg-2)] border border-brand/[0.18] rounded-full pl-5 pr-2 py-2.5 shadow-soft focus-within:border-brand/40 transition-colors">
           <Icon name="search" className="w-4 h-4 text-ink-muted flex-shrink-0" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runSearch()}
-            placeholder="Search departments or tools…"
-            className="border-none outline-none bg-transparent text-[13.5px] w-full py-1"
+            placeholder="Search departments or toolsâ¦"
+            className="border-none outline-none bg-transparent text-[13.5px] w-full py-1 text-ink placeholder:text-ink-muted"
           />
           <button
             type="button"
@@ -66,7 +66,7 @@ export default function GlobalSearchBar() {
           <button
             onClick={runSearch}
             aria-label="Search"
-            className="w-8 h-8 rounded-full bg-[radial-gradient(circle_at_35%_30%,#2a2a2a,#050505)] text-white border-none flex items-center justify-center flex-shrink-0 shadow-button hover:brightness-110 transition-all"
+            className="w-8 h-8 rounded-full bg-[radial-gradient(circle_at_35%_30%,var(--accent-btn-1),var(--accent-btn-2))] text-white border-none flex items-center justify-center flex-shrink-0 shadow-button hover:brightness-110 transition-all"
           >
             <Icon name="arrowUp" className="w-[14px] h-[14px]" />
           </button>
