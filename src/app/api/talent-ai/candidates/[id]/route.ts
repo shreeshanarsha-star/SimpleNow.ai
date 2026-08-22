@@ -25,7 +25,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (error || !candidate) {
     return NextResponse.json({ error: error?.message || "Candidate not found." }, { status: 404 });
   }
-  return NextResponse.json({ candidate });
+
+  // Other applications by the same person (across other requisitions), so
+  // recruiters can see this candidate's full history instead of a single
+  // disconnected pipeline row.
+  let otherApplications: unknown[] = [];
+  if (candidate.person_id) {
+    const { data: others } = await supabase
+      .from("talent_candidates")
+      .select("id, stage, created_at, talent_requisitions(id, req_no, title, location, department)")
+      .eq("person_id", candidate.person_id)
+      .neq("id", id)
+      .order("created_at", { ascending: false });
+    otherApplications = others || [];
+  }
+
+  return NextResponse.json({ candidate, otherApplications });
 }
 
 // Update a candidate -- most importantly, moving stage. Every stage change

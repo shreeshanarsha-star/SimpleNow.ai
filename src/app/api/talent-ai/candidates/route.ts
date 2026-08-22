@@ -61,15 +61,19 @@ export async function POST(req: Request) {
   let fitNote: string | null = null;
   const resumeText = body.resumeText || null;
 
+  const { data: requisitionRow } = await supabase
+    .from("talent_requisitions")
+    .select("org_id, title, description")
+    .eq("id", requisitionId)
+    .single();
+  if (!requisitionRow) {
+    return NextResponse.json({ error: "Requisition not found." }, { status: 404 });
+  }
+  const orgId = requisitionRow.org_id as string;
+
   if (resumeText && (!name || body.autoParse)) {
     try {
-      let requisitionContext: string | undefined;
-      const { data: req_ } = await supabase
-        .from("talent_requisitions")
-        .select("title, description")
-        .eq("id", requisitionId)
-        .single();
-      if (req_) requisitionContext = `Role: ${req_.title}\n${req_.description || ""}`;
+      const requisitionContext = `Role: ${requisitionRow.title}\n${requisitionRow.description || ""}`;
 
       const parsed = await parseResumeToCandidate(resumeText, requisitionContext);
       name = name || parsed.name || "Unnamed candidate";
@@ -89,10 +93,53 @@ export async function POST(req: Request) {
   }
   if (!name) name = "Unnamed candidate";
 
+  // Look up-or-create the person's identity record, scoped to this org and
+  // deduped by email (when we have one) so the same person applying to
+  // multiple requisitions resolves to a single talent_people row instead of
+  // a disconnected duplicate every time.
+  let personId: string | null = null;
+  if (email) {
+    const { data: existingPerson } = await supabase
+      .from("talent_people")
+      .select("id")
+      .eq("org_id", orgId)
+      .ilike("email", email)
+      .limit(1)
+      .maybeSingle();
+    if (existingPerson) personId = existingPerson.id;
+  }
+  if (!personId) {
+    const { data: newPerson, error: personError } = await supabase
+      .from("talent_people")
+      .insert({
+        org_id: orgId,
+        name,
+        email,
+        phone,
+        resume_text: resumeText,
+        source: body.source || "other",
+        current_company: currentCompany,
+        current_location: currentLocation,
+        qualification,
+        notice_period: noticePeriod,
+        linkedin_url: linkedinUrl,
+        experience_years: experienceYears,
+        tags: summaryTags,
+        created_by: user.id,
+      })
+      .select("id")
+      .single();
+    if (personError) {
+      return NextResponse.json({ error: personError.message }, { status: 500 });
+    }
+    personId = newPerson.id;
+  }
+
   const { data: candidate, error } = await supabase
     .from("talent_candidates")
     .insert({
       requisition_id: requisitionId,
+      person_id: personId,
       name,
       email,
       phone,

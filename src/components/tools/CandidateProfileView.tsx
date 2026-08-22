@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { VScroller } from "@/components/Scroller";
 
 const STAGES: { id: string; label: string }[] = [
   { id: "applied", label: "Applied" },
@@ -37,10 +38,22 @@ type Candidate = {
   notice_period: string | null;
   linkedin_url: string | null;
   experience_years: number | null;
+  person_id: string | null;
   talent_notes: Note[];
   talent_scorecards: Scorecard[];
   talent_requisitions: { id: string; req_no: string; title: string; location: string | null } | null;
 };
+
+type OtherApplication = {
+  id: string;
+  stage: string;
+  created_at: string;
+  talent_requisitions: { id: string; req_no: string; title: string; location: string | null; department: string | null } | null;
+};
+
+function stageLabel(stage: string) {
+  return STAGES.find((s) => s.id === stage)?.label || stage;
+}
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -54,6 +67,7 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
 export default function CandidateProfileView({ candidateId }: { candidateId: string }) {
   const router = useRouter();
   const [candidate, setCandidate] = useState<Candidate | null>(null);
+  const [otherApplications, setOtherApplications] = useState<OtherApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,6 +91,7 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not load candidate.");
       setCandidate(data.candidate);
+      setOtherApplications(data.otherApplications || []);
       setForm({
         current_company: data.candidate.current_company || "",
         current_location: data.candidate.current_location || "",
@@ -275,7 +290,33 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
       {candidate.resume_text && (
         <div className="border border-border rounded-lg p-4 bg-surface">
           <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1.5">Resume</div>
-          <p className="text-[12px] text-ink-2 whitespace-pre-wrap m-0 max-h-72 overflow-y-auto">{candidate.resume_text}</p>
+          <VScroller className="max-h-72">
+            <p className="text-[12px] text-ink-2 whitespace-pre-wrap m-0">{candidate.resume_text}</p>
+          </VScroller>
+        </div>
+      )}
+
+      {otherApplications.length > 0 && (
+        <div className="border border-border rounded-lg p-4 bg-surface">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1.5">
+            Other applications by this person
+          </div>
+          <div className="flex flex-col gap-2">
+            {otherApplications.map((a) => (
+              <Link
+                key={a.id}
+                href={`/tools/talent-ai/candidates/${a.id}`}
+                className="border border-border rounded-sm p-2.5 text-[12px] flex items-center justify-between gap-3 hover:bg-surface-2"
+              >
+                <span>
+                  {a.talent_requisitions
+                    ? `${a.talent_requisitions.req_no} ${a.talent_requisitions.title}${a.talent_requisitions.location ? `-${a.talent_requisitions.location}` : ""}`
+                    : "Unknown requisition"}
+                </span>
+                <span className="text-[11px] font-semibold text-ink-muted flex-shrink-0">{stageLabel(a.stage)}</span>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
 
