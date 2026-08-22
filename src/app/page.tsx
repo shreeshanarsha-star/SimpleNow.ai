@@ -4,7 +4,7 @@ import GlobalSearchBar from "@/components/GlobalSearchBar";
 
 export default function OverviewPage() {
   return (
-    <AppShell title="Overview">
+    <AppShell title="Overview" sidebarMode="home">
       <div
         className="flex-1 flex flex-col min-h-0 relative -mx-[26px] -mb-[26px] overflow-hidden"
         id="overviewView"

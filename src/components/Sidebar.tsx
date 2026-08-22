@@ -8,35 +8,48 @@ import LogoMark from "./LogoMark";
 import ThemeSwitcher from "./ThemeSwitcher";
 
 export default function Sidebar({
-  mobileOpen = false,
+  open = false,
   onClose,
+  alwaysDrawer = false,
 }: {
-  mobileOpen?: boolean;
+  /** Whether the off-canvas drawer is currently showing. */
+  open?: boolean;
   onClose?: () => void;
+  /**
+   * true  -> drawer-only at every breakpoint (used on tool/feature pages,
+   *          which default to a collapsed sidebar so the tool gets full
+   *          width -- reopened via Topbar's hamburger, desktop included).
+   * false -> classic responsive behavior: a normal in-flow, always-visible
+   *          panel on desktop (lg+), off-canvas drawer only below that
+   *          (used on the Home/Overview page).
+   */
+  alwaysDrawer?: boolean;
 }) {
   const pathname = usePathname();
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
 
-  // Desktop: normal in-flow panel, always visible (unchanged from before).
-  // Mobile/tablet (<lg): off-canvas drawer that slides in from the left
-  // over a dim backdrop, toggled by the hamburger button in Topbar.
+  const backdropBreakpoint = alwaysDrawer ? "" : "lg:hidden";
+  const staticBreakpoint = alwaysDrawer
+    ? ""
+    : "lg:static lg:inset-auto lg:translate-x-0 lg:z-auto";
+
   return (
     <>
-      {mobileOpen && (
+      {open && (
         <button
           type="button"
           aria-label="Close menu"
           onClick={onClose}
-          className="lg:hidden fixed inset-0 z-40 bg-black/40"
+          className={`${backdropBreakpoint} fixed inset-0 z-40 bg-black/40`}
         />
       )}
       <aside
         className={`w-[256px] flex-shrink-0 bg-gradient-to-b from-surface to-brand-wash flex flex-col h-full rounded-[28px] shadow-soft overflow-hidden
           fixed inset-y-4 left-4 z-50 transition-transform duration-200 ease-out
-          ${mobileOpen ? "translate-x-0" : "-translate-x-[calc(100%+16px)]"}
-          lg:static lg:inset-auto lg:translate-x-0 lg:z-auto`}
+          ${open ? "translate-x-0" : "-translate-x-[calc(100%+16px)]"}
+          ${staticBreakpoint}`}
       >
       {/* Same vertical padding (py-3) as Topbar's px-[26px] py-3, so the
           brand block and the "Overview" title land on one continuous
@@ -52,12 +65,13 @@ export default function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-hidden px-3 pt-1 pb-2">
-        <SbLink href="/" icon="grid" name="Overview" active={pathname === "/"} />
+        <SbLink href="/" icon="grid" name="Overview" active={pathname === "/"} onNavigate={onClose} />
         <SbLink
           href={`/departments/${PERSONAL_TOOLS.id}`}
           icon={PERSONAL_TOOLS.icon}
           name={PERSONAL_TOOLS.name}
           active={isActive(`/departments/${PERSONAL_TOOLS.id}`)}
+          onNavigate={onClose}
         />
 
         <div className="text-[10px] font-semibold tracking-wider uppercase text-ink-muted px-2.5 pt-3 pb-1.5">
@@ -71,6 +85,7 @@ export default function Sidebar({
             name={d.name}
             active={isActive(`/departments/${d.id}`)}
             dotStatus={d.status}
+            onNavigate={onClose}
           />
         ))}
       </nav>
@@ -117,16 +132,19 @@ function SbLink({
   name,
   active,
   dotStatus,
+  onNavigate,
 }: {
   href: string;
   icon: string;
   name: string;
   active: boolean;
   dotStatus?: "live" | "soon";
+  onNavigate?: () => void;
 }) {
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       className={`flex items-center gap-2 px-2.5 py-[6px] rounded-md text-[12px] font-medium mb-[2px] transition-all ${
         active
           ? "bg-gradient-to-br from-[var(--nav-active-1)] to-[var(--nav-active-2)] text-brand font-semibold shadow-soft-sm"
