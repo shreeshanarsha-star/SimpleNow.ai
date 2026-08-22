@@ -801,11 +801,24 @@ function AssignPanel() {
 
 // ---------------- Recruiter Tools: search, lists, mass email, questionnaires ----------------
 
-type SearchCandidate = { id: string; name: string; email: string | null; stage: string; talent_requisitions?: { title: string } };
+type SearchCandidate = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  stage: string;
+  current_company: string | null;
+  current_location: string | null;
+  experience_years: number | null;
+  talent_requisitions?: { req_no?: string; title: string; location?: string | null } | null;
+  _resumeSnippet?: string | null;
+  _otherApplicationsCount?: number;
+};
 type CandidateList = { id: string; name: string; description: string | null; talent_candidate_list_members?: { candidate_id: string }[] };
 type QTemplate = { id: string; title: string; questions: { id: string; text: string; type: string }[] };
 
 function RecruiterToolsPanel() {
+  const router = useRouter();
   const [q, setQ] = useState("");
   const [external, setExternal] = useState(false);
   const [results, setResults] = useState<SearchCandidate[]>([]);
@@ -837,15 +850,41 @@ function RecruiterToolsPanel() {
           {searching ? "Searching…" : "Search"}
         </button>
       </div>
+      {searching === false && q && results.length === 0 && externalResults.length === 0 && (
+        <p className="text-[12px] text-ink-muted mt-3">No matches in the candidate database.</p>
+      )}
       {results.length > 0 && (
-        <div className="flex flex-col gap-1.5 mt-3">
-          {results.map((c) => (
-            <div key={c.id} className="flex items-center gap-2 border border-border rounded-sm p-2 text-[12.5px]">
-              <span className="font-bold">{c.name}</span>
-              <span className="text-ink-muted">{c.email}</span>
-              <span className="ml-auto text-[10.5px] bg-page px-1.5 py-0.5 rounded-full capitalize">{c.stage}</span>
-            </div>
-          ))}
+        <div className="flex flex-col gap-2 mt-3">
+          {results.map((c) => {
+            const req = c.talent_requisitions;
+            return (
+              <button
+                key={c.id}
+                onClick={() => router.push(`/tools/talent-ai/candidates/${c.id}`)}
+                className="text-left border border-border rounded-md p-2.5 text-[12.5px] hover:border-brand"
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold">{c.name}</span>
+                  <span className="text-ink-muted">{[c.email, c.phone].filter(Boolean).join(" · ")}</span>
+                  <span className="ml-auto text-[10.5px] bg-page px-1.5 py-0.5 rounded-full capitalize flex-shrink-0">{c.stage}</span>
+                </div>
+                <div className="text-[11px] text-ink-muted mt-0.5">
+                  {req ? `${req.req_no ? `${req.req_no} ` : ""}${req.title}${req.location ? `-${req.location}` : ""}` : "No requisition"}
+                  {c.current_company ? ` · ${c.current_company}` : ""}
+                  {c.current_location ? ` · ${c.current_location}` : ""}
+                  {c.experience_years != null ? ` · ${c.experience_years} yrs` : ""}
+                </div>
+                {c._resumeSnippet && (
+                  <div className="text-[11px] text-ink-2 mt-1 italic">…{c._resumeSnippet}…</div>
+                )}
+                {!!c._otherApplicationsCount && (
+                  <div className="text-[10.5px] text-brand font-semibold mt-1">
+                    +{c._otherApplicationsCount} other application{c._otherApplicationsCount === 1 ? "" : "s"} by this person
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
       {externalResults.length > 0 && (
