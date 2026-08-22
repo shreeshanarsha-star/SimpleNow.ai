@@ -37,6 +37,11 @@ export default function Sidebar({
   const [email, setEmail] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [settingsHref, setSettingsHref] = useState<string | null>(null);
+  // Team Chat is org-scoped (RLS-enforced, one chat per org) -- it has no
+  // meaning for a signed-out visitor or a signed-in user who isn't part of
+  // an org yet, so the nav item itself should mirror that instead of
+  // showing to everyone and letting /chat's middleware redirect sort it out.
+  const [hasOrg, setHasOrg] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -46,20 +51,40 @@ export default function Sidebar({
       if (!user) return;
       const { data: profile } = await supabase
         .from("profiles")
-        .select("is_admin, org_role")
+        .select("is_admin, org_role, org_id")
         .eq("id", user.id)
         .maybeSingle();
       if (profile?.is_admin) setSettingsHref("/admin");
       else if (profile?.org_role === "org_admin") setSettingsHref("/org/settings");
+      setHasOrg(!!profile?.org_id);
     });
   }, []);
 
   async function handleSignOut() {
     setSigningOut(true);
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        // Not fatal -- the local session should still be cleared client-side
+        // even if the server-side call failed (expired session, network
+        // blip, etc). Log it so it's not silently invisible, but proceed
+        // to redirect regardless: staying signed-in-looking is worse than
+        // a redirect that fails to also revoke server-side.
+        console.error("Sign out error:", error.message);
+      }
+    } catch (err) {
+      console.error("Sign out threw:", err);
+    } finally {
+      // Hard navigation, not router.push/refresh -- this guarantees every
+      // server component and any in-memory client state re-reads auth from
+      // scratch, instead of relying on the Next.js router cache to notice
+      // the session changed. Previously a thrown/rejected signOut() call
+      // left the button disabled forever with no visible feedback and no
+      // navigation, because there was no try/catch and the redirect lines
+      // never ran.
+      window.location.href = "/login";
+    }
   }
 
   const initials = email ? email.slice(0, 2).toUpperCase() : "?";
@@ -111,14 +136,16 @@ export default function Sidebar({
           active={isActive(`/departments/${PERSONAL_TOOLS.id}`)}
           onNavigate={onClose}
         />
-        <SbLink
-          href="/chat"
-          icon="chat"
-          name="Team Chat"
-          active={isActive("/chat")}
-          dotStatus="live"
-          onNavigate={onClose}
-        />
+        {hasOrg && (
+          <SbLink
+            href="/chat"
+            icon="chat"
+            name="Team Chat"
+            active={isActive("/chat")}
+            dotStatus="live"
+            onNavigate={onClose}
+          />
+        )}
 
         <div className="text-[10px] font-semibold tracking-wider uppercase text-ink-muted px-2.5 pt-3 pb-1.5">
           AI Systems — by department

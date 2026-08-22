@@ -6,7 +6,7 @@ import TalentAiBoard from "@/components/tools/TalentAiBoard";
 
 type Me = { roles: string[]; isAdmin: boolean; isOrgAdmin?: boolean; profile: { full_name: string | null; email: string | null; manager_id: string | null } | null };
 type ActionItem = { id: string; kind: string; title: string; detail: string; link: string; daysWaiting: number };
-type Tab = "overview" | "approvals" | "assign" | "recruiter" | "jobs" | "admin";
+type Tab = "overview" | "funnel" | "approvals" | "assign" | "recruiter" | "jobs" | "admin";
 
 export default function TalentWorkspace() {
   const [me, setMe] = useState<Me | null>(null);
@@ -28,6 +28,7 @@ export default function TalentWorkspace() {
 
   const tabs: { id: Tab; label: string; show: boolean }[] = [
     { id: "overview", label: "Requisitions", show: true },
+    { id: "funnel", label: "Funnel & Sources", show: canRecruit || canAssign || isAdmin },
     { id: "approvals", label: "Approvals", show: canApprove },
     { id: "assign", label: "TA Assignment", show: canAssign },
     { id: "recruiter", label: "Recruiter Tools", show: canRecruit },
@@ -66,11 +67,180 @@ export default function TalentWorkspace() {
       )}
 
       {tab === "overview" && <TalentAiBoard />}
+      {tab === "funnel" && <FunnelPanel />}
       {tab === "approvals" && <ApprovalsPanel />}
       {tab === "assign" && <AssignPanel />}
       {tab === "recruiter" && <RecruiterToolsPanel />}
       {tab === "jobs" && <EmployeeJobsPanel />}
       {tab === "admin" && <AdminPanel />}
+    </div>
+  );
+}
+
+// ---------------- Funnel & Sources ----------------
+
+type FunnelCandidate = { id: string; stage: string; source: string | null; requisition_id: string };
+type FunnelReq = { id: string; title: string };
+
+const FUNNEL_STAGES = [
+  { id: "applied", label: "Applied" },
+  { id: "screening", label: "Screening" },
+  { id: "shortlisted", label: "Shortlisted" },
+  { id: "hm_review", label: "HM Review" },
+  { id: "interview", label: "Interview" },
+  { id: "selected", label: "Selected" },
+  { id: "offer", label: "Offer" },
+];
+
+const SOURCE_META: Record<string, { label: string; className: string }> = {
+  referral: { label: "Employee referral", className: "bg-brand" },
+  sourced: { label: "Sourced", className: "bg-good" },
+  inbound: { label: "Inbound", className: "bg-warning" },
+  other: { label: "Other", className: "bg-ink-muted" },
+};
+
+function FunnelPanel() {
+  const [candidates, setCandidates] = useState<FunnelCandidate[]>([]);
+  const [reqs, setReqs] = useState<FunnelReq[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/talent-ai/candidates").then((r) => r.json()),
+      fetch("/api/talent-ai/requisitions").then((r) => r.json()),
+    ])
+      .then(([c, r]) => {
+        setCandidates(c.candidates || []);
+        setReqs((r.requisitions || []).map((x: { id: string; title: string }) => ({ id: x.id, title: x.title })));
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="text-[13px] text-ink-muted">Loading…</div>;
+  if (candidates.length === 0) {
+    return <p className="text-[12.5px] text-ink-muted">No candidates yet — the funnel fills in once people start applying.</p>;
+  }
+
+  // A candidate currently sitting in a later stage has, by definition,
+  // passed through every stage before it -- so each funnel row counts
+  // "reached this stage or further", not just "currently sitting here".
+  const stageOrderIds = STAGES_ORDER;
+  const funnelCounts = FUNNEL_STAGES.map((s) => {
+    const minIdx = stageOrderIds.indexOf(s.id);
+    return candidates.filter((c) => {
+      const idx = stageOrderIds.indexOf(c.stage);
+      return idx >= minIdx && c.stage !== "rejected";
+    }).length;
+  });
+  const rejectedCount = candidates.filter((c) => c.stage === "rejected").length;
+  const hiredCount = candidates.filter((c) => c.stage === "offer").length;
+  const topOfFunnel = funnelCounts[0] || candidates.length;
+
+  const sourceCounts: Record<string, number> = {};
+  candidates.forEach((c) => {
+    const key = c.source && SOURCE_META[c.source] ? c.source : "other";
+    sourceCounts[key] = (sourceCounts[key] || 0) + 1;
+  });
+  const sourceEntries = Object.entries(sourceCounts).sort((a, b) => b[1] - a[1]);
+  const totalSourced = candidates.length;
+
+  const byReq: Record<string, number> = {};
+  candidates.forEach((c) => { byReq[c.requisition_id] = (byReq[c.requisition_id] || 0) + 1; });
+  const topReqs = Object.entries(byReq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([id, count]) => ({ title: reqs.find((r) => r.id === id)?.title || "Untitled requisition", count }));
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard label="Total candidates" value={candidates.length} />
+        <StatCard label="In active pipeline" value={candidates.length - rejectedCount - hiredCount} />
+        <StatCard label="At offer stage" value={hiredCount} accent="good" />
+        <StatCard label="Rejected" value={rejectedCount} accent="critical" />
+      </div>
+
+      <div className="border border-border rounded-md p-4 bg-surface flex flex-col gap-3">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Hiring funnel</div>
+        <div className="flex flex-col gap-2">
+          {FUNNEL_STAGES.map((s, i) => {
+            const count = funnelCounts[i];
+            const pct = topOfFunnel > 0 ? Math.round((count / topOfFunnel) * 100) : 0;
+            const widthPct = Math.max(pct, count > 0 ? 6 : 0);
+            return (
+              <div key={s.id} className="flex items-center gap-3">
+                <div className="w-[92px] flex-shrink-0 text-[11.5px] font-bold text-ink-2">{s.label}</div>
+                <div className="flex-1 h-7 bg-page rounded-sm overflow-hidden relative">
+                  <div
+                    className="h-full rounded-sm flex items-center justify-end px-2 transition-all"
+                    style={{
+                      width: `${widthPct}%`,
+                      background: `linear-gradient(90deg, rgb(var(--brand-rgb) / 0.35), rgb(var(--brand-rgb) / 0.9))`,
+                    }}
+                  >
+                    {widthPct > 14 && <span className="text-[11px] font-bold text-white">{count}</span>}
+                  </div>
+                  {widthPct <= 14 && (
+                    <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-ink-2">{count}</span>
+                  )}
+                </div>
+                <div className="w-[38px] flex-shrink-0 text-[11px] text-ink-muted text-right">{pct}%</div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="m-0 text-[11px] text-ink-muted">
+          Each stage counts everyone who reached it or moved further — rejected candidates ({rejectedCount}) are excluded from the funnel above.
+        </p>
+      </div>
+
+      <div className="border border-border rounded-md p-4 bg-surface flex flex-col gap-3">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Source mix</div>
+        <div className="h-4 rounded-full overflow-hidden flex w-full border border-border">
+          {sourceEntries.map(([key, count]) => {
+            const meta = SOURCE_META[key] || SOURCE_META.other;
+            const pct = (count / totalSourced) * 100;
+            return <div key={key} className={meta.className} style={{ width: `${pct}%` }} title={`${meta.label}: ${count}`} />;
+          })}
+        </div>
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          {sourceEntries.map(([key, count]) => {
+            const meta = SOURCE_META[key] || SOURCE_META.other;
+            const pct = Math.round((count / totalSourced) * 100);
+            return (
+              <div key={key} className="flex items-center gap-1.5 text-[12px]">
+                <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${meta.className}`} />
+                <span className="text-ink-2 font-medium">{meta.label}</span>
+                <span className="text-ink-muted">{count} · {pct}%</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {topReqs.length > 0 && (
+        <div className="border border-border rounded-md p-4 bg-surface flex flex-col gap-2.5">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Busiest requisitions</div>
+          {topReqs.map((r) => (
+            <div key={r.title} className="flex items-center justify-between text-[12.5px]">
+              <span className="text-ink-2 truncate pr-3">{r.title}</span>
+              <span className="text-ink-muted font-bold flex-shrink-0">{r.count} candidate{r.count === 1 ? "" : "s"}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const STAGES_ORDER = ["applied", "screening", "shortlisted", "hm_review", "interview", "selected", "offer", "rejected"];
+
+function StatCard({ label, value, accent }: { label: string; value: number; accent?: "good" | "critical" }) {
+  const valueClass = accent === "good" ? "text-good-text" : accent === "critical" ? "text-critical" : "text-ink";
+  return (
+    <div className="border border-border rounded-md p-3.5 bg-surface flex flex-col gap-1">
+      <div className="text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">{label}</div>
+      <div className={`text-[22px] font-extrabold ${valueClass}`}>{value}</div>
     </div>
   );
 }
