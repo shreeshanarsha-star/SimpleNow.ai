@@ -8,8 +8,10 @@ export type TalentRole =
   | "reporting_manager"
   | "hr_approver"
   | "ta_head"
+  | "lead_recruiter"
   | "recruiter"
   | "hr_ops"
+  | "hr_head"
   | "admin";
 
 export const TALENT_ROLES: TalentRole[] = [
@@ -17,10 +19,27 @@ export const TALENT_ROLES: TalentRole[] = [
   "reporting_manager",
   "hr_approver",
   "ta_head",
+  "lead_recruiter",
   "recruiter",
   "hr_ops",
+  "hr_head",
   "admin",
 ];
+
+// lead_recruiter and hr_head are real, distinct labels in the UI, but
+// every actual permission check in this codebase (approvals, assignment,
+// the recruiter-eligibility list, etc.) is keyed off the base 7 roles.
+// Rather than touch every one of those call sites, assigning one of these
+// two also assigns its base-role equivalent underneath -- lead_recruiter
+// gets full recruiter access (plus the distinct label), hr_head gets
+// hr_approver access (so they can actually approve, not just be labeled
+// senior). Kept explicit here rather than silently inferred, so it's easy
+// to find and revisit once "sees whole TA team" becomes a real, separately
+// enforced data-access rule instead of "= recruiter, for now."
+export const ROLE_IMPLIES: Partial<Record<TalentRole, TalentRole>> = {
+  lead_recruiter: "recruiter",
+  hr_head: "hr_approver",
+};
 
 export type ApprovalStepRole = "reporting_manager" | "hr_approver";
 

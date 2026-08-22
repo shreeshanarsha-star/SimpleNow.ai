@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireOrgAdmin } from "@/lib/supabase/requireAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
+import { TALENT_ROLES, ROLE_IMPLIES, logAudit } from "@/lib/talentRoles";
 
 const ORG_ROLES = new Set(["member", "org_admin"]);
 
@@ -25,6 +26,20 @@ export async function POST(req: Request) {
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
   const fullName = typeof body?.fullName === "string" ? body.fullName.trim() : "";
   const orgRole = typeof body?.orgRole === "string" && ORG_ROLES.has(body.orgRole) ? body.orgRole : "member";
+  // Optional "Add User" employment details + a Talent.ai User Type. None
+  // of this is required -- the original bare name/email/orgRole flow from
+  // /org/settings still works unchanged.
+  const employeeId = typeof body?.employeeId === "string" ? body.employeeId.trim() || null : null;
+  const department = typeof body?.department === "string" ? body.department.trim() || null : null;
+  const designation = typeof body?.designation === "string" ? body.designation.trim() || null : null;
+  const location = typeof body?.location === "string" ? body.location.trim() || null : null;
+  const joiningDate = typeof body?.joiningDate === "string" ? body.joiningDate.trim() || null : null;
+  const managerId = typeof body?.managerId === "string" ? body.managerId.trim() || null : null;
+  // "employee" isn't a real TalentRole -- it means "no Talent.ai role",
+  // which is what everyone gets by default anyway.
+  const talentRole = typeof body?.talentRole === "string" && body.talentRole !== "employee" && (TALENT_ROLES as string[]).includes(body.talentRole)
+    ? body.talentRole
+    : null;
 
   if (!email || !email.includes("@")) {
     return NextResponse.json({ error: "A valid email is required." }, { status: 400 });
@@ -58,11 +73,38 @@ export async function POST(req: Request) {
   // (org_id null). Fill in the org assignment + display name now.
   const { error: profileError } = await admin
     .from("profiles")
-    .update({ org_id: orgId, org_role: orgRole, full_name: fullName })
+    .update({
+      org_id: orgId,
+      org_role: orgRole,
+      full_name: fullName,
+      employee_id: employeeId,
+      department,
+      designation,
+      location,
+      joining_date: joiningDate,
+      manager_id: managerId,
+    })
     .eq("id", newUserId);
   if (profileError) {
+    if (profileError.code === "23505") {
+      return NextResponse.json({ error: "That employee ID is already in use." }, { status: 409 });
+    }
     return NextResponse.json({ error: profileError.message }, { status: 500 });
   }
+
+  if (talentRole) {
+    await admin.from("talent_user_roles").insert({ user_id: newUserId, role: talentRole, created_by: user.id, org_id: orgId });
+    const impliedRole = ROLE_IMPLIES[talentRole as never];
+    if (impliedRole) {
+      try {
+        await admin.from("talent_user_roles").insert({ user_id: newUserId, role: impliedRole, created_by: user.id, org_id: orgId });
+      } catch {
+        // best-effort
+      }
+    }
+    await admin.from("feature_access").upsert({ org_id: orgId, feature_key: "Talent.ai", granted_by: user.id }, { onConflict: "org_id,feature_key" }).select();
+  }
+  await logAudit({ entityType: "profiles", entityId: newUserId, actorId: user.id, action: "user_created", detail: { email, talentRole }, orgId });
 
   const origin = new URL(req.url).origin;
   // "recovery", not "invite" -- the user already exists (createUser() just

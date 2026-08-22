@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 
 import TalentAiBoard from "@/components/tools/TalentAiBoard";
 
@@ -77,7 +77,7 @@ export default function TalentWorkspace() {
       {tab === "admin" && (
         <div className="flex flex-col gap-6">
           <AdminDashboard onNavigate={setTab} />
-          <AdminPanel />
+          <UserManagementPanel />
         </div>
       )}
     </div>
@@ -926,7 +926,20 @@ function EmployeeJobsPanel() {
 
 // ---------------- Admin: roles + manager assignment ----------------
 
-type Profile = { id: string; email: string | null; full_name: string | null; manager_id: string | null; is_admin: boolean };
+type Profile = {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  manager_id: string | null;
+  is_admin: boolean;
+  org_role?: string | null;
+  employee_id?: string | null;
+  department?: string | null;
+  designation?: string | null;
+  location?: string | null;
+  joining_date?: string | null;
+  status?: "active" | "pending" | "suspended";
+};
 type RoleRow = { id: string; user_id: string; role: string };
 
 // ---------------- Admin Dashboard ----------------
@@ -1079,11 +1092,49 @@ function AdminDashboard({ onNavigate }: { onNavigate: (t: Tab) => void }) {
   );
 }
 
-function AdminPanel() {
+const ROLE_ACCESS_LABEL: Record<string, string> = {
+  admin: "Full org access (matches what org admins already get automatically)",
+  ta_head: "All requisitions & candidates org-wide; can assign recruiters",
+  lead_recruiter: "Same as Recruiter today (separate 'whole TA team' scope not yet built)",
+  recruiter: "Assigned requisitions & their candidates",
+  hiring_manager: "Own requisitions & candidates submitted to them",
+  reporting_manager: "Approves requisitions from their direct reports",
+  hr_approver: "Second-step approver on every requisition (pool-based)",
+  hr_head: "Same approval power as HR Approver today (senior HR label)",
+  hr_ops: "Holds Talent.ai access; no separate approval/assignment power yet",
+};
+
+const USER_TYPE_OPTIONS: { value: string; label: string; kind: "org" | "talent" | "none" }[] = [
+  { value: "employee", label: "Employee (no Talent.ai role)", kind: "none" },
+  { value: "recruiter", label: "Recruiter", kind: "talent" },
+  { value: "lead_recruiter", label: "Lead Recruiter", kind: "talent" },
+  { value: "hiring_manager", label: "Hiring Manager", kind: "talent" },
+  { value: "reporting_manager", label: "Reporting Manager (Approver)", kind: "talent" },
+  { value: "ta_head", label: "TA Head", kind: "talent" },
+  { value: "hr_ops", label: "HR", kind: "talent" },
+  { value: "hr_head", label: "HR Head (Approver)", kind: "talent" },
+  { value: "hr_approver", label: "HR Approver", kind: "talent" },
+  { value: "org_admin", label: "Administrator", kind: "org" },
+];
+
+const STATUS_META: Record<string, { label: string; dot: string }> = {
+  active: { label: "Active", dot: "bg-good" },
+  pending: { label: "Pending invite", dot: "bg-warning" },
+  suspended: { label: "Suspended", dot: "bg-critical" },
+};
+
+function UserManagementPanel() {
+  const [subTab, setSubTab] = useState<"users" | "roles">("users");
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [roleRows, setRoleRows] = useState<RoleRow[]>([]);
   const [availableRoles, setAvailableRoles] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [deptFilter, setDeptFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [showAddUser, setShowAddUser] = useState(false);
 
   function load() {
     fetch("/api/talent-ai/admin").then((r) => r.json()).then((d) => {
@@ -1120,42 +1171,306 @@ function AdminPanel() {
     load();
   }
 
+  async function toggleSuspend(userId: string, suspend: boolean) {
+    await fetch("/api/talent-ai/admin", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, suspend }),
+    });
+    load();
+  }
+
+  const departments = Array.from(new Set(profiles.map((p) => p.department).filter(Boolean))) as string[];
+
+  const filtered = profiles.filter((p) => {
+    if (search) {
+      const q = search.toLowerCase();
+      const hay = [p.full_name, p.email, p.employee_id].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    if (roleFilter && !roleRows.some((r) => r.user_id === p.id && r.role === roleFilter)) return false;
+    if (deptFilter && p.department !== deptFilter) return false;
+    if (statusFilter && (p.status || "active") !== statusFilter) return false;
+    return true;
+  });
+
+  const counts = { active: 0, pending: 0, suspended: 0 };
+  for (const p of profiles) counts[(p.status || "active") as "active" | "pending" | "suspended"] += 1;
+
+  const roleCounts = availableRoles.map((r) => ({
+    role: r,
+    count: roleRows.filter((rr) => rr.role === r).length,
+    access: ROLE_ACCESS_LABEL[r] || "—",
+  }));
+
   return (
-    <div className="flex flex-col gap-3">
-      <h3 className="m-0 text-[15px] font-bold">Talent.ai roles &amp; reporting lines</h3>
-      {error && <div className="bg-critical-wash text-critical text-[12.5px] rounded-sm px-3 py-2">{error}</div>}
-      <div className="flex flex-col gap-2">
-        {profiles.map((p) => {
-          const myRoles = roleRows.filter((r) => r.user_id === p.id);
-          return (
-            <div key={p.id} className="border border-border rounded-md p-3 bg-surface flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <div className="text-[13px] font-bold">{p.full_name || p.email}{p.is_admin && <span className="ml-1.5 text-[10px] bg-page px-1.5 py-0.5 rounded-full">admin</span>}</div>
-                <select value={p.manager_id || ""} onChange={(e) => setManager(p.id, e.target.value)} className="input max-w-[220px]">
-                  <option value="">No manager set</option>
-                  {profiles.filter((m) => m.id !== p.id).map((m) => (
-                    <option key={m.id} value={m.id}>{m.full_name || m.email} (manager)</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {myRoles.map((r) => (
-                  <span key={r.id} className="text-[10.5px] bg-page px-2 py-0.5 rounded-full flex items-center gap-1 capitalize">
-                    {r.role.replace("_", " ")}
-                    <button onClick={() => removeRole(r.id)} className="text-critical font-bold">×</button>
-                  </span>
-                ))}
-                <select onChange={(e) => { if (e.target.value) { addRole(p.id, e.target.value); e.target.value = ""; } }} className="input max-w-[160px] text-[11px]" defaultValue="">
-                  <option value="">+ Add role</option>
-                  {availableRoles.filter((r) => !myRoles.some((mr) => mr.role === r)).map((r) => (
-                    <option key={r} value={r}>{r.replace("_", " ")}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          );
-        })}
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h3 className="m-0 text-[15px] font-bold">User management</h3>
+        <div className="flex items-center gap-1.5 border-b border-border">
+          {(["users", "roles"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setSubTab(t)}
+              className={`text-[12px] font-bold px-3 py-1.5 border-b-2 capitalize ${subTab === t ? "border-brand text-brand" : "border-transparent text-ink-muted"}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {error && <div className="bg-critical-wash text-critical text-[12.5px] rounded-sm px-3 py-2">{error}</div>}
+
+      {subTab === "users" && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-4 flex-wrap text-[12.5px]">
+            <span><strong>{counts.active}</strong> active</span>
+            <span><strong>{counts.pending}</strong> pending invite</span>
+            <span><strong>{counts.suspended}</strong> suspended</span>
+            <span className="text-ink-muted">· {profiles.length} total</span>
+            <button onClick={() => setShowAddUser((v) => !v)} className="ml-auto bg-brand text-white text-[12px] font-bold px-3 py-1.5 rounded-sm shadow-soft-sm">
+              {showAddUser ? "Close" : "+ Add user"}
+            </button>
+          </div>
+
+          {showAddUser && <AddUserForm profiles={profiles} onDone={() => { setShowAddUser(false); load(); }} />}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, employee ID..." className="input flex-1 min-w-[200px]" />
+            <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="input max-w-[160px]">
+              <option value="">All roles</option>
+              {availableRoles.map((r) => <option key={r} value={r}>{r.replace(/_/g, " ")}</option>)}
+            </select>
+            {departments.length > 0 && (
+              <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className="input max-w-[160px]">
+                <option value="">All departments</option>
+                {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            )}
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input max-w-[150px]">
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending invite</option>
+              <option value="suspended">Suspended</option>
+            </select>
+          </div>
+
+          <div className="border border-border rounded-lg overflow-hidden">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-ink-muted border-b border-border bg-surface-muted">
+                  <th className="px-3.5 py-2 font-semibold">User</th>
+                  <th className="px-3.5 py-2 font-semibold">Employee ID</th>
+                  <th className="px-3.5 py-2 font-semibold">Roles</th>
+                  <th className="px-3.5 py-2 font-semibold">Department</th>
+                  <th className="px-3.5 py-2 font-semibold">Reports to</th>
+                  <th className="px-3.5 py-2 font-semibold">Status</th>
+                  <th className="px-3.5 py-2 font-semibold"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filtered.map((p) => {
+                  const myRoles = roleRows.filter((r) => r.user_id === p.id);
+                  const manager = profiles.find((m) => m.id === p.manager_id);
+                  const status = p.status || "active";
+                  const meta = STATUS_META[status];
+                  const isOpen = expanded === p.id;
+                  return (
+                    <Fragment key={p.id}>
+                      <tr className="align-top">
+                        <td className="px-3.5 py-2.5">
+                          <div className="font-bold">{p.full_name || p.email}</div>
+                          <div className="text-ink-muted text-[11px]">{p.email}</div>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-ink-muted">{p.employee_id || "—"}</td>
+                        <td className="px-3.5 py-2.5">
+                          {p.is_admin ? (
+                            <span className="text-[10.5px] bg-page px-2 py-0.5 rounded-full">Platform admin</span>
+                          ) : myRoles.length === 0 ? (
+                            <span className="text-ink-muted">Employee</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {myRoles.map((r) => (
+                                <span key={r.id} className="text-[10.5px] bg-page px-2 py-0.5 rounded-full capitalize">{r.role.replace(/_/g, " ")}</span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-ink-muted">{p.department || "—"}</td>
+                        <td className="px-3.5 py-2.5 text-ink-muted">{manager ? manager.full_name || manager.email : "—"}</td>
+                        <td className="px-3.5 py-2.5">
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className={`w-[7px] h-[7px] rounded-full ${meta.dot}`} />
+                            {meta.label}
+                          </span>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right whitespace-nowrap">
+                          <button onClick={() => setExpanded(isOpen ? null : p.id)} className="text-brand font-semibold text-[11.5px] mr-2">
+                            {isOpen ? "Close" : "Manage"}
+                          </button>
+                          <button onClick={() => toggleSuspend(p.id, status !== "suspended")} className="text-[11.5px] font-semibold text-ink-muted">
+                            {status === "suspended" ? "Unsuspend" : "Suspend"}
+                          </button>
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr>
+                          <td colSpan={7} className="px-3.5 py-3 bg-surface-muted">
+                            <div className="flex flex-col gap-2.5">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[11px] font-semibold text-ink-muted">Reporting manager:</span>
+                                <select value={p.manager_id || ""} onChange={(e) => setManager(p.id, e.target.value)} className="input max-w-[220px]">
+                                  <option value="">No manager set</option>
+                                  {profiles.filter((m) => m.id !== p.id).map((m) => (
+                                    <option key={m.id} value={m.id}>{m.full_name || m.email}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[11px] font-semibold text-ink-muted">Talent.ai roles:</span>
+                                {myRoles.map((r) => (
+                                  <span key={r.id} className="text-[10.5px] bg-surface border border-border px-2 py-0.5 rounded-full flex items-center gap-1 capitalize">
+                                    {r.role.replace(/_/g, " ")}
+                                    <button onClick={() => removeRole(r.id)} className="text-critical font-bold">×</button>
+                                  </span>
+                                ))}
+                                <select onChange={(e) => { if (e.target.value) { addRole(p.id, e.target.value); e.target.value = ""; } }} className="input max-w-[160px] text-[11px]" defaultValue="">
+                                  <option value="">+ Add role</option>
+                                  {availableRoles.filter((r) => !myRoles.some((mr) => mr.role === r)).map((r) => (
+                                    <option key={r} value={r}>{r.replace(/_/g, " ")}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={7} className="px-3.5 py-4 text-center text-ink-muted">No users match those filters.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {subTab === "roles" && (
+        <div className="border border-border rounded-lg overflow-hidden">
+          <table className="w-full text-[12.5px]">
+            <thead>
+              <tr className="text-left text-ink-muted border-b border-border bg-surface-muted">
+                <th className="px-3.5 py-2 font-semibold">Role</th>
+                <th className="px-3.5 py-2 font-semibold">Users</th>
+                <th className="px-3.5 py-2 font-semibold">Access level</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {roleCounts.map((r) => (
+                <tr key={r.role}>
+                  <td className="px-3.5 py-2.5 font-bold capitalize">{r.role.replace(/_/g, " ")}</td>
+                  <td className="px-3.5 py-2.5">{r.count}</td>
+                  <td className="px-3.5 py-2.5 text-ink-muted">{r.access}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
+
+function AddUserForm({ profiles, onDone }: { profiles: Profile[]; onDone: () => void }) {
+  const [fullName, setFullName] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
+  const [email, setEmail] = useState("");
+  const [department, setDepartment] = useState("");
+  const [designation, setDesignation] = useState("");
+  const [location, setLocation] = useState("");
+  const [managerId, setManagerId] = useState("");
+  const [joiningDate, setJoiningDate] = useState("");
+  const [userType, setUserType] = useState("employee");
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string; setupLink?: string } | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!fullName.trim() || !email.trim()) return;
+    setSaving(true);
+    setResult(null);
+    const selected = USER_TYPE_OPTIONS.find((o) => o.value === userType);
+    const res = await fetch("/api/org/members/invite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fullName: fullName.trim(),
+        email: email.trim(),
+        employeeId: employeeId.trim(),
+        department: department.trim(),
+        designation: designation.trim(),
+        location: location.trim(),
+        managerId: managerId || null,
+        joiningDate: joiningDate || null,
+        orgRole: selected?.kind === "org" ? "org_admin" : "member",
+        talentRole: selected?.kind === "talent" ? userType : null,
+      }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) {
+      setResult({ ok: false, message: data.error || "Could not create the user." });
+      return;
+    }
+    setResult({
+      ok: true,
+      message: data.emailSent
+        ? `Account created -- a "set your password" email was sent to ${email.trim()}.`
+        : `Account created. Email delivery wasn't confirmed -- share this one-time setup link directly:`,
+      setupLink: data.setupLink,
+    });
+    setFullName(""); setEmployeeId(""); setEmail(""); setDepartment(""); setDesignation(""); setLocation(""); setManagerId(""); setJoiningDate(""); setUserType("employee");
+  }
+
+  return (
+    <form onSubmit={submit} className="border border-border rounded-lg p-3.5 bg-surface flex flex-col gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name *" className="input" required />
+        <input value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} placeholder="Employee ID" className="input" />
+        <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Official email *" className="input" required />
+        <input value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="Department" className="input" />
+        <input value={designation} onChange={(e) => setDesignation(e.target.value)} placeholder="Designation" className="input" />
+        <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location" className="input" />
+        <select value={managerId} onChange={(e) => setManagerId(e.target.value)} className="input">
+          <option value="">Reporting manager (optional)</option>
+          {profiles.map((m) => <option key={m.id} value={m.id}>{m.full_name || m.email}</option>)}
+        </select>
+        <input value={joiningDate} onChange={(e) => setJoiningDate(e.target.value)} type="date" className="input" />
+        <select value={userType} onChange={(e) => setUserType(e.target.value)} className="input">
+          {USER_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </div>
+      <div className="flex items-center gap-2">
+        <button type="submit" disabled={saving || !fullName.trim() || !email.trim()} className="bg-brand text-white text-[12.5px] font-bold px-4 py-2 rounded-sm shadow-soft-sm disabled:opacity-50">
+          {saving ? "Creating..." : "Save & invite"}
+        </button>
+        <span className="text-[11px] text-ink-muted">No password is set here -- they&apos;ll set their own via the emailed link.</span>
+      </div>
+      {result && (
+        <div className={`text-[12px] rounded-sm px-3 py-2 ${result.ok ? "bg-good-wash text-good-text" : "bg-critical-wash text-critical"}`}>
+          {result.message}
+          {result.setupLink && (
+            <div className="mt-1 flex items-center gap-2">
+              <code className="text-[10.5px] bg-surface border border-border rounded px-1.5 py-0.5 truncate max-w-[280px]">{result.setupLink}</code>
+              <button type="button" onClick={() => navigator.clipboard.writeText(result.setupLink!)} className="text-[11px] font-semibold text-brand">Copy</button>
+            </div>
+          )}
+        </div>
+      )}
+    </form>
+  );
+}
+
