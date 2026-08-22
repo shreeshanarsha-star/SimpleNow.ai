@@ -1,8 +1,91 @@
 "use client";
 
-import { useEffect, useState, Fragment } from "react";
+import { useEffect, useRef, useState, Fragment } from "react";
 
 import TalentAiBoard from "@/components/tools/TalentAiBoard";
+import Icon from "@/components/Icon";
+
+// Horizontal scroller with animated >> arrow controls instead of a native
+// scrollbar -- used for any wide table/row that needs to scroll sideways.
+// The native scrollbar is hidden via inline CSS below; the arrows do a
+// smooth, animated scrollBy so there is always a visible way to move,
+// including on desktop where a hidden scrollbar would otherwise strand
+// mouse users with no affordance.
+function HScroller({
+  children,
+  className = "",
+  trackClassName = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+  trackClassName?: string;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
+
+  const updateArrows = () => {
+    const el = trackRef.current;
+    if (!el) return;
+    setCanLeft(el.scrollLeft > 4);
+    setCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
+  };
+
+  useEffect(() => {
+    updateArrows();
+    const el = trackRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(updateArrows);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [children]);
+
+  const scrollBy = (dir: 1 | -1) => {
+    const el = trackRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.min(280, el.clientWidth * 0.7), behavior: "smooth" });
+  };
+
+  return (
+    <div className={`relative ${className}`}>
+      <div
+        ref={trackRef}
+        onScroll={updateArrows}
+        className={`overflow-x-auto ${trackClassName}`}
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
+        <style jsx>{`
+          div::-webkit-scrollbar {
+            display: none;
+          }
+        `}</style>
+        {children}
+      </div>
+      {canLeft && (
+        <button
+          onClick={() => scrollBy(-1)}
+          aria-label="Scroll left"
+          className="absolute left-0 top-0 bottom-0 flex items-center px-1 bg-gradient-to-r from-surface via-surface/90 to-transparent"
+        >
+          <span className="w-6 h-6 rounded-full border border-border bg-surface flex items-center justify-center text-ink-muted animate-pulse">
+            <Icon name="chevronLeft" className="w-3.5 h-3.5" />
+          </span>
+        </button>
+      )}
+      {canRight && (
+        <button
+          onClick={() => scrollBy(1)}
+          aria-label="Scroll right"
+          className="absolute right-0 top-0 bottom-0 flex items-center px-1 bg-gradient-to-l from-surface via-surface/90 to-transparent"
+        >
+          <span className="w-6 h-6 rounded-full border border-border bg-surface flex items-center justify-center text-ink-muted animate-pulse">
+            <Icon name="chevronRight" className="w-3.5 h-3.5" />
+          </span>
+        </button>
+      )}
+    </div>
+  );
+}
 
 type Me = { roles: string[]; isAdmin: boolean; isOrgAdmin?: boolean; profile: { full_name: string | null; email: string | null; manager_id: string | null } | null };
 type ActionItem = { id: string; kind: string; title: string; detail: string; link: string; daysWaiting: number };
@@ -38,19 +121,19 @@ export default function TalentWorkspace() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-1.5 border-b border-border overflow-x-auto">
+      <HScroller className="border-b border-border" trackClassName="flex items-center gap-1.5">
         {tabs.filter((t) => t.show).map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`text-[12.5px] font-bold px-3 py-2.5 border-b-2 flex-shrink-0 ${
+            className={`text-[12.5px] font-bold px-3 py-2.5 border-b-2 flex-shrink-0 whitespace-nowrap ${
               tab === t.id ? "border-brand text-brand" : "border-transparent text-ink-muted"
             }`}
           >
             {t.label}
           </button>
         ))}
-      </div>
+      </HScroller>
 
       {tab === "home" && <MyRequisitionsPanel me={me} roleFlags={{ canApprove, canAssign, canRecruit, isAdmin, isOrgAdmin }} onNavigate={setTab} />}
       {tab === "funnel" && <FunnelPanel />}
@@ -107,7 +190,6 @@ function MyRequisitionsPanel({
       <ManagerSnapshot onNavigate={onNavigate} />
       {roleFlags.canRecruit && (
         <RecruiterSnapshot
-          onNavigate={onNavigate}
           onOpenRequisition={(id) => {
             setFocusStage(null);
             setFocusRequisitionId(id);
@@ -493,11 +575,9 @@ function reqLabel(r: { req_no?: string; title: string; location?: string | null 
 type FunnelColumn = { id: string; label: string };
 
 function RecruiterSnapshot({
-  onNavigate,
   onOpenRequisition,
   onOpenStage,
 }: {
-  onNavigate: (t: Tab) => void;
   onOpenRequisition: (id: string) => void;
   onOpenStage: (id: string, stage: string) => void;
 }) {
@@ -518,15 +598,13 @@ function RecruiterSnapshot({
 
   return (
     <div className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-surface">
-      <div className="flex items-center justify-between">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Pipeline</div>
-        <button onClick={() => onNavigate("recruiter")} className="text-[11.5px] font-semibold px-2.5 py-1 border border-border rounded-md hover:border-brand">Search candidates</button>
-      </div>
+      <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Pipeline</div>
 
       {/* Single table: requisition + stage counts share one row each, so
           the name/req# is always exactly aligned with its own numbers --
-          no separate list that can drift out of sync. */}
-      <div className="overflow-x-auto">
+          no separate list that can drift out of sync. Horizontal overflow
+          uses the animated arrow scroller instead of a native scrollbar. */}
+      <HScroller>
         <table className="w-full border-collapse text-[12px]">
           <thead>
             <tr>
@@ -569,7 +647,7 @@ function RecruiterSnapshot({
             ))}
           </tbody>
         </table>
-      </div>
+      </HScroller>
     </div>
   );
 }
