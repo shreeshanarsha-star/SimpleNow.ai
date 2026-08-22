@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { VScroller } from "@/components/Scroller";
 import { STAGES, stageLabel } from "@/lib/talentStages";
+import { rejectionReasonLabel } from "@/lib/talentRejectionReasons";
+import RejectionReasonModal from "@/components/tools/RejectionReasonModal";
 
 type Note = { id: string; body: string; created_at: string };
 type Scorecard = { id: string; rating: number | null; recommendation: string | null; feedback: string | null; created_at: string };
@@ -25,6 +27,7 @@ type Candidate = {
   linkedin_url: string | null;
   experience_years: number | null;
   person_id: string | null;
+  rejection_reason: string | null;
   talent_notes: Note[];
   talent_scorecards: Scorecard[];
   talent_requisitions: { id: string; req_no: string; title: string; location: string | null } | null;
@@ -59,6 +62,7 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
 
   const [noteText, setNoteText] = useState("");
   const [movingStage, setMovingStage] = useState(false);
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
 
   useEffect(() => {
     load();
@@ -121,13 +125,13 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
     }
   }
 
-  async function moveStage(stage: string) {
+  async function moveStage(stage: string, rejectionReason?: string) {
     setMovingStage(true);
     try {
       const res = await fetch(`/api/talent-ai/candidates/${candidateId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stage }),
+        body: JSON.stringify(rejectionReason ? { stage, rejectionReason } : { stage }),
       });
       if (res.ok) await load();
     } finally {
@@ -184,7 +188,11 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
             <select
               value={candidate.stage}
               disabled={movingStage}
-              onChange={(e) => moveStage(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "rejected") setRejectModalOpen(true);
+                else moveStage(v);
+              }}
               className="input py-1.5 text-[12px]"
             >
               {STAGES.map((s) => (
@@ -195,7 +203,23 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
             </select>
           </div>
         </div>
+        {candidate.stage === "rejected" && (
+          <div className="text-[11.5px] text-critical mt-2">
+            Rejected — {rejectionReasonLabel(candidate.rejection_reason)}
+          </div>
+        )}
       </div>
+
+      {rejectModalOpen && (
+        <RejectionReasonModal
+          candidateName={candidate.name}
+          onCancel={() => setRejectModalOpen(false)}
+          onConfirm={async (reasonId) => {
+            await moveStage("rejected", reasonId);
+            setRejectModalOpen(false);
+          }}
+        />
+      )}
 
       <div className="border border-border rounded-lg p-4 bg-surface">
         <div className="flex items-center justify-between mb-3">

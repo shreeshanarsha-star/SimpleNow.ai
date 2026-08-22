@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { HScroller } from "@/components/Scroller";
 import { STAGES, STAGE_LABEL } from "@/lib/talentStages";
+import { rejectionReasonLabel } from "@/lib/talentRejectionReasons";
+import RejectionReasonModal from "@/components/tools/RejectionReasonModal";
 
 type Candidate = {
   id: string;
@@ -22,6 +24,7 @@ type Candidate = {
   linkedin_url: string | null;
   experience_years: number | null;
   resume_text: string | null;
+  rejection_reason: string | null;
   created_at: string;
 };
 
@@ -65,6 +68,7 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [movingId, setMovingId] = useState<string | null>(null);
+  const [rejectModalFor, setRejectModalFor] = useState<{ id: string; name: string } | null>(null);
 
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -158,13 +162,13 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
     }
   }
 
-  async function moveStage(id: string, stage: string) {
+  async function moveStage(id: string, stage: string, rejectionReason?: string) {
     setMovingId(id);
     try {
       const res = await fetch(`/api/talent-ai/candidates/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stage }),
+        body: JSON.stringify(rejectionReason ? { stage, rejectionReason } : { stage }),
       });
       if (res.ok) await load();
     } finally {
@@ -386,6 +390,7 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
               <th className="px-2 py-2 font-semibold">Notice period</th>
               <th className="px-2 py-2 font-semibold">LinkedIn</th>
               <th className="px-2 py-2 font-semibold">Action</th>
+              <th className="px-2 py-2 font-semibold">Rejection reason</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -427,7 +432,11 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
                   <select
                     value={c.stage}
                     disabled={movingId === c.id}
-                    onChange={(e) => moveStage(c.id, e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "rejected") setRejectModalFor({ id: c.id, name: c.name });
+                      else moveStage(c.id, v);
+                    }}
                     className="input py-1 text-[11.5px]"
                   >
                     {STAGES.map((s) => (
@@ -437,11 +446,25 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
                     ))}
                   </select>
                 </td>
+                <td className="px-2 py-2 text-[11.5px] text-ink-muted">
+                  {c.stage === "rejected" ? rejectionReasonLabel(c.rejection_reason) : "—"}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </HScroller>
+
+      {rejectModalFor && (
+        <RejectionReasonModal
+          candidateName={rejectModalFor.name}
+          onCancel={() => setRejectModalFor(null)}
+          onConfirm={async (reasonId) => {
+            await moveStage(rejectModalFor.id, "rejected", reasonId);
+            setRejectModalFor(null);
+          }}
+        />
+      )}
     </div>
   );
 }

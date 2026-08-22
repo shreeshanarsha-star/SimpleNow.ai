@@ -82,6 +82,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if ("rating" in body) patch.rating = body.rating === null ? null : Number(body.rating);
   if ("tags" in body) patch.tags = body.tags;
   if ("stage" in body) patch.stage = body.stage;
+
+  // Rejection is the one stage change that requires a reason -- record it
+  // (and when it happened) at the moment of the move, not after the fact.
+  // Moving a candidate back out of Rejected clears the old reason instead
+  // of leaving a stale one attached to whatever stage they're in now.
+  if ("stage" in body && body.stage === "rejected") {
+    patch.rejection_reason = body.rejectionReason || null;
+    patch.rejected_at = new Date().toISOString();
+  } else if ("stage" in body && existing.stage === "rejected" && body.stage !== "rejected") {
+    patch.rejection_reason = null;
+    patch.rejected_at = null;
+  } else if ("rejectionReason" in body) {
+    patch.rejection_reason = body.rejectionReason || null;
+  }
   if ("experience_years" in body) {
     patch.experience_years = body.experience_years === null ? null : Number(body.experience_years);
   }
