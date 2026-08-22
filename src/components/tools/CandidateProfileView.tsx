@@ -7,6 +7,7 @@ import { VScroller } from "@/components/Scroller";
 import { STAGES, stageLabel } from "@/lib/talentStages";
 import { rejectionReasonLabel } from "@/lib/talentRejectionReasons";
 import RejectionReasonModal from "@/components/tools/RejectionReasonModal";
+import { daysSince, isStale } from "@/lib/talentSla";
 
 type Note = { id: string; body: string; created_at: string };
 type Scorecard = { id: string; rating: number | null; recommendation: string | null; feedback: string | null; created_at: string };
@@ -28,6 +29,7 @@ type Candidate = {
   experience_years: number | null;
   person_id: string | null;
   rejection_reason: string | null;
+  stage_entered_at: string | null;
   talent_notes: Note[];
   talent_scorecards: Scorecard[];
   talent_requisitions: { id: string; req_no: string; title: string; location: string | null } | null;
@@ -203,10 +205,21 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
             </select>
           </div>
         </div>
-        {candidate.stage === "rejected" && (
+        {candidate.stage === "rejected" ? (
           <div className="text-[11.5px] text-critical mt-2">
             Rejected — {rejectionReasonLabel(candidate.rejection_reason)}
           </div>
+        ) : (
+          (() => {
+            const days = daysSince(candidate.stage_entered_at);
+            const stale = isStale(candidate.stage, days);
+            if (days == null) return null;
+            return (
+              <div className={`text-[11.5px] mt-2 ${stale ? "text-critical font-semibold" : "text-ink-muted"}`}>
+                {days} day{days === 1 ? "" : "s"} in current stage{stale ? " — stale" : ""}
+              </div>
+            );
+          })()
         )}
       </div>
 

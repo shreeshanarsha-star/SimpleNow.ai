@@ -7,6 +7,7 @@ import { HScroller } from "@/components/Scroller";
 import { STAGES, STAGE_LABEL } from "@/lib/talentStages";
 import { rejectionReasonLabel } from "@/lib/talentRejectionReasons";
 import RejectionReasonModal from "@/components/tools/RejectionReasonModal";
+import { daysSince, isStale } from "@/lib/talentSla";
 
 type Candidate = {
   id: string;
@@ -25,6 +26,7 @@ type Candidate = {
   experience_years: number | null;
   resume_text: string | null;
   rejection_reason: string | null;
+  stage_entered_at: string | null;
   created_at: string;
 };
 
@@ -65,6 +67,7 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
   const [ctcMin, setCtcMin] = useState("");
   const [ctcMax, setCtcMax] = useState("");
   const [stageFilter, setStageFilter] = useState(initialStage);
+  const [staleOnly, setStaleOnly] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [movingId, setMovingId] = useState<string | null>(null);
@@ -100,6 +103,7 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
   const filtered = useMemo(() => {
     return candidates.filter((c) => {
       if (stageFilter !== "all" && c.stage !== stageFilter) return false;
+      if (staleOnly && !isStale(c.stage, daysSince(c.stage_entered_at))) return false;
       if (q) {
         const hay = `${c.name} ${c.resume_text || ""} ${(c.tags || []).join(" ")}`.toLowerCase();
         if (!hay.includes(q.toLowerCase())) return false;
@@ -113,7 +117,7 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
       if (ctcMax && (c.expected_ctc == null || c.expected_ctc > Number(ctcMax))) return false;
       return true;
     });
-  }, [candidates, q, phone, email, company, location, noticePeriod, ctcMin, ctcMax, stageFilter]);
+  }, [candidates, q, phone, email, company, location, noticePeriod, ctcMin, ctcMax, stageFilter, staleOnly]);
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -323,11 +327,15 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
               </option>
             ))}
           </select>
-          {(q || phone || email || company || location || noticePeriod || ctcMin || ctcMax || stageFilter !== "all") && (
+          <label className="flex items-center gap-1.5 text-[12px] text-ink-2 px-1">
+            <input type="checkbox" checked={staleOnly} onChange={(e) => setStaleOnly(e.target.checked)} />
+            Stale only
+          </label>
+          {(q || phone || email || company || location || noticePeriod || ctcMin || ctcMax || stageFilter !== "all" || staleOnly) && (
             <button
               onClick={() => {
                 setQ(""); setPhone(""); setEmail(""); setCompany(""); setLocation("");
-                setNoticePeriod(""); setCtcMin(""); setCtcMax(""); setStageFilter("all");
+                setNoticePeriod(""); setCtcMin(""); setCtcMax(""); setStageFilter("all"); setStaleOnly(false);
               }}
               className="text-[11px] font-semibold text-ink-muted hover:text-brand self-center"
             >
@@ -389,6 +397,7 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
               <th className="px-2 py-2 font-semibold">Qualification</th>
               <th className="px-2 py-2 font-semibold">Notice period</th>
               <th className="px-2 py-2 font-semibold">LinkedIn</th>
+              <th className="px-2 py-2 font-semibold">Days in stage</th>
               <th className="px-2 py-2 font-semibold">Action</th>
               <th className="px-2 py-2 font-semibold">Rejection reason</th>
             </tr>
@@ -427,6 +436,19 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
                   ) : (
                     "—"
                   )}
+                </td>
+                <td className="px-2 py-2">
+                  {(() => {
+                    const days = daysSince(c.stage_entered_at);
+                    const stale = isStale(c.stage, days);
+                    if (days == null) return <span className="text-ink-muted">—</span>;
+                    if (!stale) return <span className="text-ink-muted">{days}d</span>;
+                    return (
+                      <span className="inline-flex items-center gap-1 bg-critical-wash text-critical font-semibold rounded-sm px-1.5 py-0.5 text-[10.5px]">
+                        {days}d stale
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="px-2 py-2">
                   <select

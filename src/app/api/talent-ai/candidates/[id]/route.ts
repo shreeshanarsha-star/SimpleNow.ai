@@ -17,13 +17,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { data: candidate, error } = await supabase
     .from("talent_candidates")
     .select(
-      "*, talent_notes(*), talent_scorecards(*), talent_requisitions(id, req_no, title, location, department)"
+      "*, talent_notes(*), talent_scorecards(*), talent_requisitions(id, req_no, title, location, department), talent_stage_history(created_at)"
     )
     .eq("id", id)
     .single();
 
   if (error || !candidate) {
     return NextResponse.json({ error: error?.message || "Candidate not found." }, { status: 404 });
+  }
+
+  // Same "real stage-history audit trail, not the mutable updated_at
+  // column" logic as the requisition candidates list -- see that route
+  // for the full rationale.
+  {
+    const history = (candidate.talent_stage_history as { created_at: string }[] | null) || [];
+    const latest = history.reduce<string | null>((max, h) => (!max || h.created_at > max ? h.created_at : max), null);
+    (candidate as Record<string, unknown>).stage_entered_at = latest || candidate.created_at;
   }
 
   // Other applications by the same person (across other requisitions), so

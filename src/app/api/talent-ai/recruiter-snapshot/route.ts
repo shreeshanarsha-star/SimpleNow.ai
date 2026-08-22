@@ -68,6 +68,17 @@ export async function GET() {
       stageCounts[col.id] = reqCandidates.filter((c) => c.stage === col.id).length;
     }
     stageCounts.rejected = reqCandidates.filter((c) => c.stage === "rejected").length;
+
+    // Last-touched timestamp across this requisition's active (non-rejected)
+    // candidates -- a cheap, honest "is this requisition going cold"
+    // signal reusing data already fetched, not a precise per-candidate
+    // stage-history read (that's the candidate table's job).
+    const activeCandidates = reqCandidates.filter((c) => c.stage !== "rejected");
+    const lastActivityAt = activeCandidates.reduce<string | null>((latest, c) => {
+      const t = c.updated_at || c.created_at;
+      return !latest || t > latest ? t : latest;
+    }, null);
+
     return {
       id: r.id,
       req_no: r.req_no,
@@ -77,8 +88,9 @@ export async function GET() {
       status: r.status,
       headcount: r.headcount,
       candidateCount: reqCandidates.length,
-      activeCandidateCount: reqCandidates.filter((c) => c.stage !== "rejected").length,
+      activeCandidateCount: activeCandidates.length,
       stageCounts,
+      lastActivityAt,
     };
   });
 

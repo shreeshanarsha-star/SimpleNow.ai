@@ -20,7 +20,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { data: requisition, error } = await supabase
     .from("talent_requisitions")
     .select(
-      "*, talent_candidates(*, talent_notes(*), talent_scorecards(*)), talent_approval_steps(*), talent_requisition_assignment(*)"
+      "*, talent_candidates(*, talent_notes(*), talent_scorecards(*), talent_stage_history(created_at)), talent_approval_steps(*), talent_requisition_assignment(*)"
     )
     .eq("id", id)
     .single();
@@ -28,6 +28,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 404 });
   }
+
+  // "Days in current stage" needs the most recent stage change, not just
+  // updated_at (which also bumps on plain profile edits and would make a
+  // stale candidate look fresh every time someone fixes a typo). Compute
+  // it from the real stage-history audit trail instead of trusting a
+  // single mutable timestamp.
+  type StageHistoryRow = { created_at: string };
+  type CandidateWithHistory = { created_at: string; talent_stage_history?: StageHistoryRow[] | null };
+  if (requisition?.talent_candidates) {
+    requisition.talent_candidates = (requisition.talent_candidates as CandidateWithHistory[]).map((c) => {
+      const history = c.talent_stage_history || [];
+      const latest = history.reduce<string | null>((max, h) => (!max || h.created_at > max ? h.created_at : max), null);
+      return { ...c, stage_entered_at: latest || c.created_at };
+    });
+  }
+
   return NextResponse.json({ requisition });
 }
 

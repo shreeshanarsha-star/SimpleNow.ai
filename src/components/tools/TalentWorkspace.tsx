@@ -465,7 +465,18 @@ type RecruiterReqRow = {
   candidateCount: number;
   activeCandidateCount: number;
   stageCounts: Record<string, number>;
+  lastActivityAt?: string | null;
 };
+
+// A requisition with no candidate activity in this many days is flagged
+// as going cold in the Pipeline table -- a coarser, requisition-level
+// companion to the per-candidate stage SLA badges shown on the detailed
+// candidate table.
+const REQUISITION_STALE_DAYS = 7;
+function requisitionIdleDays(lastActivityAt?: string | null): number | null {
+  if (!lastActivityAt) return null;
+  return Math.max(0, Math.floor((Date.now() - new Date(lastActivityAt).getTime()) / (1000 * 60 * 60 * 24)));
+}
 
 // "R-23082601 Sales Manager-Bangalore" -- req number, then title, then
 // location hyphenated on (location omitted if not set).
@@ -527,6 +538,15 @@ function RecruiterSnapshot({
                     <div className="font-bold text-[11.5px] tabular-nums">{r.req_no || "—"}</div>
                     <div className="text-[11px] text-ink">{r.title}{r.location ? `-${r.location}` : ""}</div>
                     <div className="text-[10px] text-ink-muted">{r.department || "No department"}</div>
+                    {(() => {
+                      const idle = requisitionIdleDays(r.lastActivityAt);
+                      if (idle == null || idle <= REQUISITION_STALE_DAYS) return null;
+                      return (
+                        <div className="inline-flex items-center gap-1 bg-critical-wash text-critical font-semibold rounded-sm px-1.5 py-0.5 text-[10px] mt-1">
+                          No activity {idle}d
+                        </div>
+                      );
+                    })()}
                   </button>
                 </td>
                 {funnelColumns.map((col) => {
