@@ -60,12 +60,12 @@ export async function GET() {
       department: r.department,
       status: r.status,
       candidateCount: reqCandidates.length,
-      inInterviewCount: reqCandidates.filter((c) => ["hm_review", "interview"].includes(c.stage)).length,
+      inInterviewCount: reqCandidates.filter((c) => ["hm_review", "interview_1", "interview_2", "hr_interview"].includes(c.stage)).length,
     };
   });
 
   const candidatesInInterview = candidates
-    .filter((c) => ["hm_review", "interview"].includes(c.stage))
+    .filter((c) => ["hm_review", "interview_1", "interview_2", "hr_interview"].includes(c.stage))
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
     .slice(0, 8)
     .map((c) => ({

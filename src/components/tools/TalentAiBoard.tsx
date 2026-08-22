@@ -57,21 +57,40 @@ type PipelineSummary = {
 const STAGES = [
   { id: "applied", label: "Applied" },
   { id: "screening", label: "Screening" },
-  { id: "shortlisted", label: "Shortlisted" },
   { id: "hm_review", label: "HM Review" },
-  { id: "interview", label: "Interview" },
-  { id: "selected", label: "Selected" },
-  { id: "offer", label: "Offer" },
+  { id: "interview_1", label: "Interview 1" },
+  { id: "interview_2", label: "Interview 2" },
+  { id: "hr_interview", label: "HR Interview" },
+  { id: "selected", label: "Offer in process" },
+  { id: "offer", label: "Offered" },
+  { id: "bgv", label: "BGV" },
+  { id: "ready_to_join", label: "Ready to Join" },
+  { id: "joined", label: "Joined" },
   { id: "rejected", label: "Rejected" },
 ];
-// Selected and Offer are gated (dual sign-off, then comp + Move to Offer) --
-// the simple prev/next stepper stops one short of Selected; those two are
-// only reachable via the dedicated actions in CandidateDetail.
-const STEPPER_MAX_INDEX = STAGES.findIndex((s) => s.id === "interview");
+// "Offer in process" (id: selected) and "Offered" are gated -- dual sign-off,
+// then comp + Move to Offer -- reachable only via the dedicated actions in
+// CandidateDetail, never the plain prev/next stepper. Once a candidate is
+// actually at Offered or later, the simple stepper takes back over for the
+// post-offer steps (BGV, Ready to Join, Joined).
+const EARLY_STEPPER_MAX_INDEX = STAGES.findIndex((s) => s.id === "hr_interview");
+const LATE_STEPPER_MIN_INDEX = STAGES.findIndex((s) => s.id === "bgv");
+const LATE_STEPPER_MAX_INDEX = STAGES.findIndex((s) => s.id === "joined");
 
 function stageIndex(stage: string) {
   const i = STAGES.findIndex((s) => s.id === stage);
   return i === -1 ? 0 : i;
+}
+
+// Which prev/next range (if any) a candidate's current stage falls into --
+// null means the simple stepper doesn't apply (gated stages, or rejected).
+function stepperRange(stage: string): { min: number; max: number } | null {
+  const idx = stageIndex(stage);
+  if (idx <= EARLY_STEPPER_MAX_INDEX) return { min: 0, max: EARLY_STEPPER_MAX_INDEX };
+  if (idx >= LATE_STEPPER_MIN_INDEX && idx <= LATE_STEPPER_MAX_INDEX) {
+    return { min: LATE_STEPPER_MIN_INDEX, max: LATE_STEPPER_MAX_INDEX };
+  }
+  return null;
 }
 
 export default function TalentAiBoard() {
@@ -140,6 +159,24 @@ export default function TalentAiBoard() {
     }
   }
 
+  async function submitForApproval() {
+    if (!selected) return;
+    setError(null);
+    try {
+      const res = await fetch(`/api/talent-ai/requisitions/${selected.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resubmit" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not submit for approval.");
+      await openRequisition(selected.id);
+      await loadRequisitions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not submit for approval.");
+    }
+  }
+
   async function addCandidate(payload: Record<string, unknown>) {
     if (!selected) return;
     setError(null);
@@ -159,8 +196,10 @@ export default function TalentAiBoard() {
   }
 
   async function moveStage(candidate: Candidate, direction: 1 | -1) {
+    const range = stepperRange(candidate.stage);
+    if (!range) return;
     const nextIndex = stageIndex(candidate.stage) + direction;
-    if (nextIndex < 0 || nextIndex > STEPPER_MAX_INDEX) return;
+    if (nextIndex < range.min || nextIndex > range.max) return;
     const newStage = STAGES[nextIndex].id;
     setCandidates((prev) => prev.map((c) => (c.id === candidate.id ? { ...c, stage: newStage } : c)));
     try {
@@ -299,7 +338,7 @@ export default function TalentAiBoard() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {requisitions.map((r) => {
               const total = r.talent_candidates?.length || 0;
-              const hired = r.talent_candidates?.filter((c) => c.stage === "hired").length || 0;
+              const hired = r.talent_candidates?.filter((c) => c.stage === "joined").length || 0;
               return (
                 <button
                   key={r.id}
@@ -310,10 +349,16 @@ export default function TalentAiBoard() {
                     <div className="text-[14px] font-bold">{r.title}</div>
                     <span
                       className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
-                        r.status === "open" ? "bg-good-wash text-good-text" : "bg-page text-ink-muted"
+                        r.status === "open"
+                          ? "bg-good-wash text-good-text"
+                          : r.status === "draft"
+                          ? "bg-warning-wash text-ink"
+                          : r.status === "sent_back"
+                          ? "bg-critical-wash text-critical"
+                          : "bg-page text-ink-muted"
                       }`}
                     >
-                      {r.status}
+                      {r.status === "draft" ? "Draft" : r.status.replace(/_/g, " ")}
                     </span>
                   </div>
                   <div className="text-[12px] text-ink-muted mt-1">
@@ -369,10 +414,16 @@ export default function TalentAiBoard() {
             <h2 className="m-0 text-[17px] font-bold">{selected.title}</h2>
             <span
               className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full ${
-                selected.status === "open" ? "bg-good-wash text-good-text" : "bg-page text-ink-muted"
+                selected.status === "open"
+                  ? "bg-good-wash text-good-text"
+                  : selected.status === "draft"
+                  ? "bg-warning-wash text-ink"
+                  : selected.status === "sent_back"
+                  ? "bg-critical-wash text-critical"
+                  : "bg-page text-ink-muted"
               }`}
             >
-              {selected.status}
+              {selected.status === "draft" ? "Draft — not submitted" : selected.status.replace(/_/g, " ")}
             </span>
             <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-page text-ink-muted capitalize">
               {selected.priority} priority
@@ -384,6 +435,14 @@ export default function TalentAiBoard() {
               .join(" · ")}
           </div>
         </div>
+        {(selected.status === "draft" || selected.status === "sent_back") && (
+          <button
+            onClick={submitForApproval}
+            className="bg-brand text-white text-[12.5px] font-bold px-3 py-2 rounded-sm shadow-soft-sm flex-shrink-0"
+          >
+            {selected.status === "draft" ? "Submit for approval" : "Resubmit for approval"}
+          </button>
+        )}
         <button
           onClick={summarize}
           disabled={summarizing}
@@ -440,6 +499,7 @@ export default function TalentAiBoard() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {STAGES.map((stage, idx) => {
           const stageCandidates = candidates.filter((c) => c.stage === stage.id);
+          const range = stepperRange(stage.id);
           return (
             <div key={stage.id} className="bg-page rounded-md p-2.5 flex flex-col gap-2 min-h-[160px]">
               <div className="flex items-center justify-between px-1">
@@ -464,7 +524,7 @@ export default function TalentAiBoard() {
                           e.stopPropagation();
                           moveStage(c, -1);
                         }}
-                        disabled={idx === 0}
+                        disabled={!range || idx <= range.min}
                         className="text-ink-muted text-[13px] font-bold disabled:opacity-25 px-1"
                         aria-label="Move to previous stage"
                       >
@@ -476,7 +536,7 @@ export default function TalentAiBoard() {
                           e.stopPropagation();
                           moveStage(c, 1);
                         }}
-                        disabled={idx >= STEPPER_MAX_INDEX}
+                        disabled={!range || idx >= range.max}
                         className="text-ink-muted text-[13px] font-bold disabled:opacity-25 px-1"
                         aria-label="Move to next stage"
                       >
@@ -522,13 +582,34 @@ export default function TalentAiBoard() {
   );
 }
 
-function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+function Field({
+  label,
+  children,
+  hint,
+  badge,
+}: {
+  label: string;
+  children: React.ReactNode;
+  hint?: string;
+  badge?: React.ReactNode;
+}) {
   return (
     <label className="block">
-      <span className="block text-[12px] font-bold mb-1.5">{label}</span>
+      <span className="flex items-center gap-1.5 text-[12px] font-bold mb-1.5">
+        {label}
+        {badge}
+      </span>
       {children}
       {hint && <span className="block text-[11px] text-ink-muted mt-1">{hint}</span>}
     </label>
+  );
+}
+
+function AiFilledBadge() {
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[9.5px] font-bold text-brand normal-case">
+      <Icon name="sparkle" className="w-2.5 h-2.5" /> AI-filled
+    </span>
   );
 }
 
@@ -568,6 +649,25 @@ function RequisitionForm({
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [parsedPreview, setParsedPreview] = useState<{ role_summary: string; key_requirements: string[] } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [aiRanOnce, setAiRanOnce] = useState(false);
+  const [aiFilled, setAiFilled] = useState<Set<string>>(new Set());
+  const [showMore, setShowMore] = useState(false);
+  const [saving, setSaving] = useState<"draft" | "submit" | null>(null);
+
+  const ACCEPTED_EXT = [".pdf", ".docx", ".txt"];
+
+  function acceptDroppedFile(file: File | undefined | null) {
+    if (!file) return;
+    const ok = ACCEPTED_EXT.some((ext) => file.name.toLowerCase().endsWith(ext));
+    if (!ok) {
+      setParseError("That file type isn't supported — use a PDF, DOCX, or TXT.");
+      return;
+    }
+    setParseError(null);
+    setJdMode("file");
+    setJdFile(file);
+  }
 
   async function analyzeJD() {
     setParseError(null);
@@ -588,18 +688,25 @@ function RequisitionForm({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not analyze that JD.");
       const p = data.parsed || {};
-      if (p.title) setTitle(p.title);
-      if (p.department) setDepartment(p.department);
-      if (p.location) setLocation(p.location);
-      if (p.work_mode) setWorkMode(p.work_mode);
-      if (p.employment_type) setEmploymentType(p.employment_type);
-      if (p.headcount) setHeadcount(String(p.headcount));
-      if (p.job_level) setJobLevel(p.job_level);
-      if (p.hiring_manager) setHiringManager(p.hiring_manager);
-      if (p.cost_center) setCostCenter(p.cost_center);
-      if (p.comp_min != null) setCompMin(String(p.comp_min));
-      if (p.comp_max != null) setCompMax(String(p.comp_max));
-      if (p.role_summary) setDescription(p.role_summary);
+      const filled = new Set<string>();
+      if (p.title) { setTitle(p.title); filled.add("title"); }
+      if (p.department) { setDepartment(p.department); filled.add("department"); }
+      if (p.location) { setLocation(p.location); filled.add("location"); }
+      if (p.work_mode) { setWorkMode(p.work_mode); filled.add("workMode"); }
+      if (p.employment_type) { setEmploymentType(p.employment_type); filled.add("employmentType"); }
+      if (p.headcount) { setHeadcount(String(p.headcount)); filled.add("headcount"); }
+      if (p.job_level) { setJobLevel(p.job_level); filled.add("jobLevel"); }
+      if (p.hiring_manager) { setHiringManager(p.hiring_manager); filled.add("hiringManager"); }
+      if (p.cost_center) { setCostCenter(p.cost_center); filled.add("costCenter"); }
+      if (p.comp_min != null) { setCompMin(String(p.comp_min)); filled.add("compMin"); }
+      if (p.comp_max != null) { setCompMax(String(p.comp_max)); filled.add("compMax"); }
+      if (p.role_summary) { setDescription(p.role_summary); filled.add("description"); }
+      setAiFilled(filled);
+      setAiRanOnce(true);
+      // Auto-open "More details" only if AI actually populated something that
+      // lives in there -- otherwise leave it collapsed so the form stays short.
+      const secondaryKeys = ["workMode", "jobLevel", "hiringManager", "costCenter", "compMin", "compMax"];
+      if (secondaryKeys.some((k) => filled.has(k))) setShowMore(true);
       setJdSourceText(data.sourceText || "");
       setJdFileName(data.fileName || "");
       setParsedPreview({ role_summary: p.role_summary || "", key_requirements: p.key_requirements || [] });
@@ -610,10 +717,15 @@ function RequisitionForm({
     }
   }
 
-  const canSubmit = title.trim() && (requisitionType !== "replacement" || replacementName.trim());
+  function skipAI() {
+    setAiRanOnce(true);
+  }
 
-  function submit() {
-    onSubmit({
+  const canSubmitDraft = title.trim().length > 0;
+  const canSubmitFull = canSubmitDraft && (requisitionType !== "replacement" || replacementName.trim());
+
+  function buildPayload(saveAsDraft: boolean) {
+    return {
       title,
       department,
       location,
@@ -636,13 +748,51 @@ function RequisitionForm({
       isInternalOnly,
       jdSourceText,
       jdFileName,
-    });
+      saveAsDraft,
+    };
   }
+
+  async function handleSaveDraft() {
+    setSaving("draft");
+    await onSubmit(buildPayload(true));
+    setSaving(null);
+  }
+
+  async function handleSubmitForApproval() {
+    setSaving("submit");
+    await onSubmit(buildPayload(false));
+    setSaving(null);
+  }
+
+  // Before the JD step has been used (analyzed or explicitly skipped), keep
+  // the form to just the upload/paste zone -- the full field list only
+  // appears once there's something to review, so a recruiter isn't staring
+  // at 15 empty inputs before they've even attached anything.
+  const showFields = aiRanOnce || parsedPreview != null;
 
   return (
     <div className="border border-border rounded-md p-4 bg-surface shadow-soft-sm flex flex-col gap-4">
-      <div className="border border-dashed border-border rounded-md p-3.5 flex flex-col gap-3 bg-page">
-        <div className="text-[12px] font-bold">Attach a job description — AI fills in the fields below</div>
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          acceptDroppedFile(e.dataTransfer.files?.[0]);
+        }}
+        className={`border-2 border-dashed rounded-md p-4 flex flex-col gap-3 transition-colors ${
+          dragOver ? "border-brand bg-brand-wash" : "border-border bg-page"
+        }`}
+      >
+        <div>
+          <div className="text-[13px] font-bold">Attach a job description</div>
+          <div className="text-[11.5px] text-ink-muted mt-0.5">
+            AI reads it and fills in the form below. Anything it can&apos;t figure out, you fill in yourself.
+          </div>
+        </div>
         <div className="flex items-center gap-4 text-[12px]">
           <label className="flex items-center gap-1.5">
             <input type="radio" checked={jdMode === "file"} onChange={() => setJdMode("file")} /> Upload file
@@ -652,12 +802,29 @@ function RequisitionForm({
           </label>
         </div>
         {jdMode === "file" ? (
-          <input
-            type="file"
-            accept=".pdf,.docx,.txt"
-            onChange={(e) => setJdFile(e.target.files?.[0] || null)}
-            className="text-[12.5px]"
-          />
+          <div className="flex flex-col items-center justify-center gap-2 border border-border rounded-sm bg-surface py-6 px-4 text-center">
+            <Icon name="upload" className="w-5 h-5 text-ink-muted" />
+            {jdFile ? (
+              <div className="text-[12.5px] font-bold">{jdFile.name}</div>
+            ) : (
+              <>
+                <div className="text-[12.5px]">
+                  <span className="font-bold text-brand">Drag &amp; drop</span> a JD file here
+                </div>
+                <div className="text-[11px] text-ink-muted">or</div>
+              </>
+            )}
+            <label className="border border-border text-[12px] font-bold px-3 py-1.5 rounded-sm bg-page cursor-pointer">
+              {jdFile ? "Choose a different file" : "Browse files"}
+              <input
+                type="file"
+                accept=".pdf,.docx,.txt"
+                onChange={(e) => acceptDroppedFile(e.target.files?.[0] || null)}
+                className="hidden"
+              />
+            </label>
+            <div className="text-[10.5px] text-ink-muted">PDF, DOCX, or TXT</div>
+          </div>
         ) : (
           <textarea
             value={jdPasteText}
@@ -666,7 +833,7 @@ function RequisitionForm({
             placeholder="Paste the job description text here…"
           />
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={analyzeJD}
@@ -676,6 +843,11 @@ function RequisitionForm({
             <Icon name="sparkle" className="w-3.5 h-3.5" />
             {parsing ? "Analyzing…" : "Analyze with AI"}
           </button>
+          {!showFields && (
+            <button type="button" onClick={skipAI} className="text-[12px] font-bold text-ink-muted underline">
+              Skip — I&apos;ll fill it in myself
+            </button>
+          )}
           {parseError && <span className="text-[12px] text-critical">{parseError}</span>}
         </div>
         {parsedPreview && (
@@ -690,131 +862,165 @@ function RequisitionForm({
                 ))}
               </div>
             )}
-            <p className="m-0 mt-2 text-[11px] text-ink-muted">Everything below is editable — review before creating.</p>
+            <p className="m-0 mt-2 text-[11px] text-ink-muted">
+              Fields marked <AiFilledBadge /> were filled from the JD — check them over. Everything else needs your input below.
+            </p>
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Role title">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className="input" />
-        </Field>
-        <Field label="Department">
-          <input value={department} onChange={(e) => setDepartment(e.target.value)} className="input" />
-        </Field>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Field label="Location">
-          <input value={location} onChange={(e) => setLocation(e.target.value)} className="input" />
-        </Field>
-        <Field label="Work mode">
-          <select value={workMode} onChange={(e) => setWorkMode(e.target.value)} className="input">
-            <option value="">—</option>
-            <option value="remote">Remote</option>
-            <option value="hybrid">Hybrid</option>
-            <option value="onsite">Onsite</option>
-          </select>
-        </Field>
-        <Field label="Employment type">
-          <select value={employmentType} onChange={(e) => setEmploymentType(e.target.value)} className="input">
-            <option value="full-time">Full-time</option>
-            <option value="part-time">Part-time</option>
-            <option value="contract">Contract</option>
-            <option value="intern">Intern</option>
-          </select>
-        </Field>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Field label="Headcount">
-          <input type="number" min="1" value={headcount} onChange={(e) => setHeadcount(e.target.value)} className="input" />
-        </Field>
-        <Field label="Job level / grade">
-          <input value={jobLevel} onChange={(e) => setJobLevel(e.target.value)} className="input" placeholder="e.g. IC3, M2" />
-        </Field>
-        <Field label="Priority">
-          <select value={priority} onChange={(e) => setPriority(e.target.value)} className="input">
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-          </select>
-        </Field>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Compensation min">
-          <input type="number" value={compMin} onChange={(e) => setCompMin(e.target.value)} className="input" />
-        </Field>
-        <Field label="Compensation max">
-          <input type="number" value={compMax} onChange={(e) => setCompMax(e.target.value)} className="input" />
-        </Field>
-      </div>
-
-      <div className="border border-border rounded-md p-3.5 flex flex-col gap-3">
-        <div className="text-[12px] font-bold">Requisition type</div>
-        <div className="flex items-center gap-4 text-[12.5px]">
-          {["new", "replacement", "perpetual"].map((t) => (
-            <label key={t} className="flex items-center gap-1.5 capitalize">
-              <input type="radio" checked={requisitionType === t} onChange={() => setRequisitionType(t)} /> {t}
-            </label>
-          ))}
-        </div>
-        {requisitionType === "replacement" && (
+      {showFields && (
+        <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Replacement name">
-              <input value={replacementName} onChange={(e) => setReplacementName(e.target.value)} className="input" />
+            <Field label="Role title" badge={aiFilled.has("title") && <AiFilledBadge />}>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} className="input" placeholder="Required" />
             </Field>
-            <Field label="Replacement employee ID">
-              <input value={replacementEmployeeId} onChange={(e) => setReplacementEmployeeId(e.target.value)} className="input" />
+            <Field label="Department" badge={aiFilled.has("department") && <AiFilledBadge />}>
+              <input value={department} onChange={(e) => setDepartment(e.target.value)} className="input" />
             </Field>
           </div>
-        )}
-      </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Location" badge={aiFilled.has("location") && <AiFilledBadge />}>
+              <input value={location} onChange={(e) => setLocation(e.target.value)} className="input" />
+            </Field>
+            <Field label="Employment type" badge={aiFilled.has("employmentType") && <AiFilledBadge />}>
+              <select value={employmentType} onChange={(e) => setEmploymentType(e.target.value)} className="input">
+                <option value="full-time">Full-time</option>
+                <option value="part-time">Part-time</option>
+                <option value="contract">Contract</option>
+                <option value="intern">Intern</option>
+              </select>
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Headcount" badge={aiFilled.has("headcount") && <AiFilledBadge />}>
+              <input type="number" min="1" value={headcount} onChange={(e) => setHeadcount(e.target.value)} className="input" />
+            </Field>
+            <Field label="Priority">
+              <select value={priority} onChange={(e) => setPriority(e.target.value)} className="input">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </Field>
+          </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Hiring manager">
-          <input value={hiringManager} onChange={(e) => setHiringManager(e.target.value)} className="input" />
-        </Field>
-        <Field label="Cost center">
-          <input value={costCenter} onChange={(e) => setCostCenter(e.target.value)} className="input" />
-        </Field>
-      </div>
+          <Field label="Justification" hint="The business case for this headcount — why now, why this role." badge={aiFilled.has("description") && <AiFilledBadge />}>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="input min-h-[70px]" placeholder="Why this requisition is needed…" />
+          </Field>
 
-      <Field label="Target hire date">
-        <input type="date" value={targetHireDate} onChange={(e) => setTargetHireDate(e.target.value)} className="input max-w-[220px]" />
-      </Field>
+          <button
+            type="button"
+            onClick={() => setShowMore((v) => !v)}
+            className="text-[12.5px] font-bold text-brand flex items-center gap-1 self-start"
+          >
+            <Icon name={showMore ? "chevronUp" : "chevronDown"} className="w-3.5 h-3.5" />
+            {showMore ? "Hide more details" : "More details (work mode, comp, hiring manager, requisition type…)"}
+          </button>
 
-      <Field label="Justification" hint="The business case for this headcount — why now, why this role.">
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="input min-h-[80px]" placeholder="Why this requisition is needed…" />
-      </Field>
+          {showMore && (
+            <div className="flex flex-col gap-4 border-t border-border pt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Work mode" badge={aiFilled.has("workMode") && <AiFilledBadge />}>
+                  <select value={workMode} onChange={(e) => setWorkMode(e.target.value)} className="input">
+                    <option value="">—</option>
+                    <option value="remote">Remote</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="onsite">Onsite</option>
+                  </select>
+                </Field>
+                <Field label="Job level / grade" badge={aiFilled.has("jobLevel") && <AiFilledBadge />}>
+                  <input value={jobLevel} onChange={(e) => setJobLevel(e.target.value)} className="input" placeholder="e.g. IC3, M2" />
+                </Field>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Compensation min" badge={aiFilled.has("compMin") && <AiFilledBadge />}>
+                  <input type="number" value={compMin} onChange={(e) => setCompMin(e.target.value)} className="input" />
+                </Field>
+                <Field label="Compensation max" badge={aiFilled.has("compMax") && <AiFilledBadge />}>
+                  <input type="number" value={compMax} onChange={(e) => setCompMax(e.target.value)} className="input" />
+                </Field>
+              </div>
 
-      <Field label="Comments">
-        <textarea value={comments} onChange={(e) => setComments(e.target.value)} className="input min-h-[60px]" placeholder="Anything else worth noting…" />
-      </Field>
+              <div className="border border-border rounded-md p-3.5 flex flex-col gap-3">
+                <div className="text-[12px] font-bold">Requisition type</div>
+                <div className="flex items-center gap-4 text-[12.5px]">
+                  {["new", "replacement", "perpetual"].map((t) => (
+                    <label key={t} className="flex items-center gap-1.5 capitalize">
+                      <input type="radio" checked={requisitionType === t} onChange={() => setRequisitionType(t)} /> {t}
+                    </label>
+                  ))}
+                </div>
+                {requisitionType === "replacement" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Replacement name">
+                      <input value={replacementName} onChange={(e) => setReplacementName(e.target.value)} className="input" />
+                    </Field>
+                    <Field label="Replacement employee ID">
+                      <input value={replacementEmployeeId} onChange={(e) => setReplacementEmployeeId(e.target.value)} className="input" />
+                    </Field>
+                  </div>
+                )}
+              </div>
 
-      <div className="flex items-center gap-5">
-        <label className="flex items-center gap-2 text-[12.5px] text-ink-2">
-          <input type="checkbox" checked={isConfidential} onChange={(e) => setIsConfidential(e.target.checked)} /> Confidential
-        </label>
-        <label className="flex items-center gap-2 text-[12.5px] text-ink-2">
-          <input type="checkbox" checked={isInternalOnly} onChange={(e) => setIsInternalOnly(e.target.checked)} /> Internal only
-        </label>
-      </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Hiring manager" badge={aiFilled.has("hiringManager") && <AiFilledBadge />}>
+                  <input value={hiringManager} onChange={(e) => setHiringManager(e.target.value)} className="input" />
+                </Field>
+                <Field label="Cost center" badge={aiFilled.has("costCenter") && <AiFilledBadge />}>
+                  <input value={costCenter} onChange={(e) => setCostCenter(e.target.value)} className="input" />
+                </Field>
+              </div>
 
-      <div className="flex gap-2">
-        <button
-          onClick={submit}
-          disabled={!canSubmit}
-          className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 shadow-soft-sm"
-        >
-          Create requisition
-        </button>
-        <button onClick={onCancel} className="border border-border text-[13px] font-bold px-4 py-2.5 rounded-sm bg-surface">
+              <Field label="Target hire date">
+                <input type="date" value={targetHireDate} onChange={(e) => setTargetHireDate(e.target.value)} className="input max-w-[220px]" />
+              </Field>
+
+              <Field label="Comments">
+                <textarea value={comments} onChange={(e) => setComments(e.target.value)} className="input min-h-[60px]" placeholder="Anything else worth noting…" />
+              </Field>
+
+              <div className="flex items-center gap-5">
+                <label className="flex items-center gap-2 text-[12.5px] text-ink-2">
+                  <input type="checkbox" checked={isConfidential} onChange={(e) => setIsConfidential(e.target.checked)} /> Confidential
+                </label>
+                <label className="flex items-center gap-2 text-[12.5px] text-ink-2">
+                  <input type="checkbox" checked={isInternalOnly} onChange={(e) => setIsInternalOnly(e.target.checked)} /> Internal only
+                </label>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={handleSubmitForApproval}
+              disabled={!canSubmitFull || saving !== null}
+              className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 shadow-soft-sm"
+            >
+              {saving === "submit" ? "Submitting…" : "Submit for approval"}
+            </button>
+            <button
+              onClick={handleSaveDraft}
+              disabled={!canSubmitDraft || saving !== null}
+              className="border border-border text-[13px] font-bold px-4 py-2.5 rounded-sm bg-surface disabled:opacity-50"
+            >
+              {saving === "draft" ? "Saving…" : "Save as draft"}
+            </button>
+            <button onClick={onCancel} className="text-[13px] font-bold px-4 py-2.5 rounded-sm text-ink-muted">
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
+
+      {!showFields && (
+        <button onClick={onCancel} className="border border-border text-[13px] font-bold px-4 py-2.5 rounded-sm bg-surface self-start">
           Cancel
         </button>
-      </div>
+      )}
     </div>
   );
 }
-
 function CandidateForm({
   onCancel,
   onSubmit,
@@ -996,6 +1202,11 @@ function CandidateDetail({
   const isSelected = candidate.stage === "selected" || candidate.stage === "offer";
   const bothSignedOff = !!candidate.selected_hm_by && !!candidate.selected_ta_by;
   const compComplete = candidate.current_ctc != null && candidate.expected_ctc != null && candidate.proposed_ctc != null;
+  // Offer/comp only makes sense once interviews are actually done -- surfacing
+  // it for a candidate still in Screening invited recruiters to skip the
+  // pipeline by mistake. It stays visible once reached, even if the
+  // candidate later moves on to BGV/Joined, so history is still visible.
+  const readyForOffer = stageIndex(candidate.stage) >= STAGES.findIndex((s) => s.id === "hr_interview");
 
   const [interviews, setInterviews] = useState<{ id: string; round_name: string; scheduled_at: string | null; status: string }[]>([]);
   const [roundName, setRoundName] = useState("");
@@ -1051,6 +1262,13 @@ function CandidateDetail({
 
         {wfError && <div className="bg-critical-wash text-critical text-[12px] rounded-sm px-3 py-2">{wfError}</div>}
 
+        {!readyForOffer && (
+          <div className="border border-dashed border-border rounded-md p-3 text-[12px] text-ink-muted">
+            Selection &amp; Offer unlocks once this candidate reaches HR Interview.
+          </div>
+        )}
+
+        {readyForOffer && (
         <div className="border border-border rounded-md p-3.5 flex flex-col gap-3">
           <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Selection &amp; Offer</div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -1101,6 +1319,7 @@ function CandidateDetail({
             <p className="m-0 text-[11px] text-ink-muted">Both a Hiring Manager and a Recruiter/TA Head sign-off are required before Move to Offer unlocks.</p>
           )}
         </div>
+        )}
 
         <div className="border border-border rounded-md p-3.5 flex flex-col gap-2.5">
           <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Interviews</div>

@@ -79,8 +79,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Title is required." }, { status: 400 });
   }
 
+  const saveAsDraft = !!body.saveAsDraft;
   const requisitionType = REQ_TYPES.has(body.requisitionType) ? body.requisitionType : "new";
-  if (requisitionType === "replacement" && !(body.replacementName || "").trim()) {
+  if (!saveAsDraft && requisitionType === "replacement" && !(body.replacementName || "").trim()) {
     return NextResponse.json(
       { error: "Replacement name is required for a replacement requisition." },
       { status: 400 }
@@ -96,7 +97,7 @@ export async function POST(req: Request) {
       location: body.location || null,
       employment_type: body.employmentType || "full-time",
       headcount: Number(body.headcount) || 1,
-      status: "pending_approval",
+      status: saveAsDraft ? "draft" : "pending_approval",
       priority: body.priority || "medium",
       hiring_manager: body.hiringManager || null,
       description: body.description || null, // relabeled "Justification" in the UI
@@ -126,6 +127,25 @@ export async function POST(req: Request) {
   }
 
   const admin = createAdminClient();
+
+  if (saveAsDraft) {
+    await admin.from("talent_requisition_status_history").insert({
+      requisition_id: requisition.id,
+      from_status: null,
+      to_status: "draft",
+      changed_by: user.id,
+      note: "Saved as draft",
+    });
+    await logAudit({
+      entityType: "talent_requisitions",
+      entityId: requisition.id,
+      actorId: user.id,
+      action: "drafted",
+      detail: { title, requisitionType },
+    });
+    return NextResponse.json({ requisition });
+  }
+
   const chain = await buildApprovalChain(admin, user.id);
   await admin.from("talent_approval_steps").insert(
     chain.map((step) => ({

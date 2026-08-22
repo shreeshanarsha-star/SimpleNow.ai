@@ -152,9 +152,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (body.action === "resubmit") {
     const { data: requisition } = await supabase.from("talent_requisitions").select("*").eq("id", id).single();
     if (!requisition) return NextResponse.json({ error: "Requisition not found." }, { status: 404 });
-    if (requisition.status !== "sent_back") {
-      return NextResponse.json({ error: "Only a sent-back requisition can be resubmitted." }, { status: 409 });
+    // A draft has never had an approval chain built; a sent-back req had one
+    // that was already resolved (rejected) and needs a fresh one. Both are
+    // valid starting points for "submit for approval" -- everything else
+    // (already pending, approved, etc.) is not.
+    if (requisition.status !== "sent_back" && requisition.status !== "draft") {
+      return NextResponse.json(
+        { error: "Only a draft or sent-back requisition can be submitted for approval." },
+        { status: 409 }
+      );
     }
+    const wasDraft = requisition.status === "draft";
 
     const admin = createAdminClient();
     await admin.from("talent_approval_steps").delete().eq("requisition_id", id);
@@ -173,20 +181,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .eq("id", id);
     await admin.from("talent_requisition_status_history").insert({
       requisition_id: id,
-      from_status: "sent_back",
+      from_status: requisition.status,
       to_status: "pending_approval",
       changed_by: user.id,
-      note: "Resubmitted after edits",
+      note: wasDraft ? "Submitted for approval" : "Resubmitted after edits",
     });
     const firstStep = chain[0];
     if (firstStep?.approver_user_id) {
       await notifyUser({
         userId: firstStep.approver_user_id,
-        title: `Approval needed: "${requisition.title}" (resubmitted)`,
+        title: wasDraft
+          ? `Approval needed: "${requisition.title}"`
+          : `Approval needed: "${requisition.title}" (resubmitted)`,
         link: `/tools/talent-ai?requisition=${id}`,
       });
     }
-    await logAudit({ entityType: "talent_requisitions", entityId: id, actorId: user.id, action: "resubmitted" });
+    await logAudit({
+      entityType: "talent_requisitions",
+      entityId: id,
+      actorId: user.id,
+      action: wasDraft ? "submitted" : "resubmitted",
+    });
     return NextResponse.json({ ok: true });
   }
 

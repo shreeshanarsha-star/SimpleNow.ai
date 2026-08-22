@@ -4,6 +4,23 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const FEATURE_KEY = "Talent.ai";
 
+// Same funnel stage set as the Kanban board (TalentAiBoard.tsx STAGES) --
+// keep these in sync if that list changes.
+const FUNNEL_COLUMNS: { id: string; label: string }[] = [
+  { id: "all", label: "All applications" },
+  { id: "applied", label: "New applications" },
+  { id: "screening", label: "Screening" },
+  { id: "hm_review", label: "HM Review" },
+  { id: "interview_1", label: "Interview 1" },
+  { id: "interview_2", label: "Interview 2" },
+  { id: "hr_interview", label: "HR Interview" },
+  { id: "selected", label: "Offer in process" },
+  { id: "offer", label: "Offered" },
+  { id: "bgv", label: "BGV" },
+  { id: "ready_to_join", label: "Ready to Join" },
+  { id: "joined", label: "Joined" },
+];
+
 // "My requisitions" for a recruiter = requisitions they're actually
 // assigned to (talent_requisition_assignment), same data-access rule
 // used everywhere else in the app (action-queue, workflow routes) --
@@ -50,6 +67,12 @@ export async function GET() {
 
   const myRequisitions = (requisitions || []).map((r) => {
     const reqCandidates = allCandidates.filter((c) => c.requisition_id === r.id);
+    const stageCounts: Record<string, number> = { all: reqCandidates.length };
+    for (const col of FUNNEL_COLUMNS) {
+      if (col.id === "all") continue;
+      stageCounts[col.id] = reqCandidates.filter((c) => c.stage === col.id).length;
+    }
+    stageCounts.rejected = reqCandidates.filter((c) => c.stage === "rejected").length;
     return {
       id: r.id,
       title: r.title,
@@ -58,6 +81,7 @@ export async function GET() {
       headcount: r.headcount,
       candidateCount: reqCandidates.length,
       activeCandidateCount: reqCandidates.filter((c) => c.stage !== "rejected").length,
+      stageCounts,
     };
   });
 
@@ -105,6 +129,7 @@ export async function GET() {
       interviewsToday: interviewsToday.length,
       offersInProgress,
     },
+    funnelColumns: FUNNEL_COLUMNS,
     myRequisitions,
     interviewsToday,
     recentCandidates,

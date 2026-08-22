@@ -29,10 +29,10 @@ export default function TalentWorkspace() {
   const tabs: { id: Tab; label: string; show: boolean }[] = [
     { id: "home", label: "Home", show: true },
     { id: "overview", label: "Requisitions", show: true },
-    { id: "funnel", label: "Funnel & Sources", show: canRecruit || canAssign || isAdmin },
+    { id: "recruiter", label: "Search candidates", show: canRecruit },
+    { id: "funnel", label: "My analytics", show: canRecruit || canAssign || isAdmin },
     { id: "approvals", label: "Approvals", show: canApprove },
     { id: "assign", label: "TA Assignment", show: canAssign },
-    { id: "recruiter", label: "Recruiter Tools", show: canRecruit },
     { id: "jobs", label: "My Jobs & Referrals", show: true },
     { id: "admin", label: "Admin", show: canManageRoles },
   ];
@@ -205,11 +205,15 @@ type FunnelReq = { id: string; title: string };
 const FUNNEL_STAGES = [
   { id: "applied", label: "Applied" },
   { id: "screening", label: "Screening" },
-  { id: "shortlisted", label: "Shortlisted" },
   { id: "hm_review", label: "HM Review" },
-  { id: "interview", label: "Interview" },
-  { id: "selected", label: "Selected" },
-  { id: "offer", label: "Offer" },
+  { id: "interview_1", label: "Interview 1" },
+  { id: "interview_2", label: "Interview 2" },
+  { id: "hr_interview", label: "HR Interview" },
+  { id: "selected", label: "Offer in process" },
+  { id: "offer", label: "Offered" },
+  { id: "bgv", label: "BGV" },
+  { id: "ready_to_join", label: "Ready to Join" },
+  { id: "joined", label: "Joined" },
 ];
 
 const SOURCE_META: Record<string, { label: string; className: string }> = {
@@ -253,7 +257,10 @@ function FunnelPanel() {
     }).length;
   });
   const rejectedCount = candidates.filter((c) => c.stage === "rejected").length;
-  const hiredCount = candidates.filter((c) => c.stage === "offer").length;
+  // "Hired" means reached Offered or further (Offered/BGV/Ready to Join/Joined) --
+  // not just literally sitting in the Offered column right now.
+  const offerIdx = STAGES_ORDER.indexOf("offer");
+  const hiredCount = candidates.filter((c) => STAGES_ORDER.indexOf(c.stage) >= offerIdx && c.stage !== "rejected").length;
   const topOfFunnel = funnelCounts[0] || candidates.length;
 
   const sourceCounts: Record<string, number> = {};
@@ -531,89 +538,93 @@ function ManagerSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
 
 // ---------------- Recruiter snapshot (embedded in Home) ----------------
 
-type RecruiterReqRow = { id: string; title: string; department: string | null; status: string; headcount: number | null; candidateCount: number; activeCandidateCount: number };
-type RecruiterInterviewRow = { id: string; candidateName: string; requisitionTitle: string; roundName: string | null; scheduledAt: string | null; mode: string | null };
-type RecruiterCandidateRow = { id: string; name: string; stage: string; requisitionTitle: string; requisitionId: string; updatedAt: string };
+type RecruiterReqRow = {
+  id: string;
+  title: string;
+  department: string | null;
+  status: string;
+  headcount: number | null;
+  candidateCount: number;
+  activeCandidateCount: number;
+  stageCounts: Record<string, number>;
+};
+type FunnelColumn = { id: string; label: string };
 
 function RecruiterSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
-  const [counts, setCounts] = useState<{ myRequisitions: number; activeCandidates: number; interviewsToday: number; offersInProgress: number } | null>(null);
+  const [funnelColumns, setFunnelColumns] = useState<FunnelColumn[]>([]);
   const [myRequisitions, setMyRequisitions] = useState<RecruiterReqRow[]>([]);
-  const [interviewsToday, setInterviewsToday] = useState<RecruiterInterviewRow[]>([]);
-  const [recentCandidates, setRecentCandidates] = useState<RecruiterCandidateRow[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     fetch("/api/talent-ai/recruiter-snapshot").then((r) => r.json()).then((d) => {
-      setCounts(d.counts || null);
+      setFunnelColumns(d.funnelColumns || []);
       setMyRequisitions(d.myRequisitions || []);
-      setInterviewsToday(d.interviewsToday || []);
-      setRecentCandidates(d.recentCandidates || []);
+      setLoaded(true);
     });
   }, []);
 
-  if (!counts) return null;
-  if (counts.myRequisitions === 0) return null; // nothing assigned yet -- don't show an empty recruiting section
+  if (!loaded) return null;
+  if (myRequisitions.length === 0) return null; // nothing assigned yet -- don't show an empty recruiting section
 
   return (
     <div className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-surface">
       <div className="flex items-center justify-between">
-        <div className="text-[13px] font-bold text-ink">My recruiting</div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => onNavigate("overview")} className="text-[11.5px] font-semibold px-2.5 py-1 border border-border rounded-md hover:border-brand">My requisitions</button>
-          <button onClick={() => onNavigate("recruiter")} className="text-[11.5px] font-semibold px-2.5 py-1 border border-border rounded-md hover:border-brand">Search database</button>
-        </div>
+        <div className="text-[13px] font-bold text-ink">My requisitions</div>
+        <button onClick={() => onNavigate("recruiter")} className="text-[11.5px] font-semibold px-2.5 py-1 border border-border rounded-md hover:border-brand">Search candidates</button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="My requisitions" value={counts.myRequisitions} />
-        <StatCard label="Active candidates" value={counts.activeCandidates} />
-        <StatCard label="Interviews today" value={counts.interviewsToday} />
-        <StatCard label="Offers in progress" value={counts.offersInProgress} />
-      </div>
-
-      {interviewsToday.length > 0 && (
-        <div className="border border-border rounded-md overflow-hidden">
-          <div className="px-3 py-2 bg-surface-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-ink-muted">Interviews today</div>
-          <div className="divide-y divide-border">
-            {interviewsToday.map((iv) => (
-              <div key={iv.id} className="flex items-center justify-between gap-2 px-3 py-2 text-[12.5px]">
-                <span><strong>{iv.candidateName}</strong> — <span className="text-ink-muted">{iv.requisitionTitle}{iv.roundName ? ` · ${iv.roundName}` : ""}</span></span>
-                <span className="text-[10.5px] text-ink-muted flex-shrink-0">{iv.scheduledAt ? new Date(iv.scheduledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Time TBD"}</span>
-              </div>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-[12px]">
+          <thead>
+            <tr>
+              <th className="text-left font-bold text-ink-muted uppercase tracking-wider text-[10px] px-2.5 py-2 border-b border-border sticky left-0 bg-surface">
+                Requisition
+              </th>
+              {funnelColumns.map((col) => (
+                <th key={col.id} className="text-right font-bold text-ink-muted uppercase tracking-wider text-[9.5px] px-2 py-2 border-b border-border whitespace-nowrap">
+                  {col.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {myRequisitions.map((r) => (
+              <tr key={r.id} className="hover:bg-brand-wash/30 cursor-pointer" onClick={() => (window.location.href = `/tools/talent-ai?requisition=${r.id}`)}>
+                <td className="px-2.5 py-2 border-b border-border sticky left-0 bg-surface">
+                  <div className="font-bold text-[12.5px]">{r.title}</div>
+                  <div className="text-[10.5px] text-ink-muted">{r.department || "No department"}</div>
+                </td>
+                {funnelColumns.map((col) => {
+                  const n = r.stageCounts?.[col.id] ?? 0;
+                  return (
+                    <td key={col.id} className={`text-right px-2 py-2 border-b border-border tabular-nums ${n > 0 ? "font-bold text-ink" : "text-ink-muted"}`}>
+                      {n}
+                    </td>
+                  );
+                })}
+              </tr>
             ))}
-          </div>
-        </div>
-      )}
-
-      <div className="border border-border rounded-md overflow-hidden">
-        <div className="px-3 py-2 bg-surface-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-ink-muted">My requisitions</div>
-        <div className="divide-y divide-border">
-          {myRequisitions.map((r) => (
-            <a key={r.id} href={`/tools/talent-ai?requisition=${r.id}`} className="flex items-center justify-between gap-2 px-3 py-2 text-[12.5px] hover:bg-brand-wash/40">
-              <span><strong>{r.title}</strong> — <span className="text-ink-muted">{r.department || "No department"} · {r.status.replace(/_/g, " ")}</span></span>
-              <span className="text-[11px] text-ink-muted flex-shrink-0">{r.activeCandidateCount} active / {r.candidateCount} total</span>
-            </a>
-          ))}
-        </div>
+          </tbody>
+        </table>
       </div>
-
-      {recentCandidates.length > 0 && (
-        <div className="border border-border rounded-md overflow-hidden">
-          <div className="px-3 py-2 bg-surface-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-ink-muted">Recent candidates</div>
-          <div className="divide-y divide-border">
-            {recentCandidates.map((c) => (
-              <a key={c.id} href={`/tools/talent-ai?requisition=${c.requisitionId}`} className="flex items-center justify-between gap-2 px-3 py-2 text-[12.5px] hover:bg-brand-wash/40">
-                <span><strong>{c.name}</strong> — <span className="text-ink-muted">{c.requisitionTitle}</span></span>
-                <span className="text-[10.5px] font-bold uppercase tracking-wider text-brand flex-shrink-0">{c.stage.replace(/_/g, " ")}</span>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-const STAGES_ORDER = ["applied", "screening", "shortlisted", "hm_review", "interview", "selected", "offer", "rejected"];
+const STAGES_ORDER = [
+  "applied",
+  "screening",
+  "hm_review",
+  "interview_1",
+  "interview_2",
+  "hr_interview",
+  "selected",
+  "offer",
+  "bgv",
+  "ready_to_join",
+  "joined",
+  "rejected",
+];
 
 function StatCard({ label, value, accent }: { label: string; value: number | string; accent?: "good" | "critical" }) {
   const valueClass = accent === "good" ? "text-good-text" : accent === "critical" ? "text-critical" : "text-ink";
