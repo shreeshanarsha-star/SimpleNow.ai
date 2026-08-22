@@ -33,7 +33,7 @@ export default function TalentWorkspace() {
     { id: "approvals", label: "Approvals", show: canApprove },
     { id: "assign", label: "TA Assignment", show: canAssign },
     { id: "recruiter", label: "Recruiter Tools", show: canRecruit },
-    { id: "jobs", label: "Employee Jobs", show: true },
+    { id: "jobs", label: "My Jobs & Referrals", show: true },
     { id: "admin", label: "Admin", show: canManageRoles },
   ];
 
@@ -775,17 +775,56 @@ function RecruiterToolsPanel() {
 
 type OpenRole = { id: string; title: string; department: string | null; location: string | null; work_mode: string | null; job_level: string | null };
 
+type MyCandidateRow = {
+  id: string;
+  name: string;
+  stage: string;
+  source: string;
+  createdAt: string;
+  requisitionId: string;
+  requisitionTitle: string;
+};
+type UpcomingInterviewRow = { id: string; requisitionTitle: string; roundName: string | null; scheduledAt: string | null; mode: string | null };
+
 function EmployeeJobsPanel() {
   const [roles, setRoles] = useState<OpenRole[]>([]);
+  const [mine, setMine] = useState<MyCandidateRow[]>([]);
+  const [upcomingInterviews, setUpcomingInterviews] = useState<UpcomingInterviewRow[]>([]);
   const [referring, setReferring] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [applying, setApplying] = useState<string | null>(null);
 
   function load() {
-    fetch("/api/talent-ai/employee-jobs").then((r) => r.json()).then((d) => setRoles(d.requisitions || []));
+    fetch("/api/talent-ai/employee-jobs").then((r) => r.json()).then((d) => {
+      setRoles(d.requisitions || []);
+      setMine(d.mine || []);
+      setUpcomingInterviews(d.upcomingInterviews || []);
+    });
   }
   useEffect(() => { load(); }, []);
+
+  const myApplications = mine.filter((c) => c.source === "internal_application");
+  const myReferrals = mine.filter((c) => c.source !== "internal_application");
+  const appliedRequisitionIds = new Set(myApplications.map((c) => c.requisitionId));
+
+  async function applyForSelf(id: string) {
+    setStatus(null);
+    setApplying(id);
+    const res = await fetch("/api/talent-ai/employee-jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requisitionId: id, isSelf: true }),
+    });
+    const data = await res.json();
+    setApplying(null);
+    if (!res.ok) setStatus(data.error || "Could not apply.");
+    else {
+      setStatus("Application submitted — good luck!");
+      load();
+    }
+  }
 
   async function submitReferral(id: string) {
     setStatus(null);
@@ -800,34 +839,87 @@ function EmployeeJobsPanel() {
     else {
       setStatus("Referral submitted — thank you!");
       setName(""); setEmail(""); setReferring(null);
+      load();
     }
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <h3 className="m-0 text-[15px] font-bold">Open roles</h3>
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard label="My applications" value={myApplications.length} />
+        <StatCard label="My referrals" value={myReferrals.length} />
+        <StatCard label="Open roles" value={roles.length} />
+        <StatCard label="Upcoming interviews" value={upcomingInterviews.length} />
+      </div>
+
       {status && <p className="text-[12px] text-ink-2">{status}</p>}
-      {roles.length === 0 && <p className="text-[12.5px] text-ink-muted">No published roles right now.</p>}
-      {roles.map((r) => (
-        <div key={r.id} className="border border-border rounded-md p-3.5 bg-surface">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[13.5px] font-bold">{r.title}</div>
-              <div className="text-[12px] text-ink-muted">{[r.department, r.location, r.work_mode, r.job_level].filter(Boolean).join(" · ")}</div>
-            </div>
-            <button onClick={() => setReferring(referring === r.id ? null : r.id)} className="border border-border text-[12px] font-bold px-3 py-1.5 rounded-sm bg-surface">
-              Refer someone
-            </button>
+
+      {upcomingInterviews.length > 0 && (
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="px-3.5 py-2.5 bg-surface-muted border-b border-border text-[12px] font-bold">Your upcoming interviews</div>
+          <div className="divide-y divide-border">
+            {upcomingInterviews.map((iv) => (
+              <div key={iv.id} className="flex items-center justify-between gap-2 px-3.5 py-2.5 text-[12.5px]">
+                <span><strong>{iv.requisitionTitle}</strong> — <span className="text-ink-muted">{iv.roundName || "Interview"}{iv.mode ? ` · ${iv.mode}` : ""}</span></span>
+                <span className="text-[11px] text-ink-muted flex-shrink-0">{iv.scheduledAt ? new Date(iv.scheduledAt).toLocaleString() : "Time TBD"}</span>
+              </div>
+            ))}
           </div>
-          {referring === r.id && (
-            <div className="flex gap-2 mt-2.5">
-              <input value={name} onChange={(e) => setName(e.target.value)} className="input" placeholder="Candidate name" />
-              <input value={email} onChange={(e) => setEmail(e.target.value)} className="input" placeholder="Candidate email (optional)" />
-              <button onClick={() => submitReferral(r.id)} className="bg-brand text-white text-[12px] font-bold px-3 py-2 rounded-sm shadow-soft-sm flex-shrink-0">Submit</button>
-            </div>
-          )}
         </div>
-      ))}
+      )}
+
+      {mine.length > 0 && (
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="px-3.5 py-2.5 bg-surface-muted border-b border-border text-[12px] font-bold">My applications &amp; referrals</div>
+          <div className="divide-y divide-border">
+            {mine.map((c) => (
+              <div key={c.id} className="flex items-center justify-between gap-2 px-3.5 py-2.5 text-[12.5px]">
+                <span>
+                  <strong>{c.requisitionTitle}</strong>{" "}
+                  <span className="text-ink-muted">
+                    {c.source === "internal_application" ? "— you applied" : `— referred: ${c.name}`}
+                  </span>
+                </span>
+                <span className="text-[10.5px] font-bold uppercase tracking-wider text-brand flex-shrink-0">{c.stage.replace(/_/g, " ")}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3">
+        <h3 className="m-0 text-[15px] font-bold">Open roles</h3>
+        {roles.length === 0 && <p className="text-[12.5px] text-ink-muted">No published roles right now.</p>}
+        {roles.map((r) => (
+          <div key={r.id} className="border border-border rounded-md p-3.5 bg-surface">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <div className="text-[13.5px] font-bold">{r.title}</div>
+                <div className="text-[12px] text-ink-muted">{[r.department, r.location, r.work_mode, r.job_level].filter(Boolean).join(" · ")}</div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => applyForSelf(r.id)}
+                  disabled={appliedRequisitionIds.has(r.id) || applying === r.id}
+                  className="bg-brand text-white text-[12px] font-bold px-3 py-1.5 rounded-sm shadow-soft-sm disabled:opacity-50"
+                >
+                  {appliedRequisitionIds.has(r.id) ? "Applied" : applying === r.id ? "Applying..." : "Apply"}
+                </button>
+                <button onClick={() => setReferring(referring === r.id ? null : r.id)} className="border border-border text-[12px] font-bold px-3 py-1.5 rounded-sm bg-surface">
+                  Refer someone
+                </button>
+              </div>
+            </div>
+            {referring === r.id && (
+              <div className="flex gap-2 mt-2.5">
+                <input value={name} onChange={(e) => setName(e.target.value)} className="input" placeholder="Candidate name" />
+                <input value={email} onChange={(e) => setEmail(e.target.value)} className="input" placeholder="Candidate email (optional)" />
+                <button onClick={() => submitReferral(r.id)} className="bg-brand text-white text-[12px] font-bold px-3 py-2 rounded-sm shadow-soft-sm flex-shrink-0">Submit</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
