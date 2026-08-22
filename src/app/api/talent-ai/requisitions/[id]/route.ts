@@ -29,6 +29,48 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: error.message }, { status: 404 });
   }
 
+  // Role overview needs human names for the assigned recruiter and the
+  // approval chain, but those tables only store user ids. One batched
+  // profiles lookup (admin client -- a recruiter/HM has no RLS grant to
+  // read another user's profile row directly) resolves all of them.
+  type ApprovalStepRow = { approver_user_id: string | null; decided_by: string | null };
+  type AssignmentRow = { recruiter_id: string | null };
+  if (requisition) {
+    const approvalSteps = (requisition.talent_approval_steps || []) as ApprovalStepRow[];
+    const assignment = (requisition.talent_requisition_assignment || []) as AssignmentRow[];
+    const personIds = new Set<string>();
+    for (const step of approvalSteps) {
+      if (step.approver_user_id) personIds.add(step.approver_user_id);
+      if (step.decided_by) personIds.add(step.decided_by);
+    }
+    for (const a of assignment) {
+      if (a.recruiter_id) personIds.add(a.recruiter_id);
+    }
+    let peopleById = new Map<string, { full_name: string | null; email: string | null }>();
+    if (personIds.size > 0) {
+      const admin = createAdminClient();
+      const { data: people } = await admin
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", Array.from(personIds));
+      for (const p of people || []) {
+        peopleById.set(p.id, { full_name: p.full_name, email: p.email });
+      }
+    }
+    requisition.talent_approval_steps = approvalSteps.map((step) => ({
+      ...step,
+      approver_name: step.approver_user_id ? peopleById.get(step.approver_user_id)?.full_name || peopleById.get(step.approver_user_id)?.email || null : null,
+      decided_by_name: step.decided_by ? peopleById.get(step.decided_by)?.full_name || peopleById.get(step.decided_by)?.email || null : null,
+    }));
+    const recruiterAssignment = assignment[0];
+    requisition.assigned_recruiter = recruiterAssignment?.recruiter_id
+      ? {
+          id: recruiterAssignment.recruiter_id,
+          name: peopleById.get(recruiterAssignment.recruiter_id)?.full_name || peopleById.get(recruiterAssignment.recruiter_id)?.email || "Recruiter",
+        }
+      : null;
+  }
+
   // "Days in current stage" needs the most recent stage change, not just
   // updated_at (which also bumps on plain profile edits and would make a
   // stale candidate look fresh every time someone fixes a typo). Compute

@@ -2,15 +2,23 @@ import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
 import { createClient } from "@/lib/supabase/server";
 import RequisitionCandidatesView from "@/components/tools/RequisitionCandidatesView";
+import RequisitionRoleOverview from "@/components/tools/RequisitionRoleOverview";
 
 const FEATURE_KEY = "Talent.ai";
 
 export default async function RequisitionCandidatesPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ view?: string; stage?: string }>;
 }) {
   const { id } = await params;
+  const { view, stage } = await searchParams;
+  // A stage-filtered deep link (from the pipeline table's per-stage cells)
+  // always means "show me candidates in this stage" -- default to the
+  // Role overview tab only when nothing else says otherwise.
+  const showCandidates = view === "candidates" || !!stage;
   const supabase = await createClient();
   const {
     data: { user },
@@ -53,7 +61,11 @@ export default async function RequisitionCandidatesPage({
   return (
     <AppShell title="Talent.ai">
       {hasAccess ? (
-        <RequisitionCandidatesView requisitionId={id} />
+        showCandidates ? (
+          <RequisitionCandidatesView requisitionId={id} />
+        ) : (
+          <RequisitionRoleOverview requisitionId={id} />
+        )
       ) : (
         <AccessDenied reason='The admin hasn’t granted you access to "Talent.ai" yet.' />
       )}

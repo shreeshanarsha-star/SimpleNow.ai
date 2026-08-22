@@ -8,6 +8,7 @@ import { HScroller } from "@/components/Scroller";
 import { STAGES, STAGE_LABEL } from "@/lib/talentStages";
 import { rejectionReasonLabel } from "@/lib/talentRejectionReasons";
 import RejectionReasonModal from "@/components/tools/RejectionReasonModal";
+import RequisitionTabs from "@/components/tools/RequisitionTabs";
 import { daysSince, isStale } from "@/lib/talentSla";
 
 type Candidate = {
@@ -366,6 +367,8 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
           </button>
         </div>
       </div>
+
+      <RequisitionTabs requisitionId={requisitionId} active="candidates" />
 
       <div className="flex gap-3 flex-wrap items-stretch">
         <div className="flex-1 min-w-[280px] border border-border rounded-lg bg-surface flex flex-col">
