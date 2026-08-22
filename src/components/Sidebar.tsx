@@ -111,6 +111,14 @@ export default function Sidebar({
           active={isActive(`/departments/${PERSONAL_TOOLS.id}`)}
           onNavigate={onClose}
         />
+        <SbLink
+          href="/chat"
+          icon="chat"
+          name="Team Chat"
+          active={isActive("/chat")}
+          dotStatus="live"
+          onNavigate={onClose}
+        />
 
         <div className="text-[10px] font-semibold tracking-wider uppercase text-ink-muted px-2.5 pt-3 pb-1.5">
           AI Systems — by department

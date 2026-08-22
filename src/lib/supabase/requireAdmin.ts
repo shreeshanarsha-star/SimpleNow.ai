@@ -99,6 +99,47 @@ export async function requireFeatureAccess(featureKey: string) {
   return { user, supabase, isAdmin: false, orgId: profile.org_id as string };
 }
 
+// Platform owner, OR any member of an approved organization. Use for
+// bundled, non-purchasable platform features (like Team Chat) that every
+// approved org gets automatically -- no feature_access grant needed.
+export async function requireOrgMember() {
+  const { user, supabase } = await requireUser();
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_admin, org_id, full_name, email")
+    .eq("id", user.id)
+    .single();
+
+  const displayName = profile?.full_name || profile?.email || user.email || "Someone";
+
+  if (profile?.is_admin) {
+    return { user, supabase, isAdmin: true, orgId: profile.org_id as string | null, displayName };
+  }
+
+  if (!profile?.org_id) {
+    throw unauthorized(
+      "Your account isn't part of an organization yet. Create one or ask your organization's admin to add you.",
+      403
+    );
+  }
+
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("status")
+    .eq("id", profile.org_id)
+    .maybeSingle();
+
+  if (org?.status !== "approved") {
+    throw unauthorized(
+      "Your organization is still pending approval from the platform owner.",
+      403
+    );
+  }
+
+  return { user, supabase, isAdmin: false, orgId: profile.org_id as string, displayName };
+}
+
 // The platform owner, OR the org_admin of the given organization. Use for
 // routes that manage members/roles/settings within one organization.
 export async function requireOrgAdmin() {

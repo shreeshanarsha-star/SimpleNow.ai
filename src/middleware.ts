@@ -37,7 +37,8 @@ export async function middleware(request: NextRequest) {
   const isAdminRoute =
     request.nextUrl.pathname.startsWith("/admin") ||
     request.nextUrl.pathname.startsWith("/tools") ||
-    request.nextUrl.pathname.startsWith("/org");
+    request.nextUrl.pathname.startsWith("/org") ||
+    request.nextUrl.pathname.startsWith("/chat");
   const isLoginRoute = request.nextUrl.pathname === "/login";
 
   if (isAdminRoute && !user) {
@@ -64,5 +65,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/tools/:path*", "/org/:path*", "/login"],
+  matcher: ["/admin/:path*", "/tools/:path*", "/org/:path*", "/chat/:path*", "/login"],
 };
