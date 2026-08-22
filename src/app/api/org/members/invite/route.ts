@@ -65,8 +65,13 @@ export async function POST(req: Request) {
   }
 
   const origin = new URL(req.url).origin;
+  // "recovery", not "invite" -- the user already exists (createUser() just
+  // made them). generateLink's "invite" type tries to create the user as
+  // part of generating the link, which collides with the account we just
+  // created and fails with "already registered". "recovery" issues a
+  // password-set link for an existing user, which is exactly this case.
   const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
-    type: "invite",
+    type: "recovery",
     email,
     options: { redirectTo: `${origin}/auth/callback?next=/reset-password` },
   });
