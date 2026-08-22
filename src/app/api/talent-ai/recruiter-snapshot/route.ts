@@ -57,7 +57,8 @@ export async function GET() {
     .from("talent_requisitions")
     .select("id, req_no, title, department, location, status, headcount")
     .in("id", reqIds)
-    .eq("org_id", orgId);
+    .eq("org_id", orgId)
+    .order("req_no", { ascending: true });
   const reqById = new Map((requisitions || []).map((r) => [r.id, r]));
 
   const { data: candidates } = await admin
