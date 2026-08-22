@@ -6,7 +6,7 @@ import TalentAiBoard from "@/components/tools/TalentAiBoard";
 
 type Me = { roles: string[]; isAdmin: boolean; isOrgAdmin?: boolean; profile: { full_name: string | null; email: string | null; manager_id: string | null } | null };
 type ActionItem = { id: string; kind: string; title: string; detail: string; link: string; daysWaiting: number };
-type Tab = "home" | "overview" | "funnel" | "approvals" | "assign" | "recruiter" | "jobs" | "admin";
+type Tab = "home" | "funnel" | "approvals" | "assign" | "recruiter" | "projects" | "jobs" | "admin";
 
 export default function TalentWorkspace() {
   const [me, setMe] = useState<Me | null>(null);
@@ -25,15 +25,16 @@ export default function TalentWorkspace() {
   const canApprove = isAdmin || roles.includes("reporting_manager") || roles.includes("hr_approver");
   const canAssign = isAdmin || roles.includes("ta_head");
   const canRecruit = isAdmin || roles.includes("recruiter") || roles.includes("ta_head");
+  const isRecruiterOnly = roles.includes("recruiter") && !isAdmin && !isOrgAdmin;
 
   const tabs: { id: Tab; label: string; show: boolean }[] = [
-    { id: "home", label: "Home", show: true },
-    { id: "overview", label: "Requisitions", show: true },
+    { id: "home", label: "My requisitions", show: true },
     { id: "recruiter", label: "Search candidates", show: canRecruit },
     { id: "funnel", label: "My analytics", show: canRecruit || canAssign || isAdmin },
+    { id: "projects", label: "My Projects", show: canRecruit },
     { id: "approvals", label: "Approvals", show: canApprove },
     { id: "assign", label: "TA Assignment", show: canAssign },
-    { id: "jobs", label: "My Jobs & Referrals", show: true },
+    { id: "jobs", label: "My Jobs & Referrals", show: !isRecruiterOnly },
     { id: "admin", label: "Admin", show: canManageRoles },
   ];
 
@@ -53,7 +54,7 @@ export default function TalentWorkspace() {
         ))}
       </div>
 
-      {tab !== "home" && items.length > 0 && (
+      {items.length > 0 && (
         <div className="border border-border rounded-md p-3 bg-brand-wash flex flex-col gap-1.5">
           <div className="text-[11px] font-bold uppercase tracking-wider text-brand">Needs your action ({items.length})</div>
           {items.slice(0, 5).map((it) => (
@@ -67,12 +68,12 @@ export default function TalentWorkspace() {
         </div>
       )}
 
-      {tab === "home" && <HomePanel me={me} items={items} roleFlags={{ canApprove, canAssign, canRecruit, isAdmin, isOrgAdmin }} onNavigate={setTab} />}
-      {tab === "overview" && <TalentAiBoard />}
+      {tab === "home" && <MyRequisitionsPanel me={me} roleFlags={{ canApprove, canAssign, canRecruit, isAdmin, isOrgAdmin }} onNavigate={setTab} />}
       {tab === "funnel" && <FunnelPanel />}
       {tab === "approvals" && <ApprovalsPanel />}
       {tab === "assign" && <AssignPanel />}
       {tab === "recruiter" && <RecruiterToolsPanel />}
+      {tab === "projects" && <ProjectsPanel />}
       {tab === "jobs" && <EmployeeJobsPanel />}
       {tab === "admin" && (
         <div className="flex flex-col gap-6">
@@ -86,29 +87,16 @@ export default function TalentWorkspace() {
 
 // ---------------- Home (role-based dashboard) ----------------
 
-const KIND_META: Record<
-  ActionItem["kind"],
-  { label: string; sectionTitle: string; goTab: Tab }
-> = {
-  approval: { label: "Approval", sectionTitle: "Waiting on your decision", goTab: "approvals" },
-  assignment: { label: "Assignment", sectionTitle: "Needs a recruiter assigned", goTab: "assign" },
-  candidate: { label: "Candidate", sectionTitle: "Candidates to move forward", goTab: "recruiter" },
-  requisition: { label: "Requisition", sectionTitle: "Your requisitions needing edits", goTab: "overview" },
-};
-
-const KIND_ORDER: ActionItem["kind"][] = ["approval", "assignment", "candidate", "requisition"];
-
-function HomePanel({
+function MyRequisitionsPanel({
   me,
-  items,
   roleFlags,
   onNavigate,
 }: {
   me: Me | null;
-  items: ActionItem[];
   roleFlags: { canApprove: boolean; canAssign: boolean; canRecruit: boolean; isAdmin: boolean; isOrgAdmin: boolean };
   onNavigate: (t: Tab) => void;
 }) {
+  const [focusRequisitionId, setFocusRequisitionId] = useState<string | null>(null);
   const name = me?.profile?.full_name || me?.profile?.email?.split("@")[0] || "there";
   const roleLabels: string[] = [];
   if (roleFlags.isAdmin) roleLabels.push("Platform admin");
@@ -118,10 +106,6 @@ function HomePanel({
   }
   if (roleLabels.length === 0) roleLabels.push("Team member");
 
-  const byKind: Record<string, ActionItem[]> = {};
-  for (const it of items) {
-    (byKind[it.kind] ||= []).push(it);
-  }
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
@@ -142,57 +126,9 @@ function HomePanel({
 
       {roleFlags.canAssign && <TAHeadSnapshot onNavigate={onNavigate} />}
       <ManagerSnapshot onNavigate={onNavigate} />
-      {roleFlags.canRecruit && <RecruiterSnapshot onNavigate={onNavigate} />}
+      {roleFlags.canRecruit && <RecruiterSnapshot onNavigate={onNavigate} onOpenRequisition={setFocusRequisitionId} />}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {KIND_ORDER.map((k) => {
-          const meta = KIND_META[k];
-          const count = (byKind[k] || []).length;
-          return (
-            <button
-              key={k}
-              onClick={() => onNavigate(meta.goTab)}
-              className="text-left border border-border rounded-lg p-3 hover:border-brand transition-colors bg-surface"
-            >
-              <div className="text-[24px] font-bold text-ink leading-none">{count}</div>
-              <div className="text-[11px] text-ink-muted mt-1.5 leading-tight">{meta.sectionTitle}</div>
-            </button>
-          );
-        })}
-      </div>
-
-      {items.length === 0 ? (
-        <div className="border border-dashed border-border rounded-lg p-6 text-center text-[13px] text-ink-muted">
-          Nothing needs your attention right now. Check &ldquo;Requisitions&rdquo; for the full pipeline.
-        </div>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {KIND_ORDER.filter((k) => (byKind[k] || []).length > 0).map((k) => {
-            const meta = KIND_META[k];
-            const list = (byKind[k] || []).slice().sort((a, b) => b.daysWaiting - a.daysWaiting);
-            return (
-              <div key={k} className="border border-border rounded-lg overflow-hidden">
-                <div className="flex items-center justify-between px-3.5 py-2.5 bg-surface-muted border-b border-border">
-                  <div className="text-[12px] font-bold text-ink">{meta.sectionTitle}</div>
-                  <button onClick={() => onNavigate(meta.goTab)} className="text-[11px] font-semibold text-brand">
-                    View all →
-                  </button>
-                </div>
-                <div className="divide-y divide-border">
-                  {list.map((it) => (
-                    <a key={it.id} href={it.link} className="flex items-center justify-between gap-2 px-3.5 py-2.5 hover:bg-brand-wash/40 text-[12.5px]">
-                      <span>
-                        <strong>{it.title}</strong> — <span className="text-ink-muted">{it.detail}</span>
-                      </span>
-                      <span className="text-[10.5px] text-ink-muted flex-shrink-0">{it.daysWaiting}d waiting</span>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <TalentAiBoard focusRequisitionId={focusRequisitionId} onFocusHandled={() => setFocusRequisitionId(null)} />
     </div>
   );
 }
@@ -481,7 +417,7 @@ function ManagerSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
     <div className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-surface">
       <div className="flex items-center justify-between">
         <div className="text-[13px] font-bold text-ink">My team &amp; hiring</div>
-        <button onClick={() => onNavigate("overview")} className="text-[11.5px] font-semibold px-2.5 py-1 border border-border rounded-md hover:border-brand">My requisitions</button>
+        <button onClick={() => onNavigate("home")} className="text-[11.5px] font-semibold px-2.5 py-1 border border-border rounded-md hover:border-brand">My requisitions</button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -550,7 +486,7 @@ type RecruiterReqRow = {
 };
 type FunnelColumn = { id: string; label: string };
 
-function RecruiterSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+function RecruiterSnapshot({ onNavigate, onOpenRequisition }: { onNavigate: (t: Tab) => void; onOpenRequisition: (id: string) => void }) {
   const [funnelColumns, setFunnelColumns] = useState<FunnelColumn[]>([]);
   const [myRequisitions, setMyRequisitions] = useState<RecruiterReqRow[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -589,7 +525,7 @@ function RecruiterSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
           </thead>
           <tbody>
             {myRequisitions.map((r) => (
-              <tr key={r.id} className="hover:bg-brand-wash/30 cursor-pointer" onClick={() => (window.location.href = `/tools/talent-ai?requisition=${r.id}`)}>
+              <tr key={r.id} className="hover:bg-brand-wash/30 cursor-pointer" onClick={() => onOpenRequisition(r.id)}>
                 <td className="px-2.5 py-2 border-b border-border sticky left-0 bg-surface">
                   <div className="font-bold text-[12.5px]">{r.title}</div>
                   <div className="text-[10.5px] text-ink-muted">{r.department || "No department"}</div>
@@ -862,10 +798,69 @@ function RecruiterToolsPanel() {
   const [results, setResults] = useState<SearchCandidate[]>([]);
   const [externalResults, setExternalResults] = useState<{ title: string; link: string; snippet: string }[]>([]);
   const [searching, setSearching] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  async function runSearch() {
+    if (!q.trim()) return;
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/talent-ai/candidates/search?q=${encodeURIComponent(q)}&external=${external}`);
+      const data = await res.json();
+      setResults(data.candidates || []);
+      setExternalResults(data.external || []);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  return (
+    <div>
+      <h3 className="m-0 text-[15px] font-bold mb-2">Search the candidate database</h3>
+      <div className="flex gap-2 flex-wrap">
+        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runSearch()} className="input flex-1 min-w-[180px]" placeholder="Name, skill, email…" />
+        <label className="flex items-center gap-1.5 text-[12px] flex-shrink-0">
+          <input type="checkbox" checked={external} onChange={(e) => setExternal(e.target.checked)} /> Also search LinkedIn
+        </label>
+        <button onClick={runSearch} disabled={searching} className="bg-brand text-white text-[12.5px] font-bold px-3 py-2 rounded-sm shadow-soft-sm disabled:opacity-50 flex-shrink-0">
+          {searching ? "Searching…" : "Search"}
+        </button>
+      </div>
+      {results.length > 0 && (
+        <div className="flex flex-col gap-1.5 mt-3">
+          {results.map((c) => (
+            <div key={c.id} className="flex items-center gap-2 border border-border rounded-sm p-2 text-[12.5px]">
+              <span className="font-bold">{c.name}</span>
+              <span className="text-ink-muted">{c.email}</span>
+              <span className="ml-auto text-[10.5px] bg-page px-1.5 py-0.5 rounded-full capitalize">{c.stage}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {externalResults.length > 0 && (
+        <div className="flex flex-col gap-1.5 mt-3">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">External (LinkedIn)</div>
+          {externalResults.map((r, i) => (
+            <a key={i} href={r.link} target="_blank" rel="noreferrer" className="border border-border rounded-sm p-2 text-[12px] text-ink-2">
+              <div className="font-bold">{r.title}</div>
+              <div className="text-ink-muted">{r.snippet}</div>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------- My Projects (candidate lists, mass email, questionnaires) ----------------
+
+function ProjectsPanel() {
   const [lists, setLists] = useState<CandidateList[]>([]);
   const [newListName, setNewListName] = useState("");
+  const [openListId, setOpenListId] = useState<string | null>(null);
+
+  const [addQ, setAddQ] = useState("");
+  const [addResults, setAddResults] = useState<SearchCandidate[]>([]);
+  const [addSearching, setAddSearching] = useState(false);
+  const [addSelectedIds, setAddSelectedIds] = useState<Set<string>>(new Set());
 
   const [emailSubject, setEmailSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
@@ -884,27 +879,6 @@ function RecruiterToolsPanel() {
   }
   useEffect(() => { loadLists(); loadTemplates(); }, []);
 
-  async function runSearch() {
-    if (!q.trim()) return;
-    setSearching(true);
-    try {
-      const res = await fetch(`/api/talent-ai/candidates/search?q=${encodeURIComponent(q)}&external=${external}`);
-      const data = await res.json();
-      setResults(data.candidates || []);
-      setExternalResults(data.external || []);
-    } finally {
-      setSearching(false);
-    }
-  }
-
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
-
   async function createList() {
     if (!newListName.trim()) return;
     await fetch("/api/talent-ai/lists", {
@@ -916,13 +890,36 @@ function RecruiterToolsPanel() {
     loadLists();
   }
 
+  function toggleAddSelect(id: string) {
+    setAddSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function runAddSearch() {
+    if (!addQ.trim()) return;
+    setAddSearching(true);
+    try {
+      const res = await fetch(`/api/talent-ai/candidates/search?q=${encodeURIComponent(addQ)}`);
+      const data = await res.json();
+      setAddResults(data.candidates || []);
+    } finally {
+      setAddSearching(false);
+    }
+  }
+
   async function addSelectedToList(listId: string) {
-    if (selectedIds.size === 0) return;
+    if (addSelectedIds.size === 0) return;
     await fetch("/api/talent-ai/lists", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "add_members", listId, candidateIds: Array.from(selectedIds) }),
+      body: JSON.stringify({ action: "add_members", listId, candidateIds: Array.from(addSelectedIds) }),
     });
+    setAddSelectedIds(new Set());
+    setAddResults([]);
+    setAddQ("");
     loadLists();
   }
 
@@ -932,12 +929,14 @@ function RecruiterToolsPanel() {
       setEmailStatus("Subject and body are required.");
       return;
     }
-    const body: Record<string, unknown> = { subject: emailSubject, html: emailBody };
-    if (emailListId) body.listId = emailListId; else body.candidateIds = Array.from(selectedIds);
+    if (!emailListId) {
+      setEmailStatus("Pick a project to email.");
+      return;
+    }
     const res = await fetch("/api/talent-ai/mass-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ subject: emailSubject, html: emailBody, listId: emailListId }),
     });
     const data = await res.json();
     if (!res.ok) setEmailStatus(data.error || "Send failed.");
@@ -960,54 +959,45 @@ function RecruiterToolsPanel() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h3 className="m-0 text-[15px] font-bold mb-2">Search the candidate database</h3>
-        <div className="flex gap-2 flex-wrap">
-          <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runSearch()} className="input flex-1 min-w-[180px]" placeholder="Name, skill, email…" />
-          <label className="flex items-center gap-1.5 text-[12px] flex-shrink-0">
-            <input type="checkbox" checked={external} onChange={(e) => setExternal(e.target.checked)} /> Also search LinkedIn
-          </label>
-          <button onClick={runSearch} disabled={searching} className="bg-brand text-white text-[12.5px] font-bold px-3 py-2 rounded-sm shadow-soft-sm disabled:opacity-50 flex-shrink-0">
-            {searching ? "Searching…" : "Search"}
-          </button>
-        </div>
-        {results.length > 0 && (
-          <div className="flex flex-col gap-1.5 mt-3">
-            {results.map((c) => (
-              <label key={c.id} className="flex items-center gap-2 border border-border rounded-sm p-2 text-[12.5px]">
-                <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} />
-                <span className="font-bold">{c.name}</span>
-                <span className="text-ink-muted">{c.email}</span>
-                <span className="ml-auto text-[10.5px] bg-page px-1.5 py-0.5 rounded-full capitalize">{c.stage}</span>
-              </label>
-            ))}
-          </div>
-        )}
-        {externalResults.length > 0 && (
-          <div className="flex flex-col gap-1.5 mt-3">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">External (LinkedIn)</div>
-            {externalResults.map((r, i) => (
-              <a key={i} href={r.link} target="_blank" rel="noreferrer" className="border border-border rounded-sm p-2 text-[12px] text-ink-2">
-                <div className="font-bold">{r.title}</div>
-                <div className="text-ink-muted">{r.snippet}</div>
-              </a>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div>
-        <h3 className="m-0 text-[15px] font-bold mb-2">Candidate lists</h3>
+        <h3 className="m-0 text-[15px] font-bold mb-2">My Projects</h3>
         <div className="flex gap-2 mb-2">
-          <input value={newListName} onChange={(e) => setNewListName(e.target.value)} className="input" placeholder="New list name (e.g. 'Backend shortlist')" />
-          <button onClick={createList} className="border border-border text-[12px] font-bold px-3 py-2 rounded-sm bg-surface flex-shrink-0">Create list</button>
+          <input value={newListName} onChange={(e) => setNewListName(e.target.value)} className="input" placeholder="New project name (e.g. 'Backend shortlist')" />
+          <button onClick={createList} className="border border-border text-[12px] font-bold px-3 py-2 rounded-sm bg-surface flex-shrink-0">Create project</button>
         </div>
         <div className="flex flex-col gap-1.5">
           {lists.map((l) => (
-            <div key={l.id} className="flex items-center justify-between border border-border rounded-sm p-2 text-[12.5px]">
-              <span><strong>{l.name}</strong> — {(l.talent_candidate_list_members || []).length} candidates</span>
-              <button onClick={() => addSelectedToList(l.id)} disabled={selectedIds.size === 0} className="text-[11px] font-bold text-brand disabled:opacity-40">
-                Add {selectedIds.size || ""} selected
+            <div key={l.id} className="border border-border rounded-sm overflow-hidden">
+              <button
+                onClick={() => setOpenListId(openListId === l.id ? null : l.id)}
+                className="w-full flex items-center justify-between p-2 text-[12.5px] text-left"
+              >
+                <span><strong>{l.name}</strong> — {(l.talent_candidate_list_members || []).length} candidates</span>
+                <span className="text-[11px] text-brand font-semibold">{openListId === l.id ? "Close" : "Add candidates"}</span>
               </button>
+              {openListId === l.id && (
+                <div className="border-t border-border p-2.5 bg-surface-muted flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <input value={addQ} onChange={(e) => setAddQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runAddSearch()} className="input flex-1" placeholder="Search candidates to add…" />
+                    <button onClick={runAddSearch} disabled={addSearching} className="border border-border text-[12px] font-bold px-3 py-2 rounded-sm bg-surface disabled:opacity-50 flex-shrink-0">
+                      {addSearching ? "…" : "Search"}
+                    </button>
+                  </div>
+                  {addResults.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      {addResults.map((c) => (
+                        <label key={c.id} className="flex items-center gap-2 border border-border rounded-sm p-2 text-[12px] bg-surface">
+                          <input type="checkbox" checked={addSelectedIds.has(c.id)} onChange={() => toggleAddSelect(c.id)} />
+                          <span className="font-bold">{c.name}</span>
+                          <span className="text-ink-muted">{c.email}</span>
+                        </label>
+                      ))}
+                      <button onClick={() => addSelectedToList(l.id)} disabled={addSelectedIds.size === 0} className="text-[11px] font-bold text-brand disabled:opacity-40 self-start">
+                        Add {addSelectedIds.size || ""} selected to this project
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -1017,7 +1007,7 @@ function RecruiterToolsPanel() {
         <h3 className="m-0 text-[15px] font-bold mb-2">Mass email</h3>
         <div className="flex flex-col gap-2">
           <select value={emailListId} onChange={(e) => setEmailListId(e.target.value)} className="input max-w-[280px]">
-            <option value="">Use selected candidates instead ({selectedIds.size})</option>
+            <option value="">Pick a project…</option>
             {lists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
           <input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="input" placeholder="Subject" />
@@ -1264,8 +1254,8 @@ function AdminDashboard({ onNavigate }: { onNavigate: (t: Tab) => void }) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="m-0 text-[15px] font-bold">Administrator dashboard</h3>
         <div className="flex items-center gap-2">
-          <button onClick={() => onNavigate("overview")} className="text-[12px] font-semibold px-3 py-1.5 border border-border rounded-md hover:border-brand">Requisitions</button>
-          <button onClick={() => onNavigate("funnel")} className="text-[12px] font-semibold px-3 py-1.5 border border-border rounded-md hover:border-brand">Funnel &amp; Sources</button>
+          <button onClick={() => onNavigate("home")} className="text-[12px] font-semibold px-3 py-1.5 border border-border rounded-md hover:border-brand">My requisitions</button>
+          <button onClick={() => onNavigate("funnel")} className="text-[12px] font-semibold px-3 py-1.5 border border-border rounded-md hover:border-brand">My analytics</button>
         </div>
       </div>
 

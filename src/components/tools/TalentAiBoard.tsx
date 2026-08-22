@@ -93,7 +93,13 @@ function stepperRange(stage: string): { min: number; max: number } | null {
   return null;
 }
 
-export default function TalentAiBoard() {
+export default function TalentAiBoard({
+  focusRequisitionId,
+  onFocusHandled,
+}: {
+  focusRequisitionId?: string | null;
+  onFocusHandled?: () => void;
+} = {}) {
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +117,12 @@ export default function TalentAiBoard() {
   useEffect(() => {
     loadRequisitions();
   }, []);
+
+  useEffect(() => {
+    if (!focusRequisitionId) return;
+    openRequisition(focusRequisitionId).finally(() => onFocusHandled?.());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequisitionId]);
 
   async function loadRequisitions() {
     setLoading(true);
