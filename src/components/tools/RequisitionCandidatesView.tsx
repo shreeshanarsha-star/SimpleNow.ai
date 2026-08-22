@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import Icon from "@/components/Icon";
 import { HScroller } from "@/components/Scroller";
 import { STAGES, STAGE_LABEL } from "@/lib/talentStages";
 import { rejectionReasonLabel } from "@/lib/talentRejectionReasons";
@@ -60,15 +61,11 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
   const [error, setError] = useState<string | null>(null);
 
   const [q, setQ] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [company, setCompany] = useState("");
-  const [location, setLocation] = useState("");
-  const [noticePeriod, setNoticePeriod] = useState("");
   const [ctcMin, setCtcMin] = useState("");
   const [ctcMax, setCtcMax] = useState("");
   const [stageFilter, setStageFilter] = useState(initialStage);
   const [staleOnly, setStaleOnly] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [movingId, setMovingId] = useState<string | null>(null);
@@ -114,19 +111,27 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
       if (stageFilter !== "all" && c.stage !== stageFilter) return false;
       if (staleOnly && !isStale(c.stage, daysSince(c.stage_entered_at))) return false;
       if (q) {
-        const hay = `${c.name} ${c.resume_text || ""} ${(c.tags || []).join(" ")}`.toLowerCase();
+        const hay = [
+          c.name,
+          c.email,
+          c.phone,
+          c.current_company,
+          c.current_location,
+          c.notice_period,
+          c.qualification,
+          c.resume_text,
+          ...(c.tags || []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
         if (!hay.includes(q.toLowerCase())) return false;
       }
-      if (phone && !(c.phone || "").toLowerCase().includes(phone.toLowerCase())) return false;
-      if (email && !(c.email || "").toLowerCase().includes(email.toLowerCase())) return false;
-      if (company && !(c.current_company || "").toLowerCase().includes(company.toLowerCase())) return false;
-      if (location && !(c.current_location || "").toLowerCase().includes(location.toLowerCase())) return false;
-      if (noticePeriod && !(c.notice_period || "").toLowerCase().includes(noticePeriod.toLowerCase())) return false;
       if (ctcMin && (c.expected_ctc == null || c.expected_ctc < Number(ctcMin))) return false;
       if (ctcMax && (c.expected_ctc == null || c.expected_ctc > Number(ctcMax))) return false;
       return true;
     });
-  }, [candidates, q, phone, email, company, location, noticePeriod, ctcMin, ctcMax, stageFilter, staleOnly]);
+  }, [candidates, q, ctcMin, ctcMax, stageFilter, staleOnly]);
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -362,38 +367,83 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
         </div>
       </div>
 
-      <div className="flex gap-3 flex-wrap items-stretch border border-border rounded-lg p-3 bg-surface">
-        <div className="flex-1 min-w-[300px] grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Keyword / name" className="input" />
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className="input" />
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="input" />
-          <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Current company" className="input" />
-          <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location" className="input" />
-          <input value={noticePeriod} onChange={(e) => setNoticePeriod(e.target.value)} placeholder="Notice period" className="input" />
-          <input value={ctcMin} onChange={(e) => setCtcMin(e.target.value)} placeholder="Expected CTC min" type="number" className="input" />
-          <input value={ctcMax} onChange={(e) => setCtcMax(e.target.value)} placeholder="Expected CTC max" type="number" className="input" />
-          <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} className="input col-span-2">
-            <option value="all">All stages</option>
-            {STAGES.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-          <label className="flex items-center gap-1.5 text-[12px] text-ink-2 px-1">
-            <input type="checkbox" checked={staleOnly} onChange={(e) => setStaleOnly(e.target.checked)} />
-            Stale only
-          </label>
-          {(q || phone || email || company || location || noticePeriod || ctcMin || ctcMax || stageFilter !== "all" || staleOnly) && (
-            <button
-              onClick={() => {
-                setQ(""); setPhone(""); setEmail(""); setCompany(""); setLocation("");
-                setNoticePeriod(""); setCtcMin(""); setCtcMax(""); setStageFilter("all"); setStaleOnly(false);
-              }}
-              className="text-[11px] font-semibold text-ink-muted hover:text-brand self-center"
+      <div className="flex gap-3 flex-wrap items-stretch">
+        <div className="flex-1 min-w-[280px] border border-border rounded-lg bg-surface flex flex-col">
+          <div className="flex items-center gap-2 px-3 py-2">
+            <Icon name="search" className="w-4 h-4 text-ink-muted flex-shrink-0" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search by name, email, phone, company, location, skills…"
+              className="flex-1 bg-transparent outline-none text-[13px] text-ink placeholder:text-ink-muted"
+            />
+            {q && (
+              <button onClick={() => setQ("")} className="text-ink-muted hover:text-ink flex-shrink-0" aria-label="Clear search">
+                <Icon name="x" className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 px-3 py-2 border-t border-border flex-wrap">
+            <select
+              value={stageFilter}
+              onChange={(e) => setStageFilter(e.target.value)}
+              className="bg-transparent outline-none text-[12px] font-semibold text-ink-2 border border-border rounded-sm px-2 py-1"
             >
-              Clear filters
+              <option value="all">All stages</option>
+              {STAGES.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+
+            <label className="flex items-center gap-1.5 text-[12px] text-ink-2">
+              <input type="checkbox" checked={staleOnly} onChange={(e) => setStaleOnly(e.target.checked)} />
+              Stale only
+            </label>
+
+            <button
+              onClick={() => setShowFilters((v) => !v)}
+              className={`flex items-center gap-1 text-[12px] font-semibold px-2 py-1 rounded-sm ${
+                showFilters || ctcMin || ctcMax ? "text-brand bg-brand-wash" : "text-ink-2 hover:text-brand"
+              }`}
+            >
+              CTC range
+              <Icon name="chevronLeft" className={`w-3 h-3 transition-transform ${showFilters ? "-rotate-90" : "rotate-180"}`} />
             </button>
+
+            {(q || ctcMin || ctcMax || stageFilter !== "all" || staleOnly) && (
+              <button
+                onClick={() => {
+                  setQ(""); setCtcMin(""); setCtcMax(""); setStageFilter("all"); setStaleOnly(false);
+                }}
+                className="text-[11.5px] font-semibold text-ink-muted hover:text-brand ml-auto"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+
+          {showFilters && (
+            <div className="flex items-center gap-2 px-3 py-2 border-t border-border">
+              <span className="text-[11.5px] font-semibold text-ink-muted">Expected CTC</span>
+              <input
+                value={ctcMin}
+                onChange={(e) => setCtcMin(e.target.value)}
+                placeholder="Min"
+                type="number"
+                className="input py-1 text-[12px] w-[100px]"
+              />
+              <span className="text-ink-muted text-[12px]">–</span>
+              <input
+                value={ctcMax}
+                onChange={(e) => setCtcMax(e.target.value)}
+                placeholder="Max"
+                type="number"
+                className="input py-1 text-[12px] w-[100px]"
+              />
+            </div>
           )}
         </div>
 
@@ -407,8 +457,8 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
             if (file) handleResumeFile(file);
           }}
           onClick={() => document.getElementById("req-candidate-resume-input")?.click()}
-          className={`w-full sm:w-[220px] flex-shrink-0 border-2 border-dashed rounded-md px-3 py-3 text-center cursor-pointer transition-colors flex items-center justify-center ${
-            dragOver ? "border-brand bg-brand-wash" : "border-border bg-page"
+          className={`w-full sm:w-[210px] flex-shrink-0 border rounded-lg px-4 py-3 text-center cursor-pointer transition-colors flex flex-col items-center justify-center gap-1.5 ${
+            dragOver ? "border-brand bg-brand-wash" : "border-border bg-surface hover:border-brand/60"
           }`}
         >
           <input
@@ -421,9 +471,14 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
           {uploading ? (
             <p className="m-0 text-[12px] text-ink-muted">Adding candidate…</p>
           ) : (
-            <p className="m-0 text-[12px] text-ink-muted">
-              Drag &amp; drop a resume to <span className="text-brand font-bold underline">add a candidate</span>
-            </p>
+            <>
+              <Icon name="upload" className="w-4 h-4 text-brand" />
+              <p className="m-0 text-[12px] leading-snug">
+                <span className="text-brand font-bold">Add a candidate</span>
+                <br />
+                <span className="text-ink-muted">Drag & drop a resume</span>
+              </p>
+            </>
           )}
         </div>
       </div>
