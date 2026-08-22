@@ -11,11 +11,17 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
+  // Password-recovery links reuse this same exchange step, then need to
+  // land on the "set a new password" screen instead of the normal
+  // role-based routing below.
+  const next = searchParams.get("next");
 
   if (code) {
     const supabase = await createClient();
     const { error, data } = await supabase.auth.exchangeCodeForSession(code);
     if (!error && data.user) {
+      if (next) return NextResponse.redirect(`${origin}${next}`);
+
       const { data: profile } = await supabase
         .from("profiles")
         .select("is_admin, org_id")

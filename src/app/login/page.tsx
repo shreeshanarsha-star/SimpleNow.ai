@@ -93,7 +93,12 @@ function LoginForm() {
           className="w-full border border-border rounded-sm px-3 py-2.5 text-[13.5px] mb-4 outline-none focus:border-brand"
         />
 
-        <label className="block text-[12px] font-bold mb-1.5">Password</label>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="block text-[12px] font-bold">Password</label>
+          <Link href="/forgot-password" className="text-[11.5px] text-brand font-bold">
+            Forgot password?
+          </Link>
+        </div>
         <input
           type="password"
           required

@@ -48,8 +48,14 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isLoginRoute && user) {
+    // Previously this always sent signed-in visitors to /admin, which
+    // meant any non-owner who landed on /login (e.g. via the "Forgot
+    // password?" round trip, or just re-visiting the URL) got redirected
+    // into the owner's approval console. Send them home instead --
+    // /login's own submit handler is what knows to route the actual
+    // platform owner to /admin.
     const url = request.nextUrl.clone();
-    url.pathname = "/admin";
+    url.pathname = "/";
     url.searchParams.delete("next");
     return NextResponse.redirect(url);
   }

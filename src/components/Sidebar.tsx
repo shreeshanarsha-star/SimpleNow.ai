@@ -144,6 +144,24 @@ export default function Sidebar({
           own flex-col + h-screen, on the same line as GlobalSearchBar's
           sticky-bottom row in the main column. */}
       <div className="border-t border-border/70 px-4 py-3.5 flex items-center gap-2.5">
+        {!email ? (
+          <Link
+            href="/login"
+            onClick={onClose}
+            className="flex items-center gap-2.5 flex-1 min-w-0 group"
+          >
+            <div className="w-[30px] h-[30px] rounded-full bg-surface border border-border text-ink-muted text-[11.5px] font-semibold flex items-center justify-center flex-shrink-0">
+              ?
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[12.5px] font-semibold text-brand group-hover:underline">
+                Sign in
+              </div>
+              <div className="text-[11px] text-ink-muted">Not signed in</div>
+            </div>
+          </Link>
+        ) : (
+          <>
         <div className="w-[30px] h-[30px] rounded-full bg-gradient-to-br from-brand to-brand-dark text-white text-[11.5px] font-semibold flex items-center justify-center flex-shrink-0 shadow-emblem">
           {initials}
         </div>
@@ -151,7 +169,7 @@ export default function Sidebar({
           <div className="text-[12.5px] font-semibold truncate text-ink" title={displayName}>
             {displayName}
           </div>
-          <div className="text-[11px] text-ink-muted">{email ? "Signed in" : "Guest"}</div>
+          <div className="text-[11px] text-ink-muted">Signed in</div>
         </div>
         {settingsHref && (
           <Link
@@ -174,6 +192,8 @@ export default function Sidebar({
           >
             <Icon name="logout" className="w-[15px] h-[15px]" />
           </button>
+        )}
+          </>
         )}
       </div>
       </aside>
