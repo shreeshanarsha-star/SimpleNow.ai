@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { memberDisplayName, parseMentions, splitMentions, type ChatMember } from "@/lib/chat";
 import Icon from "./Icon";
+import { VScroller } from "./Scroller";
 
 interface Channel {
   id: string;
@@ -207,7 +208,7 @@ export default function ChatPanel({ meId }: { meId: string }) {
           </form>
         )}
 
-        <div className="flex-1 overflow-y-auto -mx-1">
+        <VScroller className="flex-1" trackClassName="-mx-1">
           {loadingChannels && <div className="text-[12px] text-ink-muted px-1">Loading…</div>}
           {!loadingChannels && channels.length === 0 && (
             <div className="text-[12px] text-ink-muted px-1">
@@ -226,7 +227,7 @@ export default function ChatPanel({ meId }: { meId: string }) {
               # {c.name}
             </button>
           ))}
-        </div>
+        </VScroller>
       </div>
 
       {/* Thread */}
@@ -244,7 +245,7 @@ export default function ChatPanel({ meId }: { meId: string }) {
               )}
             </div>
 
-            <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3">
+            <VScroller ref={scrollRef} className="flex-1" trackClassName="px-4 py-3 flex flex-col gap-3">
               {loadingMessages && <div className="text-[12px] text-ink-muted">Loading…</div>}
               {!loadingMessages && messages.length === 0 && (
                 <div className="text-[12px] text-ink-muted">
@@ -279,7 +280,7 @@ export default function ChatPanel({ meId }: { meId: string }) {
                   </div>
                 </div>
               ))}
-            </div>
+            </VScroller>
 
             {error && (
               <div className="mx-4 mb-2 bg-critical-wash text-critical text-[12px] rounded-sm px-3 py-1.5">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
+import { VScroller } from "@/components/Scroller";
 
 type Requisition = {
   id: string;
@@ -1293,8 +1294,9 @@ function CandidateDetail({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
-      <div
-        className="w-full max-w-md h-full bg-surface shadow-soft overflow-y-auto p-5 flex flex-col gap-5"
+      <VScroller
+        className="w-full max-w-md h-full bg-surface shadow-soft"
+        trackClassName="h-full p-5 flex flex-col gap-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between">
@@ -1312,9 +1314,11 @@ function CandidateDetail({
         {candidate.resume_text && (
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1.5">Resume</div>
-            <p className="text-[12px] text-ink-2 whitespace-pre-wrap max-h-40 overflow-y-auto border border-border rounded-sm p-2.5">
-              {candidate.resume_text}
-            </p>
+            <VScroller className="max-h-40 border border-border rounded-sm" trackClassName="max-h-40 p-2.5">
+              <p className="text-[12px] text-ink-2 whitespace-pre-wrap m-0">
+                {candidate.resume_text}
+              </p>
+            </VScroller>
           </div>
         )}
 
@@ -1477,7 +1481,7 @@ function CandidateDetail({
             </button>
           </div>
         </div>
-      </div>
+      </VScroller>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "./Icon";
+import { VScroller } from "./Scroller";
 
 // Bengaluru -- fallback location used only when the browser doesn't
 // share a real one (geolocation denied/unavailable). Askshree is
@@ -203,7 +204,7 @@ export default function TopbarStatus() {
               onClick={() => setNotifOpen(false)}
               className="fixed inset-0 z-10 cursor-default"
             />
-            <div className="absolute right-0 top-[calc(100%+8px)] w-80 max-h-[420px] overflow-y-auto bg-surface border border-border rounded-md shadow-soft-sm p-3 z-20">
+            <VScroller className="absolute right-0 top-[calc(100%+8px)] w-80 max-h-[420px] bg-surface border border-border rounded-md shadow-soft-sm z-20" trackClassName="max-h-[420px] p-3">
               <div className="flex items-center justify-between mb-1.5">
                 <div className="text-[12px] font-semibold text-ink">Notifications</div>
                 {unreadCount > 0 && (
@@ -241,7 +242,7 @@ export default function TopbarStatus() {
                   ))}
                 </div>
               )}
-            </div>
+            </VScroller>
           </>
         )}
       </div>

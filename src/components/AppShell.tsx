@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
+import { VScroller } from "./Scroller";
 
 export default function AppShell({
   title,
@@ -30,8 +31,10 @@ export default function AppShell({
       <Sidebar open={navOpen} onClose={() => setNavOpen(false)} alwaysDrawer={alwaysDrawer} />
       <div className="flex-1 min-w-0 flex flex-col bg-surface rounded-[20px] sm:rounded-[28px] shadow-soft overflow-hidden">
         <Topbar title={title} onMenuClick={() => setNavOpen(true)} alwaysShowMenu={alwaysDrawer} />
-        <main className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-[26px] max-w-[1180px] w-full mx-auto flex flex-col">
-          {children}
+        <main className="flex-1 min-h-0 flex flex-col max-w-[1180px] w-full mx-auto">
+          <VScroller className="flex-1 min-h-0" trackClassName="h-full p-4 sm:p-[26px]">
+            {children}
+          </VScroller>
         </main>
       </div>
     </div>

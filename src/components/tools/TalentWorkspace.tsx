@@ -1,91 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, Fragment } from "react";
+import { useEffect, useState, Fragment } from "react";
 
 import TalentAiBoard from "@/components/tools/TalentAiBoard";
-import Icon from "@/components/Icon";
-
-// Horizontal scroller with animated >> arrow controls instead of a native
-// scrollbar -- used for any wide table/row that needs to scroll sideways.
-// The native scrollbar is hidden via inline CSS below; the arrows do a
-// smooth, animated scrollBy so there is always a visible way to move,
-// including on desktop where a hidden scrollbar would otherwise strand
-// mouse users with no affordance.
-function HScroller({
-  children,
-  className = "",
-  trackClassName = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-  trackClassName?: string;
-}) {
-  const trackRef = useRef<HTMLDivElement>(null);
-  const [canLeft, setCanLeft] = useState(false);
-  const [canRight, setCanRight] = useState(false);
-
-  const updateArrows = () => {
-    const el = trackRef.current;
-    if (!el) return;
-    setCanLeft(el.scrollLeft > 4);
-    setCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
-  };
-
-  useEffect(() => {
-    updateArrows();
-    const el = trackRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(updateArrows);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [children]);
-
-  const scrollBy = (dir: 1 | -1) => {
-    const el = trackRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dir * Math.min(280, el.clientWidth * 0.7), behavior: "smooth" });
-  };
-
-  return (
-    <div className={`relative ${className}`}>
-      <div
-        ref={trackRef}
-        onScroll={updateArrows}
-        className={`overflow-x-auto ${trackClassName}`}
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-      >
-        <style jsx>{`
-          div::-webkit-scrollbar {
-            display: none;
-          }
-        `}</style>
-        {children}
-      </div>
-      {canLeft && (
-        <button
-          onClick={() => scrollBy(-1)}
-          aria-label="Scroll left"
-          className="absolute left-0 top-0 bottom-0 flex items-center px-1 bg-gradient-to-r from-surface via-surface/90 to-transparent"
-        >
-          <span className="w-6 h-6 rounded-full border border-border bg-surface flex items-center justify-center text-ink-muted animate-pulse">
-            <Icon name="chevronLeft" className="w-3.5 h-3.5" />
-          </span>
-        </button>
-      )}
-      {canRight && (
-        <button
-          onClick={() => scrollBy(1)}
-          aria-label="Scroll right"
-          className="absolute right-0 top-0 bottom-0 flex items-center px-1 bg-gradient-to-l from-surface via-surface/90 to-transparent"
-        >
-          <span className="w-6 h-6 rounded-full border border-border bg-surface flex items-center justify-center text-ink-muted animate-pulse">
-            <Icon name="chevronRight" className="w-3.5 h-3.5" />
-          </span>
-        </button>
-      )}
-    </div>
-  );
-}
+import { HScroller, VScroller } from "@/components/Scroller";
 
 type Me = { roles: string[]; isAdmin: boolean; isOrgAdmin?: boolean; profile: { full_name: string | null; email: string | null; manager_id: string | null } | null };
 type ActionItem = { id: string; kind: string; title: string; detail: string; link: string; daysWaiting: number };
@@ -776,7 +694,9 @@ function ApprovalsPanel() {
                 {r.jd_source_text && (
                   <div>
                     <div className="text-[10.5px] font-bold uppercase tracking-wider text-ink-muted mb-1">Full job description</div>
-                    <p className="m-0 text-ink-2 whitespace-pre-wrap max-h-64 overflow-y-auto">{r.jd_source_text}</p>
+                    <VScroller className="max-h-64" trackClassName="max-h-64">
+                      <p className="m-0 text-ink-2 whitespace-pre-wrap">{r.jd_source_text}</p>
+                    </VScroller>
                   </div>
                 )}
                 {r.comments && (
@@ -1403,7 +1323,7 @@ function AdminDashboard({ onNavigate }: { onNavigate: (t: Tab) => void }) {
             <div className="text-[12px] font-bold">Approvals pending ({pendingApprovals.length})</div>
             <button onClick={() => onNavigate("approvals")} className="text-[11px] font-semibold text-brand">View all →</button>
           </div>
-          <div className="divide-y divide-border max-h-[220px] overflow-y-auto">
+          <VScroller className="max-h-[220px]" trackClassName="max-h-[220px] divide-y divide-border">
             {pendingApprovals.length === 0 && <div className="p-3.5 text-[12px] text-ink-muted">Nothing waiting on an approver right now.</div>}
             {pendingApprovals.slice(0, 6).map((it) => (
               <a key={it.id} href={it.link} className="flex items-center justify-between gap-2 px-3.5 py-2.5 hover:bg-brand-wash/40 text-[12px]">
@@ -1411,7 +1331,7 @@ function AdminDashboard({ onNavigate }: { onNavigate: (t: Tab) => void }) {
                 <span className="text-[10.5px] text-ink-muted flex-shrink-0">{it.daysWaiting}d</span>
               </a>
             ))}
-          </div>
+          </VScroller>
         </div>
       </div>
 
@@ -1437,7 +1357,7 @@ function AdminDashboard({ onNavigate }: { onNavigate: (t: Tab) => void }) {
         <div className="flex items-center justify-between px-3.5 py-2.5 bg-surface-muted border-b border-border">
           <div className="text-[12px] font-bold">People in your org ({users.length})</div>
         </div>
-        <div className="overflow-x-auto">
+        <HScroller>
           <table className="w-full text-[12px]">
             <thead>
               <tr className="text-left text-ink-muted border-b border-border">
@@ -1456,7 +1376,7 @@ function AdminDashboard({ onNavigate }: { onNavigate: (t: Tab) => void }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </HScroller>
       </div>
     </div>
   );
