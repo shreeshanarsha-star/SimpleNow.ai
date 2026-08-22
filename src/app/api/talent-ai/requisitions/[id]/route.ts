@@ -3,6 +3,8 @@ import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
 import { summarizePipeline } from "@/lib/talentAI";
 
 const FEATURE_KEY = "Talent.ai";
+const REQ_TYPES = new Set(["new", "replacement", "perpetual"]);
+const WORK_MODES = new Set(["remote", "hybrid", "onsite"]);
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   let supabase;
@@ -26,21 +28,55 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  let supabase;
+  let supabase, user;
   try {
-    ({ supabase } = await requireFeatureAccess(FEATURE_KEY));
+    ({ supabase, user } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
   const { id } = await params;
   const body = await req.json();
 
+  const { data: existing } = await supabase
+    .from("talent_requisitions")
+    .select("status, title, created_by")
+    .eq("id", id)
+    .single();
+
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  for (const key of ["title", "department", "location", "status", "priority", "hiring_manager", "description"]) {
+  for (const key of [
+    "title",
+    "department",
+    "location",
+    "status",
+    "priority",
+    "hiring_manager",
+    "description", // relabeled "Justification" in the UI
+    "replacement_name",
+    "replacement_employee_id",
+    "cost_center",
+    "comments",
+    "target_hire_date",
+    "job_level",
+  ]) {
     if (key in body) patch[key] = body[key];
   }
   if ("employmentType" in body) patch.employment_type = body.employmentType;
   if ("headcount" in body) patch.headcount = Number(body.headcount) || 1;
+  if ("requisitionType" in body && REQ_TYPES.has(body.requisitionType)) {
+    patch.requisition_type = body.requisitionType;
+  }
+  if ("workMode" in body) {
+    patch.work_mode = WORK_MODES.has(body.workMode) ? body.workMode : null;
+  }
+  if ("isConfidential" in body) patch.is_confidential = !!body.isConfidential;
+  if ("isInternalOnly" in body) patch.is_internal_only = !!body.isInternalOnly;
+  if ("compMin" in body) {
+    patch.comp_min = body.compMin === "" || body.compMin == null ? null : Number(body.compMin);
+  }
+  if ("compMax" in body) {
+    patch.comp_max = body.compMax === "" || body.compMax == null ? null : Number(body.compMax);
+  }
 
   const { data: requisition, error } = await supabase
     .from("talent_requisitions")
@@ -52,6 +88,31 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // Status changed: log an audit row and, if the change wasn't made by the
+  // requisition's own owner, let them know in-app that something moved.
+  const nextStatus = typeof patch.status === "string" ? patch.status : null;
+  if (existing && nextStatus && nextStatus !== existing.status) {
+    await supabase.from("talent_requisition_status_history").insert({
+      requisition_id: id,
+      from_status: existing.status,
+      to_status: nextStatus,
+      changed_by: user.id,
+      note: typeof body.statusNote === "string" ? body.statusNote : null,
+    });
+
+    if (existing.created_by && existing.created_by !== user.id) {
+      await supabase.from("notifications").insert({
+        user_id: existing.created_by,
+        feature_key: FEATURE_KEY,
+        title: `Requisition "${existing.title}" is now ${nextStatus.replace(/_/g, " ")}`,
+        body: null,
+        link: `/tools/talent-ai?requisition=${id}`,
+        channel: "in_app",
+      });
+    }
+  }
+
   return NextResponse.json({ requisition });
 }
 
