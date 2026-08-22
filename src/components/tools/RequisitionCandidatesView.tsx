@@ -72,6 +72,14 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [movingId, setMovingId] = useState<string | null>(null);
   const [rejectModalFor, setRejectModalFor] = useState<{ id: string; name: string } | null>(null);
+  const [bulkStage, setBulkStage] = useState("");
+  const [bulkMoving, setBulkMoving] = useState(false);
+  const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailResult, setEmailResult] = useState<string | null>(null);
 
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -177,6 +185,50 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
       if (res.ok) await load();
     } finally {
       setMovingId(null);
+    }
+  }
+
+  async function bulkMoveStage(stage: string, rejectionReason?: string) {
+    setBulkMoving(true);
+    try {
+      const ids = Array.from(selectedIds);
+      await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/talent-ai/candidates/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(rejectionReason ? { stage, rejectionReason } : { stage }),
+          })
+        )
+      );
+      await load();
+      setSelectedIds(new Set());
+      setBulkStage("");
+    } finally {
+      setBulkMoving(false);
+    }
+  }
+
+  async function sendBulkEmailToSelected() {
+    setEmailSending(true);
+    setEmailResult(null);
+    try {
+      const res = await fetch("/api/talent-ai/mass-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateIds: Array.from(selectedIds),
+          subject: emailSubject,
+          html: emailBody.replace(/\n/g, "<br/>"),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not send email.");
+      setEmailResult(`Sent to ${data.sent?.length || 0} of ${selectedIds.size} selected${data.skippedNoEmail ? ` (${data.skippedNoEmail} had no email on file)` : ""}.`);
+    } catch (err) {
+      setEmailResult(err instanceof Error ? err.message : "Could not send email.");
+    } finally {
+      setEmailSending(false);
     }
   }
 
@@ -381,6 +433,45 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
         {selectedIds.size > 0 && ` · ${selectedIds.size} selected`}
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 flex-wrap border border-border rounded-lg p-2.5 bg-surface">
+          <span className="text-[11.5px] font-semibold text-ink">{selectedIds.size} selected —</span>
+          <select
+            value={bulkStage}
+            disabled={bulkMoving}
+            onChange={(e) => {
+              const v = e.target.value;
+              setBulkStage(v);
+              if (!v) return;
+              if (v === "rejected") setBulkRejectOpen(true);
+              else bulkMoveStage(v);
+            }}
+            className="input py-1 text-[11.5px] w-auto"
+          >
+            <option value="">Move to stage…</option>
+            {STAGES.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => {
+              setEmailSubject("");
+              setEmailBody("");
+              setEmailResult(null);
+              setEmailModalOpen(true);
+            }}
+            className="text-[11.5px] font-semibold px-3 py-1.5 border border-border rounded-md hover:border-brand"
+          >
+            Email selected
+          </button>
+          <button onClick={() => setSelectedIds(new Set())} className="text-[11.5px] font-semibold text-ink-muted ml-auto">
+            Clear selection
+          </button>
+        </div>
+      )}
+
       <HScroller>
         <table className="w-full border-collapse text-[12px] min-w-[1200px]">
           <thead>
@@ -486,6 +577,57 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
             setRejectModalFor(null);
           }}
         />
+      )}
+
+      {bulkRejectOpen && (
+        <RejectionReasonModal
+          candidateName={`${selectedIds.size} candidates`}
+          onCancel={() => {
+            setBulkRejectOpen(false);
+            setBulkStage("");
+          }}
+          onConfirm={async (reasonId) => {
+            await bulkMoveStage("rejected", reasonId);
+            setBulkRejectOpen(false);
+          }}
+        />
+      )}
+
+      {emailModalOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setEmailModalOpen(false)}>
+          <div
+            className="bg-surface border border-border rounded-lg p-4 w-full max-w-md shadow-soft flex flex-col gap-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-[13px] font-bold text-ink">Email {selectedIds.size} selected candidate{selectedIds.size === 1 ? "" : "s"}</div>
+            <div>
+              <div className="text-[10.5px] font-bold uppercase tracking-wider text-ink-muted mb-1">Subject</div>
+              <input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="input" />
+            </div>
+            <div>
+              <div className="text-[10.5px] font-bold uppercase tracking-wider text-ink-muted mb-1">Message</div>
+              <textarea
+                value={emailBody}
+                onChange={(e) => setEmailBody(e.target.value)}
+                rows={6}
+                className="input"
+              />
+            </div>
+            {emailResult && <div className="text-[11.5px] text-ink-2">{emailResult}</div>}
+            <div className="flex items-center justify-end gap-2 mt-1">
+              <button onClick={() => setEmailModalOpen(false)} className="text-[12px] font-semibold text-ink-muted px-3 py-1.5">
+                Close
+              </button>
+              <button
+                onClick={sendBulkEmailToSelected}
+                disabled={emailSending || !emailSubject.trim() || !emailBody.trim()}
+                className="text-[12px] font-bold text-white bg-brand px-3 py-1.5 rounded-sm disabled:opacity-50"
+              >
+                {emailSending ? "Sending…" : "Send"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
