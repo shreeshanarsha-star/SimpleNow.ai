@@ -829,6 +829,30 @@ function CandidateForm({
   const [resumeText, setResumeText] = useState("");
   const [autoParse, setAutoParse] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [resumeFileName, setResumeFileName] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  async function handleResumeFile(file: File | null) {
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/talent-ai/candidates/parse-resume", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not read that resume.");
+      setResumeText(data.text);
+      setResumeFileName(data.fileName || file.name);
+      setAutoParse(true);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Could not read that resume.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function submit() {
     setSubmitting(true);
@@ -859,13 +883,51 @@ function CandidateForm({
           <input value={phone} onChange={(e) => setPhone(e.target.value)} className="input" />
         </Field>
       </div>
-      <Field label="Resume text (optional)">
-        <textarea
-          value={resumeText}
-          onChange={(e) => setResumeText(e.target.value)}
-          className="input min-h-[110px]"
-          placeholder="Paste resume text to auto-fill details with AI…"
-        />
+      <Field label="Resume (optional)">
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) handleResumeFile(file);
+          }}
+          onClick={() => document.getElementById("candidate-resume-file-input")?.click()}
+          className={`border-2 border-dashed rounded-md px-4 py-6 text-center cursor-pointer transition-colors ${
+            dragOver ? "border-brand bg-brand-wash" : "border-border bg-page"
+          }`}
+        >
+          <input
+            id="candidate-resume-file-input"
+            type="file"
+            accept=".pdf,.docx,.txt"
+            className="hidden"
+            onChange={(e) => handleResumeFile(e.target.files?.[0] || null)}
+          />
+          {uploading ? (
+            <p className="m-0 text-[12.5px] text-ink-muted">Reading resume…</p>
+          ) : resumeFileName ? (
+            <p className="m-0 text-[12.5px] text-ink-2">
+              <span className="font-bold">{resumeFileName}</span> attached —{" "}
+              <span className="text-brand font-bold underline">replace</span>
+            </p>
+          ) : (
+            <p className="m-0 text-[12.5px] text-ink-muted">
+              Drag & drop a resume here, or <span className="text-brand font-bold underline">browse</span> (.pdf, .docx, .txt)
+            </p>
+          )}
+        </div>
+        {uploadError && <p className="m-0 mt-1 text-[11.5px] text-critical">{uploadError}</p>}
+        <details className="mt-1.5">
+          <summary className="cursor-pointer text-[11px] text-ink-muted select-none">Or paste resume text directly</summary>
+          <textarea
+            value={resumeText}
+            onChange={(e) => { setResumeText(e.target.value); setResumeFileName(null); }}
+            className="input min-h-[110px] mt-1.5"
+            placeholder="Paste resume text to auto-fill details with AI…"
+          />
+        </details>
       </Field>
       <label className="flex items-center gap-2 text-[12.5px] text-ink-2">
         <input type="checkbox" checked={autoParse} onChange={(e) => setAutoParse(e.target.checked)} />
