@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
 import { summarizePipeline } from "@/lib/talentAI";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { buildApprovalChain, logAudit, notifyUser } from "@/lib/talentRoles";
 
 const FEATURE_KEY = "Talent.ai";
 const REQ_TYPES = new Set(["new", "replacement", "perpetual"]);
@@ -17,7 +19,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const { data: requisition, error } = await supabase
     .from("talent_requisitions")
-    .select("*, talent_candidates(*, talent_notes(*), talent_scorecards(*))")
+    .select(
+      "*, talent_candidates(*, talent_notes(*), talent_scorecards(*)), talent_approval_steps(*), talent_requisition_assignment(*)"
+    )
     .eq("id", id)
     .single();
 
@@ -132,17 +136,60 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   return NextResponse.json({ ok: true });
 }
 
-// On-demand AI summary of this requisition's pipeline -- separate action
-// route (not baked into GET) so it only calls the model when asked.
+// Action route: AI pipeline summary, or resubmitting a sent-back requisition
+// (rebuilds the approval chain from scratch and notifies the first approver
+// again -- same behavior as the original submit).
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  let supabase;
+  let supabase, user;
   try {
-    ({ supabase } = await requireFeatureAccess(FEATURE_KEY));
+    ({ supabase, user } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
+
+  if (body.action === "resubmit") {
+    const { data: requisition } = await supabase.from("talent_requisitions").select("*").eq("id", id).single();
+    if (!requisition) return NextResponse.json({ error: "Requisition not found." }, { status: 404 });
+    if (requisition.status !== "sent_back") {
+      return NextResponse.json({ error: "Only a sent-back requisition can be resubmitted." }, { status: 409 });
+    }
+
+    const admin = createAdminClient();
+    await admin.from("talent_approval_steps").delete().eq("requisition_id", id);
+    const chain = await buildApprovalChain(admin, user.id);
+    await admin.from("talent_approval_steps").insert(
+      chain.map((step) => ({
+        requisition_id: id,
+        step_order: step.step_order,
+        approver_role: step.approver_role,
+        approver_user_id: step.approver_user_id,
+      }))
+    );
+    await admin
+      .from("talent_requisitions")
+      .update({ status: "pending_approval", updated_at: new Date().toISOString() })
+      .eq("id", id);
+    await admin.from("talent_requisition_status_history").insert({
+      requisition_id: id,
+      from_status: "sent_back",
+      to_status: "pending_approval",
+      changed_by: user.id,
+      note: "Resubmitted after edits",
+    });
+    const firstStep = chain[0];
+    if (firstStep?.approver_user_id) {
+      await notifyUser({
+        userId: firstStep.approver_user_id,
+        title: `Approval needed: "${requisition.title}" (resubmitted)`,
+        link: `/tools/talent-ai?requisition=${id}`,
+      });
+    }
+    await logAudit({ entityType: "talent_requisitions", entityId: id, actorId: user.id, action: "resubmitted" });
+    return NextResponse.json({ ok: true });
+  }
+
   if (body.action !== "summarize") {
     return NextResponse.json({ error: "Unknown action." }, { status: 400 });
   }

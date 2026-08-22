@@ -48,6 +48,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       rating,
       recommendation,
       feedback: body.feedback || null,
+      interview_id: typeof body.interviewId === "string" ? body.interviewId : null,
     })
     .select()
     .single();
