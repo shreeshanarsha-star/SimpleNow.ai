@@ -16,7 +16,7 @@ type Requisition = {
   description: string | null;
   created_at: string;
   is_published?: boolean;
-  posting_channels?: { name: string; posted: boolean }[];
+  posting_channels?: { channel: string; posted: boolean }[];
   talent_candidates?: { id: string; stage: string }[];
 };
 
@@ -413,7 +413,7 @@ export default function TalentAiBoard() {
 
       {selected.is_published && (
         <div className="text-[12px] text-ink-muted -mt-2">
-          Live on Employee Jobs{selected.posting_channels?.length ? ` · Channels: ${selected.posting_channels.map((c) => c.name).join(", ")}` : ""}
+          Live on Employee Jobs{selected.posting_channels?.length ? ` · Channels: ${selected.posting_channels.map((c) => c.channel).join(", ")}` : ""}
         </div>
       )}
 
