@@ -28,14 +28,30 @@ function LoginForm() {
     setError(null);
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error, data } = await supabase.auth.signInWithPassword({ email, password });
 
-    setLoading(false);
     if (error) {
+      setLoading(false);
       setError(error.message);
       return;
     }
-    router.push(params.get("next") || "/admin");
+
+    // Only the owner lands in the admin console by default -- everyone
+    // else goes to the regular Overview page. Previously this always
+    // redirected to /admin regardless of who signed in, which dropped
+    // brand-new, no-access-yet users straight into the approval queue.
+    let destination = params.get("next") || "/";
+    if (!params.get("next") && data.user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("is_admin")
+        .eq("id", data.user.id)
+        .maybeSingle();
+      if (profile?.is_admin) destination = "/admin";
+    }
+
+    setLoading(false);
+    router.push(destination);
     router.refresh();
   }
 
@@ -47,9 +63,9 @@ function LoginForm() {
       >
         <LogoMark size={30} />
         <div className="mb-4" />
-        <h1 className="text-[19px] font-bold m-0 mb-1">Owner sign in</h1>
+        <h1 className="text-[19px] font-bold m-0 mb-1">Sign in</h1>
         <p className="text-[12.5px] text-ink-muted m-0 mb-6">
-          Admin access to Askshree.com — approvals and configuration.
+          Sign in to your Askshree account.
         </p>
 
         {error && (
