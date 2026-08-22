@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [orgName, setOrgName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -18,7 +19,11 @@ export default function SignupPage() {
     setError(null);
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signUp({ email, password });
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { org_name: orgName.trim() } },
+    });
 
     setLoading(false);
     if (error) {
@@ -35,8 +40,9 @@ export default function SignupPage() {
           <h1 className="text-[18px] font-bold m-0 mb-2">Check your email</h1>
           <p className="text-[13px] text-ink-2 m-0 mb-4">
             We sent a confirmation link to <strong>{email}</strong>. Once you confirm,
-            you can sign in — but every tool stays locked until the admin grants you
-            access to it.
+            you can sign in. Your organization{orgName.trim() ? ` "${orgName.trim()}"` : ""} is now
+            pending approval from the platform owner — you&apos;ll get access to your
+            tools once it&apos;s approved.
           </p>
           <Link href="/login" className="text-brand text-[13px] font-bold">
             Go to sign in
@@ -56,8 +62,8 @@ export default function SignupPage() {
         <div className="mb-4" />
         <h1 className="text-[19px] font-bold m-0 mb-1">Create an account</h1>
         <p className="text-[12.5px] text-ink-muted m-0 mb-6">
-          After you sign up, the admin grants access to specific tools — nothing is
-          open by default.
+          You&apos;ll set up your own organization. It needs a quick approval from the
+          platform owner before your team can use any tools.
         </p>
 
         {error && (
@@ -65,6 +71,16 @@ export default function SignupPage() {
             {error}
           </div>
         )}
+
+        <label className="block text-[12px] font-bold mb-1.5">Organization name</label>
+        <input
+          type="text"
+          required
+          value={orgName}
+          onChange={(e) => setOrgName(e.target.value)}
+          placeholder="Acme Inc."
+          className="w-full border border-border rounded-sm px-3 py-2.5 text-[13.5px] mb-4 outline-none focus:border-brand"
+        />
 
         <label className="block text-[12px] font-bold mb-1.5">Email</label>
         <input

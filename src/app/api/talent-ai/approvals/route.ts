@@ -9,9 +9,9 @@ const DECISIONS = new Set(["approved", "rejected", "hold", "sent_back"]);
 // My pending approval steps -- named-to-me, or pool steps for a role I hold
 // (today: only the HR approver step is pool-based).
 export async function GET() {
-  let user;
+  let user, orgId;
   try {
-    ({ user } = await requireFeatureAccess(FEATURE_KEY));
+    ({ user, orgId } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
@@ -20,18 +20,21 @@ export async function GET() {
 
   const { data: steps, error } = await admin
     .from("talent_approval_steps")
-    .select("*, talent_requisitions(id, title, department, location, headcount, priority, requisition_type, cost_center, comp_min, comp_max, created_by, status, is_confidential)")
+    .select("*, talent_requisitions(id, title, department, location, headcount, priority, requisition_type, cost_center, comp_min, comp_max, created_by, status, is_confidential, org_id)")
     .in("status", ["pending", "hold"])
     .order("created_at", { ascending: true });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const { data: viewerProfile } = await admin.from("profiles").select("is_admin").eq("id", user.id).single();
-  const mine = (steps || []).filter(
-    (s) =>
-      viewerProfile?.is_admin ||
-      s.approver_user_id === user.id ||
-      (s.approver_user_id === null && myRoles.includes(s.approver_role))
-  );
+  // A pool-based role match (approver_user_id === null) must also be scoped
+  // to the caller's own organization -- otherwise two orgs that both use
+  // the "hr_approver" role name would see each other's pending approvals.
+  const mine = (steps || []).filter((s) => {
+    const stepOrgId = (s.talent_requisitions as { org_id?: string } | null)?.org_id;
+    if (viewerProfile?.is_admin) return true;
+    if (s.approver_user_id === user.id) return true;
+    return s.approver_user_id === null && myRoles.includes(s.approver_role) && stepOrgId === orgId;
+  });
 
   // Only surface steps that are actually next in line (earlier steps done).
   const actionable = [];
@@ -49,9 +52,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  let user;
+  let user, orgId;
   try {
-    ({ user } = await requireFeatureAccess(FEATURE_KEY));
+    ({ user, orgId } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
@@ -72,10 +75,11 @@ export async function POST(req: Request) {
 
   const myRoles = await getUserRoles(admin, user.id);
   const { data: actingProfile } = await admin.from("profiles").select("is_admin").eq("id", user.id).single();
+  const { data: stepRequisition } = await admin.from("talent_requisitions").select("org_id").eq("id", step.requisition_id).single();
   const authorized =
     actingProfile?.is_admin ||
     step.approver_user_id === user.id ||
-    (step.approver_user_id === null && myRoles.includes(step.approver_role));
+    (step.approver_user_id === null && myRoles.includes(step.approver_role) && stepRequisition?.org_id === orgId);
   if (!authorized) {
     return NextResponse.json({ error: "You are not the approver for this step." }, { status: 403 });
   }
@@ -112,7 +116,7 @@ export async function POST(req: Request) {
           link: `/tools/talent-ai?requisition=${requisition.id}`,
         });
       } else {
-        const { data: pool } = await admin.from("talent_user_roles").select("user_id").eq("role", next.approver_role);
+        const { data: pool } = await admin.from("talent_user_roles").select("user_id").eq("role", next.approver_role).eq("org_id", requisition.org_id);
         for (const p of pool || []) {
           await notifyUser({
             userId: p.user_id,

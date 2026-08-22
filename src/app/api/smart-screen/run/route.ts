@@ -11,9 +11,9 @@ const FEATURE_KEY = "Smart Screen.ai";
 const MAX_CANDIDATES = 8;
 
 export async function POST(request: Request) {
-  let user, supabase;
+  let user, supabase, orgId;
   try {
-    ({ user, supabase } = await requireFeatureAccess(FEATURE_KEY));
+({ user, supabase, orgId } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 
   const { data: batch, error: batchError } = await supabase
     .from("smart_screen_batches")
-    .insert({ created_by: user.id, role_title: roleTitle, criteria, status: "processing" })
+    .insert({ created_by: user.id, role_title: roleTitle, criteria, status: "processing", org_id: orgId })
     .select()
     .single();
 

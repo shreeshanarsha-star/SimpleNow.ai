@@ -5,9 +5,9 @@ export const maxDuration = 15;
 const FEATURE_KEY = "Offer.ai";
 
 export async function POST(request: Request) {
-  let user, supabase;
+  let user, supabase, orgId;
   try {
-    ({ user, supabase } = await requireFeatureAccess(FEATURE_KEY));
+    ({ user, supabase, orgId } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
@@ -47,6 +47,7 @@ export async function POST(request: Request) {
       draft_notes: draftNotes,
       ai_polished_letter: aiPolishedLetter,
       status: "pending_approval",
+      org_id: orgId,
     })
     .select()
     .single();

@@ -8,6 +8,7 @@ export default function AdminNav() {
 
   const tabs = [
     { href: "/admin", label: "Approvals" },
+    { href: "/admin/organizations", label: "Organizations" },
     { href: "/admin/users", label: "Users" },
   ];
 

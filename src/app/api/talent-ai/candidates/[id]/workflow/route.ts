@@ -22,9 +22,9 @@ async function canActOnCandidate(admin: ReturnType<typeof createAdminClient>, us
 // not just a recommendation), dedup linking, compensation capture, the
 // two-signature Selection gate, and the Move to Offer handoff into Offer.ai.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  let user;
+  let user, orgId;
   try {
-    ({ user } = await requireFeatureAccess(FEATURE_KEY));
+    ({ user, orgId } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
@@ -33,10 +33,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const action = typeof body?.action === "string" ? body.action : null;
   const admin = createAdminClient();
 
-  const { data: candidate } = await admin.from("talent_candidates").select("*, talent_requisitions(id, title)").eq("id", id).single();
+  const { data: candidate } = await admin.from("talent_candidates").select("*, talent_requisitions(id, title, org_id)").eq("id", id).single();
   if (!candidate) return NextResponse.json({ error: "Candidate not found." }, { status: 404 });
   const requisitionId = candidate.requisition_id as string;
-  const requisitionTitle = (candidate.talent_requisitions as { title: string } | null)?.title || "the role";
+  const requisitionRow = candidate.talent_requisitions as { title: string; org_id: string } | null;
+  const requisitionTitle = requisitionRow?.title || "the role";
+  // admin client bypasses RLS -- verify this candidate's requisition
+  // belongs to the caller's own organization before allowing any action.
+  const isPlatformOwner = (await admin.from("profiles").select("is_admin").eq("id", user.id).single()).data?.is_admin;
+  if (!isPlatformOwner && requisitionRow?.org_id !== orgId) {
+    return NextResponse.json({ error: "Candidate not found." }, { status: 404 });
+  }
 
   if (action === "set_stage") {
     const stage = typeof body?.stage === "string" ? body.stage : null;
@@ -89,8 +96,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { data: assignment } = await admin.from("talent_requisition_assignment").select("recruiter_id").eq("requisition_id", requisitionId).maybeSingle();
     const isRecruiter = assignment?.recruiter_id === user.id;
     const isTaHead = await hasTalentRole(admin, user.id, "ta_head");
-    const { data: profile } = await admin.from("profiles").select("is_admin").eq("id", user.id).single();
-    const isAdmin = !!profile?.is_admin;
+    const isAdmin = !!isPlatformOwner;
 
     if (!isHm && !isRecruiter && !isTaHead && !isAdmin) {
       return NextResponse.json({ error: "Not authorized to sign off on selection." }, { status: 403 });

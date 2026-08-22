@@ -22,9 +22,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  let supabase, user;
+  let supabase, user, orgId;
   try {
-    ({ supabase, user } = await requireFeatureAccess(FEATURE_KEY));
+    ({ supabase, user, orgId } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     if (!name) return NextResponse.json({ error: "List name is required." }, { status: 400 });
     const { data: list, error } = await supabase
       .from("talent_candidate_lists")
-      .insert({ name, description: body.description || null, created_by: user.id })
+      .insert({ name, description: body.description || null, created_by: user.id, org_id: orgId })
       .select()
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

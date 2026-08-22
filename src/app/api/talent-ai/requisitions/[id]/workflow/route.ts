@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getUserRoles, hasTalentRole, logAudit, notifyUser } from "@/lib/talentRoles";
+import { getOrgContext } from "@/lib/org";
 
 const FEATURE_KEY = "Talent.ai";
 const DEFAULT_CHANNELS = ["Career site", "LinkedIn", "Naukri", "Employee referral"];
@@ -9,9 +10,9 @@ const DEFAULT_CHANNELS = ["Career site", "LinkedIn", "Naukri", "Employee referra
 // TA Assignment, Publishing, and reassignment -- the cross-role actions
 // that don't fit the plain owner-scoped requisition PATCH.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  let user;
+  let user, orgId;
   try {
-    ({ user } = await requireFeatureAccess(FEATURE_KEY));
+    ({ user, orgId } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
@@ -22,15 +23,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { data: requisition } = await admin.from("talent_requisitions").select("*").eq("id", id).single();
   if (!requisition) return NextResponse.json({ error: "Requisition not found." }, { status: 404 });
+  // admin client bypasses RLS, so the org check has to happen explicitly
+  // here -- otherwise a valid recruiter/TA head at one organization could
+  // act on a requisition UUID belonging to a different one.
+  const isPlatformOwner = (await admin.from("profiles").select("is_admin").eq("id", user.id).single()).data?.is_admin;
+  if (!isPlatformOwner && requisition.org_id !== orgId) {
+    return NextResponse.json({ error: "Requisition not found." }, { status: 404 });
+  }
 
   if (action === "assign") {
     const isTaHead = await hasTalentRole(admin, user.id, "ta_head");
-    const isAdmin = (await admin.from("profiles").select("is_admin").eq("id", user.id).single()).data?.is_admin;
-    if (!isTaHead && !isAdmin) {
+    if (!isTaHead && !isPlatformOwner) {
       return NextResponse.json({ error: "Only TA Head can assign requisitions to a recruiter." }, { status: 403 });
     }
     const recruiterId = typeof body?.recruiterId === "string" ? body.recruiterId : null;
     if (!recruiterId) return NextResponse.json({ error: "recruiterId is required." }, { status: 400 });
+    const recruiterCtx = await getOrgContext(admin, recruiterId);
+    if (recruiterCtx.orgId !== requisition.org_id) {
+      return NextResponse.json({ error: "The recruiter must be a member of the same organization." }, { status: 403 });
+    }
     if (requisition.status !== "approved" && requisition.status !== "in_progress") {
       return NextResponse.json({ error: "Only an approved requisition can be assigned." }, { status: 409 });
     }
@@ -56,8 +67,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (action === "publish" || action === "unpublish") {
     const myRoles = await getUserRoles(admin, user.id);
     const { data: assignment } = await admin.from("talent_requisition_assignment").select("recruiter_id").eq("requisition_id", id).maybeSingle();
-    const isAdmin = (await admin.from("profiles").select("is_admin").eq("id", user.id).single()).data?.is_admin;
-    const allowed = isAdmin || myRoles.includes("ta_head") || assignment?.recruiter_id === user.id;
+    const allowed = isPlatformOwner || myRoles.includes("ta_head") || assignment?.recruiter_id === user.id;
     if (!allowed) return NextResponse.json({ error: "Only the assigned recruiter or TA Head can publish." }, { status: 403 });
 
     const publish = action === "publish";

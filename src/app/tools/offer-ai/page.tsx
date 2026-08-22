@@ -21,19 +21,28 @@ export default async function OfferAiPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_admin")
+    .select("is_admin, org_id")
     .eq("id", user.id)
     .single();
 
   let hasAccess = !!profile?.is_admin;
-  if (!hasAccess) {
-    const { data: grant } = await supabase
-      .from("feature_access")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("feature_key", FEATURE_KEY)
+  if (!hasAccess && profile?.org_id) {
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("plan, status")
+      .eq("id", profile.org_id)
       .maybeSingle();
-    hasAccess = !!grant;
+    if (org?.status === "approved" && org.plan === "bulk") {
+      hasAccess = true;
+    } else if (org?.status === "approved") {
+      const { data: grant } = await supabase
+        .from("feature_access")
+        .select("id")
+        .eq("org_id", profile.org_id)
+        .eq("feature_key", FEATURE_KEY)
+        .maybeSingle();
+      hasAccess = !!grant;
+    }
   }
 
   return (

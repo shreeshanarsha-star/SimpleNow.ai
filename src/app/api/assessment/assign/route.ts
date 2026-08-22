@@ -5,9 +5,9 @@ export const maxDuration = 15;
 const FEATURE_KEY = "Assessment.ai";
 
 export async function POST(request: Request) {
-  let user, supabase;
+  let user, supabase, orgId;
   try {
-    ({ user, supabase } = await requireFeatureAccess(FEATURE_KEY));
+    ({ user, supabase, orgId } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
@@ -30,6 +30,7 @@ export async function POST(request: Request) {
       candidate_name: candidateName,
       candidate_email: candidateEmail,
       assessment_type: "big_five",
+      org_id: orgId,
     })
     .select()
     .single();

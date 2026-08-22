@@ -37,9 +37,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  let supabase, user;
+  let supabase, user, orgId;
   try {
-    ({ supabase, user } = await requireFeatureAccess(FEATURE_KEY));
+    ({ supabase, user, orgId } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     }
     const { data: template, error } = await supabase
       .from("talent_questionnaire_templates")
-      .insert({ title, questions, created_by: user.id })
+      .insert({ title, questions, created_by: user.id, org_id: orgId })
       .select()
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

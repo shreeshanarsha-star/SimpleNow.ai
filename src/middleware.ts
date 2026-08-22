@@ -36,7 +36,8 @@ export async function middleware(request: NextRequest) {
   // public-facing flow yet (Apply.ai, the candidate side, is deferred).
   const isAdminRoute =
     request.nextUrl.pathname.startsWith("/admin") ||
-    request.nextUrl.pathname.startsWith("/tools");
+    request.nextUrl.pathname.startsWith("/tools") ||
+    request.nextUrl.pathname.startsWith("/org");
   const isLoginRoute = request.nextUrl.pathname === "/login";
 
   if (isAdminRoute && !user) {
@@ -57,5 +58,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/tools/:path*", "/login"],
+  matcher: ["/admin/:path*", "/tools/:path*", "/org/:path*", "/login"],
 };

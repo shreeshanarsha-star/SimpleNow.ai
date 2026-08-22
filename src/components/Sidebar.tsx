@@ -36,11 +36,21 @@ export default function Sidebar({
   // signed in as themselves.
   const [email, setEmail] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [settingsHref, setSettingsHref] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setEmail(data.user?.email ?? null);
+    supabase.auth.getUser().then(async ({ data }) => {
+      const user = data.user;
+      setEmail(user?.email ?? null);
+      if (!user) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("is_admin, org_role")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (profile?.is_admin) setSettingsHref("/admin");
+      else if (profile?.org_role === "org_admin") setSettingsHref("/org/settings");
     });
   }, []);
 
@@ -143,13 +153,16 @@ export default function Sidebar({
           </div>
           <div className="text-[11px] text-ink-muted">{email ? "Signed in" : "Guest"}</div>
         </div>
-        <Link
-          href="/admin"
-          className="text-ink-muted hover:text-ink p-1"
-          aria-label="Admin"
-        >
-          <Icon name="gear" className="w-[15px] h-[15px]" />
-        </Link>
+        {settingsHref && (
+          <Link
+            href={settingsHref}
+            className="text-ink-muted hover:text-ink p-1"
+            aria-label="Settings"
+            title={settingsHref === "/admin" ? "Admin" : "Organization Settings"}
+          >
+            <Icon name="gear" className="w-[15px] h-[15px]" />
+          </Link>
+        )}
         {email && (
           <button
             type="button"

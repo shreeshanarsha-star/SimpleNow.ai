@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/requireAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logAudit, notifyUser } from "@/lib/talentRoles";
+import { getOrgContext } from "@/lib/org";
 
 // Open to ANY authenticated user, not just Talent.ai-gated staff -- every
 // employee can see published internal roles and refer someone.
@@ -42,10 +43,16 @@ export async function POST(req: Request) {
   const admin = createAdminClient();
   const { data: requisition } = await admin
     .from("talent_requisitions")
-    .select("id, title, is_published, is_confidential, created_by")
+    .select("id, title, is_published, is_confidential, created_by, org_id")
     .eq("id", requisitionId)
     .single();
   if (!requisition || !requisition.is_published || requisition.is_confidential) {
+    return NextResponse.json({ error: "This role isn't open for referrals." }, { status: 403 });
+  }
+  // admin client bypasses RLS -- an employee can only refer into their own
+  // organization's open roles, never another company's.
+  const referrerCtx = await getOrgContext(admin, user.id);
+  if (referrerCtx.orgId !== requisition.org_id) {
     return NextResponse.json({ error: "This role isn't open for referrals." }, { status: 403 });
   }
 

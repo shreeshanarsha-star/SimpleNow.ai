@@ -22,9 +22,9 @@ function daysSince(iso: string) {
 // same tables every role-specific screen reads -- this is what a role's
 // home page leads with (F002 / F020: action queue + next best action).
 export async function GET() {
-  let user;
+  let user, orgId;
   try {
-    ({ user } = await requireFeatureAccess(FEATURE_KEY));
+    ({ user, orgId } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
@@ -38,13 +38,15 @@ export async function GET() {
   // Approvals waiting on me
   const { data: steps } = await admin
     .from("talent_approval_steps")
-    .select("*, talent_requisitions(id, title, created_at)")
+    .select("*, talent_requisitions(id, title, created_at, org_id)")
     .in("status", ["pending", "hold"]);
   for (const s of steps || []) {
-    const mine = s.approver_user_id === user.id || (s.approver_user_id === null && myRoles.includes(s.approver_role));
-    if (!mine) continue;
-    const req_ = s.talent_requisitions as { id: string; title: string; created_at: string } | null;
+    const req_ = s.talent_requisitions as { id: string; title: string; created_at: string; org_id: string } | null;
     if (!req_) continue;
+    const mine =
+      s.approver_user_id === user.id ||
+      (s.approver_user_id === null && myRoles.includes(s.approver_role) && req_.org_id === orgId);
+    if (!mine) continue;
     const { data: earlier } = await admin
       .from("talent_approval_steps")
       .select("id")
@@ -64,8 +66,11 @@ export async function GET() {
 
   // TA Head: approved requisitions not yet assigned
   if (myRoles.includes("ta_head") || isAdmin) {
-    const { data: approved } = await admin.from("talent_requisitions").select("id, title, created_at").eq("status", "approved");
-    const { data: assigned } = await admin.from("talent_requisition_assignment").select("requisition_id");
+    const { data: approved } = await admin.from("talent_requisitions").select("id, title, created_at").eq("status", "approved").eq("org_id", orgId);
+    const reqIds = (approved || []).map((r) => r.id);
+    const { data: assigned } = reqIds.length
+      ? await admin.from("talent_requisition_assignment").select("requisition_id").in("requisition_id", reqIds)
+      : { data: [] as { requisition_id: string }[] };
     const assignedIds = new Set((assigned || []).map((a) => a.requisition_id));
     for (const r of approved || []) {
       if (assignedIds.has(r.id)) continue;

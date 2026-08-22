@@ -64,9 +64,9 @@ export async function GET() {
 // first approver. No separate draft/submit step, per the "AI should
 // remove form filling" principle: one action, done.
 export async function POST(req: Request) {
-  let supabase, user;
+  let supabase, user, orgId;
   try {
-    ({ supabase, user } = await requireFeatureAccess(FEATURE_KEY));
+    ({ supabase, user, orgId } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
@@ -99,6 +99,7 @@ export async function POST(req: Request) {
       hiring_manager: body.hiringManager || null,
       description: body.description || null, // relabeled "Justification" in the UI
       created_by: user.id,
+      org_id: orgId,
       requisition_type: requisitionType,
       replacement_name: requisitionType === "replacement" ? body.replacementName || null : null,
       replacement_employee_id:

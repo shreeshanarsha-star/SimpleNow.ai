@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import TalentAiBoard from "@/components/tools/TalentAiBoard";
 
-type Me = { roles: string[]; isAdmin: boolean; profile: { full_name: string | null; email: string | null; manager_id: string | null } | null };
+type Me = { roles: string[]; isAdmin: boolean; isOrgAdmin?: boolean; profile: { full_name: string | null; email: string | null; manager_id: string | null } | null };
 type ActionItem = { id: string; kind: string; title: string; detail: string; link: string; daysWaiting: number };
 type Tab = "overview" | "approvals" | "assign" | "recruiter" | "jobs" | "admin";
 
@@ -20,6 +20,8 @@ export default function TalentWorkspace() {
 
   const roles = me?.roles || [];
   const isAdmin = !!me?.isAdmin;
+  const isOrgAdmin = !!me?.isOrgAdmin;
+  const canManageRoles = isAdmin || isOrgAdmin;
   const canApprove = isAdmin || roles.includes("reporting_manager") || roles.includes("hr_approver");
   const canAssign = isAdmin || roles.includes("ta_head");
   const canRecruit = isAdmin || roles.includes("recruiter") || roles.includes("ta_head");
@@ -30,7 +32,7 @@ export default function TalentWorkspace() {
     { id: "assign", label: "TA Assignment", show: canAssign },
     { id: "recruiter", label: "Recruiter Tools", show: canRecruit },
     { id: "jobs", label: "Employee Jobs", show: true },
-    { id: "admin", label: "Admin", show: isAdmin },
+    { id: "admin", label: "Admin", show: canManageRoles },
   ];
 
   return (

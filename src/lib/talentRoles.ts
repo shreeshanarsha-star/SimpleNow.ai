@@ -72,6 +72,7 @@ export async function logAudit(params: {
   actorId: string | null;
   action: string;
   detail?: Record<string, unknown>;
+  orgId?: string | null;
 }) {
   try {
     const admin = createAdminClient();
@@ -81,6 +82,7 @@ export async function logAudit(params: {
       actor_id: params.actorId,
       action: params.action,
       detail: params.detail ?? null,
+      org_id: params.orgId ?? null,
     });
   } catch {
     // Never let audit logging break the caller.
