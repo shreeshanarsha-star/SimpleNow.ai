@@ -37,36 +37,34 @@ export default function TalentWorkspace() {
   ];
 
   return (
-    <div className="flex gap-5 items-start">
-      <nav className="flex flex-col gap-0.5 w-[168px] flex-shrink-0 sticky top-4">
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-1.5 border-b border-border overflow-x-auto">
         {tabs.filter((t) => t.show).map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`text-left text-[12.5px] font-bold px-3 py-2.5 rounded-md border-l-2 ${
-              tab === t.id ? "border-brand text-brand bg-brand-wash" : "border-transparent text-ink-muted hover:bg-surface-muted"
+            className={`text-[12.5px] font-bold px-3 py-2.5 border-b-2 flex-shrink-0 ${
+              tab === t.id ? "border-brand text-brand" : "border-transparent text-ink-muted"
             }`}
           >
             {t.label}
           </button>
         ))}
-      </nav>
-
-      <div className="flex-1 min-w-0">
-        {tab === "home" && <MyRequisitionsPanel me={me} roleFlags={{ canApprove, canAssign, canRecruit, isAdmin, isOrgAdmin }} onNavigate={setTab} />}
-        {tab === "funnel" && <FunnelPanel />}
-        {tab === "approvals" && <ApprovalsPanel />}
-        {tab === "assign" && <AssignPanel />}
-        {tab === "recruiter" && <RecruiterToolsPanel />}
-        {tab === "projects" && <ProjectsPanel />}
-        {tab === "jobs" && <EmployeeJobsPanel />}
-        {tab === "admin" && (
-          <div className="flex flex-col gap-6">
-            <AdminDashboard onNavigate={setTab} />
-            <UserManagementPanel />
-          </div>
-        )}
       </div>
+
+      {tab === "home" && <MyRequisitionsPanel me={me} roleFlags={{ canApprove, canAssign, canRecruit, isAdmin, isOrgAdmin }} onNavigate={setTab} />}
+      {tab === "funnel" && <FunnelPanel />}
+      {tab === "approvals" && <ApprovalsPanel />}
+      {tab === "assign" && <AssignPanel />}
+      {tab === "recruiter" && <RecruiterToolsPanel />}
+      {tab === "projects" && <ProjectsPanel />}
+      {tab === "jobs" && <EmployeeJobsPanel />}
+      {tab === "admin" && (
+        <div className="flex flex-col gap-6">
+          <AdminDashboard onNavigate={setTab} />
+          <UserManagementPanel />
+        </div>
+      )}
     </div>
   );
 }

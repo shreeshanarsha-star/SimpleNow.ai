@@ -19,6 +19,7 @@ const FUNNEL_COLUMNS: { id: string; label: string }[] = [
   { id: "bgv", label: "BGV" },
   { id: "ready_to_join", label: "Ready to Join" },
   { id: "joined", label: "Joined" },
+  { id: "rejected", label: "Rejected" },
 ];
 
 // "My requisitions" for a recruiter = requisitions they're actually
