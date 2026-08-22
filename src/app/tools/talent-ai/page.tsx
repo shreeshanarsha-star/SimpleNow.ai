@@ -1,7 +1,7 @@
 import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
 import { createClient } from "@/lib/supabase/server";
-import TalentAiBoard from "@/components/tools/TalentAiBoard";
+import TalentWorkspace from "@/components/tools/TalentWorkspace";
 
 const FEATURE_KEY = "Talent.ai";
 
@@ -39,7 +39,7 @@ export default async function TalentAiPage() {
   return (
     <AppShell title="Talent.ai">
       {hasAccess ? (
-        <TalentAiBoard />
+        <TalentWorkspace />
       ) : (
         <AccessDenied reason='The admin hasn’t granted you access to "Talent.ai" yet.' />
       )}
