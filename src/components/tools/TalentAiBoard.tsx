@@ -895,6 +895,31 @@ function CandidateDetail({
   const bothSignedOff = !!candidate.selected_hm_by && !!candidate.selected_ta_by;
   const compComplete = candidate.current_ctc != null && candidate.expected_ctc != null && candidate.proposed_ctc != null;
 
+  const [interviews, setInterviews] = useState<{ id: string; round_name: string; scheduled_at: string | null; status: string }[]>([]);
+  const [roundName, setRoundName] = useState("");
+  const [scheduledAt, setScheduledAt] = useState("");
+
+  useEffect(() => {
+    fetch(`/api/talent-ai/interviews?candidateId=${candidate.id}`)
+      .then((r) => r.json())
+      .then((d) => setInterviews(d.interviews || []));
+  }, [candidate.id]);
+
+  async function scheduleInterview() {
+    if (!roundName.trim()) return;
+    const res = await fetch("/api/talent-ai/interviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "schedule", candidateId: candidate.id, roundName, scheduledAt: scheduledAt || null }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setInterviews((prev) => [...prev, data.interview]);
+      setRoundName("");
+      setScheduledAt("");
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
       <div
@@ -973,6 +998,25 @@ function CandidateDetail({
           {isSelected && !bothSignedOff && (
             <p className="m-0 text-[11px] text-ink-muted">Both a Hiring Manager and a Recruiter/TA Head sign-off are required before Move to Offer unlocks.</p>
           )}
+        </div>
+
+        <div className="border border-border rounded-md p-3.5 flex flex-col gap-2.5">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Interviews</div>
+          <div className="flex flex-col gap-1.5">
+            {interviews.map((iv) => (
+              <div key={iv.id} className="flex items-center justify-between text-[12px] border border-border rounded-sm p-2">
+                <span className="font-bold">{iv.round_name}</span>
+                <span className="text-ink-muted">{iv.scheduled_at ? new Date(iv.scheduled_at).toLocaleString() : "Not yet scheduled"}</span>
+                <span className="text-[10.5px] bg-page px-1.5 py-0.5 rounded-full capitalize">{iv.status}</span>
+              </div>
+            ))}
+            {interviews.length === 0 && <p className="text-[12px] text-ink-muted">No interview rounds yet.</p>}
+          </div>
+          <div className="flex gap-2">
+            <input value={roundName} onChange={(e) => setRoundName(e.target.value)} className="input" placeholder="Round name (e.g. Technical)" />
+            <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="input max-w-[200px]" />
+            <button onClick={scheduleInterview} className="border border-border text-[12px] font-bold px-3 py-2 rounded-sm bg-surface flex-shrink-0">Schedule</button>
+          </div>
         </div>
 
         <div>
