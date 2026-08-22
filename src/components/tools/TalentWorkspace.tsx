@@ -141,6 +141,7 @@ function HomePanel({
       </div>
 
       {roleFlags.canAssign && <TAHeadSnapshot onNavigate={onNavigate} />}
+      <ManagerSnapshot onNavigate={onNavigate} />
       {roleFlags.canRecruit && <RecruiterSnapshot onNavigate={onNavigate} />}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -437,6 +438,89 @@ function TAHeadSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
                 <span>{r.name}</span>
                 <span className="text-ink-muted">{r.requisitions} requisitions</span>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------- Hiring manager snapshot (embedded in Home) ----------------
+
+type ManagerTeamRow = { id: string; name: string | null; roles: string[] };
+type ManagerReqRow = { id: string; title: string; department: string | null; status: string; candidateCount: number; inInterviewCount: number };
+type ManagerCandidateRow = { id: string; name: string; stage: string; requisitionTitle: string; requisitionId: string };
+
+function ManagerSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  const [counts, setCounts] = useState<{ myTeam: number; myRequisitions: number; candidatesInInterview: number; pendingApprovalsFromMe: number } | null>(null);
+  const [myTeam, setMyTeam] = useState<ManagerTeamRow[]>([]);
+  const [myRequisitions, setMyRequisitions] = useState<ManagerReqRow[]>([]);
+  const [candidatesInInterview, setCandidatesInInterview] = useState<ManagerCandidateRow[]>([]);
+
+  useEffect(() => {
+    fetch("/api/talent-ai/manager-snapshot").then((r) => r.json()).then((d) => {
+      setCounts(d.counts || null);
+      setMyTeam(d.myTeam || []);
+      setMyRequisitions(d.myRequisitions || []);
+      setCandidatesInInterview(d.candidatesInInterview || []);
+    });
+  }, []);
+
+  if (!counts) return null;
+  if (counts.myTeam === 0 && counts.myRequisitions === 0) return null; // not acting as a manager -- nothing to show
+
+  return (
+    <div className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-surface">
+      <div className="flex items-center justify-between">
+        <div className="text-[13px] font-bold text-ink">My team &amp; hiring</div>
+        <button onClick={() => onNavigate("overview")} className="text-[11.5px] font-semibold px-2.5 py-1 border border-border rounded-md hover:border-brand">My requisitions</button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard label="My team" value={counts.myTeam} />
+        <StatCard label="My requisitions" value={counts.myRequisitions} />
+        <StatCard label="Candidates in review/interview" value={counts.candidatesInInterview} />
+        <StatCard label="Approvals waiting on me" value={counts.pendingApprovalsFromMe} />
+      </div>
+
+      {myTeam.length > 0 && (
+        <div className="border border-border rounded-md overflow-hidden">
+          <div className="px-3 py-2 bg-surface-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-ink-muted">My team</div>
+          <div className="divide-y divide-border">
+            {myTeam.map((t) => (
+              <div key={t.id} className="flex items-center justify-between gap-2 px-3 py-2 text-[12.5px]">
+                <span>{t.name}</span>
+                <span className="text-[10.5px] text-ink-muted capitalize">{t.roles.length ? t.roles.map((r) => r.replace(/_/g, " ")).join(", ") : "Employee"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {myRequisitions.length > 0 && (
+        <div className="border border-border rounded-md overflow-hidden">
+          <div className="px-3 py-2 bg-surface-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-ink-muted">My requisitions</div>
+          <div className="divide-y divide-border">
+            {myRequisitions.map((r) => (
+              <a key={r.id} href={`/tools/talent-ai?requisition=${r.id}`} className="flex items-center justify-between gap-2 px-3 py-2 text-[12.5px] hover:bg-brand-wash/40">
+                <span><strong>{r.title}</strong> — <span className="text-ink-muted">{r.department || "No department"} · {r.status.replace(/_/g, " ")}</span></span>
+                <span className="text-[11px] text-ink-muted flex-shrink-0">{r.inInterviewCount} in review / {r.candidateCount} total</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {candidatesInInterview.length > 0 && (
+        <div className="border border-border rounded-md overflow-hidden">
+          <div className="px-3 py-2 bg-surface-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-ink-muted">Candidates in review / interview</div>
+          <div className="divide-y divide-border">
+            {candidatesInInterview.map((c) => (
+              <a key={c.id} href={`/tools/talent-ai?requisition=${c.requisitionId}`} className="flex items-center justify-between gap-2 px-3 py-2 text-[12.5px] hover:bg-brand-wash/40">
+                <span><strong>{c.name}</strong> — <span className="text-ink-muted">{c.requisitionTitle}</span></span>
+                <span className="text-[10.5px] font-bold uppercase tracking-wider text-brand flex-shrink-0">{c.stage.replace(/_/g, " ")}</span>
+              </a>
             ))}
           </div>
         </div>
