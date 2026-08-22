@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
 import { VScroller } from "@/components/Scroller";
 
@@ -115,6 +116,7 @@ export default function TalentAiBoard({
   onStageFocusHandled?: () => void;
   hideListWhenIdle?: boolean;
 } = {}) {
+  const router = useRouter();
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -385,7 +387,7 @@ export default function TalentAiBoard({
               return (
                 <button
                   key={r.id}
-                  onClick={() => openRequisition(r.id)}
+                  onClick={() => router.push(`/tools/talent-ai/requisitions/${r.id}`)}
                   className="text-left border border-border rounded-md p-4 bg-surface shadow-soft-sm hover:border-brand"
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -420,15 +422,6 @@ export default function TalentAiBoard({
           </div>
         )
       )}
-
-        {hideListWhenIdle && (
-          <div className="border border-dashed border-border rounded-md py-14 flex flex-col items-center gap-2 text-center">
-            <Icon name="briefcase" className="w-7 h-7 text-ink-muted" />
-            <p className="m-0 text-[12.5px] text-ink-muted max-w-xs">
-              Pick a requisition from the list to open its pipeline.
-            </p>
-          </div>
-        )}
 
         <style jsx global>{`
           .input {

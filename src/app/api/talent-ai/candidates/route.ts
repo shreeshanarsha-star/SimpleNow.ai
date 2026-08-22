@@ -49,6 +49,14 @@ export async function POST(req: Request) {
   let name = (body.name || "").trim();
   let email = body.email || null;
   let phone = body.phone || null;
+  let currentCompany: string | null = body.currentCompany || null;
+  let currentLocation: string | null = body.currentLocation || null;
+  let qualification: string | null = body.qualification || null;
+  let linkedinUrl: string | null = body.linkedinUrl || null;
+  let experienceYears: number | null = body.experienceYears != null ? Number(body.experienceYears) : null;
+  const noticePeriod: string | null = body.noticePeriod || null;
+  const currentCtc: number | null = body.currentCtc != null ? Number(body.currentCtc) : null;
+  const expectedCtc: number | null = body.expectedCtc != null ? Number(body.expectedCtc) : null;
   let summaryTags: string[] = Array.isArray(body.tags) ? body.tags : [];
   let fitNote: string | null = null;
   const resumeText = body.resumeText || null;
@@ -67,6 +75,11 @@ export async function POST(req: Request) {
       name = name || parsed.name || "Unnamed candidate";
       email = email || parsed.email;
       phone = phone || parsed.phone;
+      currentCompany = currentCompany || parsed.current_company;
+      currentLocation = currentLocation || parsed.location;
+      qualification = qualification || parsed.qualification;
+      linkedinUrl = linkedinUrl || parsed.linkedin_url;
+      if (experienceYears == null) experienceYears = parsed.years_experience;
       if (parsed.key_skills?.length) summaryTags = Array.from(new Set([...summaryTags, ...parsed.key_skills]));
       fitNote = parsed.fit_notes;
     } catch {
@@ -88,6 +101,14 @@ export async function POST(req: Request) {
       stage: body.stage || "applied",
       tags: summaryTags,
       created_by: user.id,
+      current_company: currentCompany,
+      current_location: currentLocation,
+      qualification,
+      linkedin_url: linkedinUrl,
+      experience_years: experienceYears,
+      notice_period: noticePeriod,
+      current_ctc: currentCtc,
+      expected_ctc: expectedCtc,
     })
     .select()
     .single();

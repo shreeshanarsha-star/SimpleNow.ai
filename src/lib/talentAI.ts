@@ -19,6 +19,8 @@ export type ParsedCandidate = {
   current_designation: string | null;
   location: string | null;
   years_experience: number | null;
+  qualification: string | null;
+  linkedin_url: string | null;
   key_skills: string[];
   summary: string;
   fit_notes: string | null;
@@ -39,6 +41,8 @@ Respond as JSON only (no markdown fences, no prose):
   "current_designation": string or null,
   "location": string or null,
   "years_experience": number or null,
+  "qualification": string or null (highest education/degree stated, e.g. "MBA", "B.Tech Computer Science"),
+  "linkedin_url": string or null (a linkedin.com/in/... URL if present in the text),
   "key_skills": array of short strings (max 10),
   "summary": string (~40 words, factual, evidence-based),
   "fit_notes": string or null

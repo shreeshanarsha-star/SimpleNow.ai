@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, Fragment } from "react";
+import { useRouter } from "next/navigation";
 
 import TalentAiBoard from "@/components/tools/TalentAiBoard";
 import { HScroller, VScroller } from "@/components/Scroller";
@@ -81,6 +82,7 @@ function MyRequisitionsPanel({
   roleFlags: { canApprove: boolean; canAssign: boolean; canRecruit: boolean; isAdmin: boolean; isOrgAdmin: boolean };
   onNavigate: (t: Tab) => void;
 }) {
+  const router = useRouter();
   const [focusRequisitionId, setFocusRequisitionId] = useState<string | null>(null);
   const [focusStage, setFocusStage] = useState<string | null>(null);
   const name = me?.profile?.full_name || me?.profile?.email?.split("@")[0] || "there";
@@ -108,14 +110,8 @@ function MyRequisitionsPanel({
       <ManagerSnapshot onNavigate={onNavigate} />
       {roleFlags.canRecruit && (
         <RecruiterSnapshot
-          onOpenRequisition={(id) => {
-            setFocusStage(null);
-            setFocusRequisitionId(id);
-          }}
-          onOpenStage={(id, stage) => {
-            setFocusStage(stage);
-            setFocusRequisitionId(id);
-          }}
+          onOpenRequisition={(id) => router.push(`/tools/talent-ai/requisitions/${id}`)}
+          onOpenStage={(id, stage) => router.push(`/tools/talent-ai/requisitions/${id}?stage=${stage}`)}
         />
       )}
 
