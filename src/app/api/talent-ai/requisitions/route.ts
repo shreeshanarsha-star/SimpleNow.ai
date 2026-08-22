@@ -32,8 +32,10 @@ export async function GET() {
   let visible = new Set<string>();
   if (confidentialIds.length) {
     const admin = createAdminClient();
-    const { data: profile } = await admin.from("profiles").select("is_admin").eq("id", user.id).single();
-    if (profile?.is_admin) {
+    const { data: profile } = await admin.from("profiles").select("is_admin, org_role").eq("id", user.id).single();
+    // Requisitions were already scoped to the caller's own org by RLS above,
+    // so an org_admin bypass here can't leak another org's confidential reqs.
+    if (profile?.is_admin || profile?.org_role === "org_admin") {
       visible = new Set(confidentialIds);
     } else {
       const [{ data: assigned }, { data: steps }, { data: roles }] = await Promise.all([

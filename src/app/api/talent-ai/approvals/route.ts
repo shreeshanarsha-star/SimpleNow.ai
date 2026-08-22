@@ -25,13 +25,16 @@ export async function GET() {
     .order("created_at", { ascending: true });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const { data: viewerProfile } = await admin.from("profiles").select("is_admin").eq("id", user.id).single();
+  const { data: viewerProfile } = await admin.from("profiles").select("is_admin, org_role").eq("id", user.id).single();
   // A pool-based role match (approver_user_id === null) must also be scoped
   // to the caller's own organization -- otherwise two orgs that both use
   // the "hr_approver" role name would see each other's pending approvals.
+  // Org admins see (and, in POST below, can act on) every step in their own
+  // org, named or pool-based -- they play the role of all approvers.
   const mine = (steps || []).filter((s) => {
     const stepOrgId = (s.talent_requisitions as { org_id?: string } | null)?.org_id;
     if (viewerProfile?.is_admin) return true;
+    if (viewerProfile?.org_role === "org_admin" && stepOrgId === orgId) return true;
     if (s.approver_user_id === user.id) return true;
     return s.approver_user_id === null && myRoles.includes(s.approver_role) && stepOrgId === orgId;
   });
@@ -74,10 +77,11 @@ export async function POST(req: Request) {
   }
 
   const myRoles = await getUserRoles(admin, user.id);
-  const { data: actingProfile } = await admin.from("profiles").select("is_admin").eq("id", user.id).single();
+  const { data: actingProfile } = await admin.from("profiles").select("is_admin, org_role").eq("id", user.id).single();
   const { data: stepRequisition } = await admin.from("talent_requisitions").select("org_id").eq("id", step.requisition_id).single();
   const authorized =
     actingProfile?.is_admin ||
+    (actingProfile?.org_role === "org_admin" && stepRequisition?.org_id === orgId) ||
     step.approver_user_id === user.id ||
     (step.approver_user_id === null && myRoles.includes(step.approver_role) && stepRequisition?.org_id === orgId);
   if (!authorized) {
