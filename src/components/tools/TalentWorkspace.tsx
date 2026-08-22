@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import TalentAiBoard from "@/components/tools/TalentAiBoard";
 import { HScroller, VScroller } from "@/components/Scroller";
+import { FUNNEL_STAGES, STAGE_ORDER as STAGES_ORDER } from "@/lib/talentStages";
 
 type Me = { roles: string[]; isAdmin: boolean; isOrgAdmin?: boolean; profile: { full_name: string | null; email: string | null; manager_id: string | null } | null };
 type ActionItem = { id: string; kind: string; title: string; detail: string; link: string; daysWaiting: number };
@@ -130,20 +131,6 @@ function MyRequisitionsPanel({
 
 type FunnelCandidate = { id: string; stage: string; source: string | null; requisition_id: string };
 type FunnelReq = { id: string; title: string };
-
-const FUNNEL_STAGES = [
-  { id: "applied", label: "Applied" },
-  { id: "screening", label: "Screening" },
-  { id: "hm_review", label: "HM Review" },
-  { id: "interview_1", label: "Interview 1" },
-  { id: "interview_2", label: "Interview 2" },
-  { id: "hr_interview", label: "HR Interview" },
-  { id: "selected", label: "Offer in process" },
-  { id: "offer", label: "Offered" },
-  { id: "bgv", label: "BGV" },
-  { id: "ready_to_join", label: "Ready to Join" },
-  { id: "joined", label: "Joined" },
-];
 
 const SOURCE_META: Record<string, { label: string; className: string }> = {
   referral: { label: "Employee referral", className: "bg-brand" },
@@ -565,21 +552,6 @@ function RecruiterSnapshot({
     </div>
   );
 }
-
-const STAGES_ORDER = [
-  "applied",
-  "screening",
-  "hm_review",
-  "interview_1",
-  "interview_2",
-  "hr_interview",
-  "selected",
-  "offer",
-  "bgv",
-  "ready_to_join",
-  "joined",
-  "rejected",
-];
 
 function StatCard({ label, value, accent }: { label: string; value: number | string; accent?: "good" | "critical" }) {
   const valueClass = accent === "good" ? "text-good-text" : accent === "critical" ? "text-critical" : "text-ink";

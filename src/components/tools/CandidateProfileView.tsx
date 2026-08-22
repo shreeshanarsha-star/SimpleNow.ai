@@ -4,21 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { VScroller } from "@/components/Scroller";
-
-const STAGES: { id: string; label: string }[] = [
-  { id: "applied", label: "Applied" },
-  { id: "screening", label: "Screening" },
-  { id: "hm_review", label: "HM Review" },
-  { id: "interview_1", label: "Interview 1" },
-  { id: "interview_2", label: "Interview 2" },
-  { id: "hr_interview", label: "HR Interview" },
-  { id: "selected", label: "Offer in process" },
-  { id: "offer", label: "Offered" },
-  { id: "bgv", label: "BGV" },
-  { id: "ready_to_join", label: "Ready to Join" },
-  { id: "joined", label: "Joined" },
-  { id: "rejected", label: "Rejected" },
-];
+import { STAGES, stageLabel } from "@/lib/talentStages";
 
 type Note = { id: string; body: string; created_at: string };
 type Scorecard = { id: string; rating: number | null; recommendation: string | null; feedback: string | null; created_at: string };
@@ -50,10 +36,6 @@ type OtherApplication = {
   created_at: string;
   talent_requisitions: { id: string; req_no: string; title: string; location: string | null; department: string | null } | null;
 };
-
-function stageLabel(stage: string) {
-  return STAGES.find((s) => s.id === stage)?.label || stage;
-}
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (

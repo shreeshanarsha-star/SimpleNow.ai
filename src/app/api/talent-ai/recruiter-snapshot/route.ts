@@ -1,25 +1,18 @@
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { STAGES } from "@/lib/talentStages";
 
 const FEATURE_KEY = "Talent.ai";
 
-// Same funnel stage set as the Kanban board (TalentAiBoard.tsx STAGES) --
-// keep these in sync if that list changes.
+// Derived from the shared stage taxonomy (src/lib/talentStages.ts) so this
+// view can never drift out of sync with the Kanban board or any other
+// consumer -- with an "All applications" column prepended and the applied
+// stage's label swapped to the recruiter-facing "New applications" phrasing
+// used only in this snapshot.
 const FUNNEL_COLUMNS: { id: string; label: string }[] = [
   { id: "all", label: "All applications" },
-  { id: "applied", label: "New applications" },
-  { id: "screening", label: "Screening" },
-  { id: "hm_review", label: "HM Review" },
-  { id: "interview_1", label: "Interview 1" },
-  { id: "interview_2", label: "Interview 2" },
-  { id: "hr_interview", label: "HR Interview" },
-  { id: "selected", label: "Offer in process" },
-  { id: "offer", label: "Offered" },
-  { id: "bgv", label: "BGV" },
-  { id: "ready_to_join", label: "Ready to Join" },
-  { id: "joined", label: "Joined" },
-  { id: "rejected", label: "Rejected" },
+  ...STAGES.map((s) => (s.id === "applied" ? { id: s.id, label: "New applications" } : s)),
 ];
 
 // "My requisitions" for a recruiter = requisitions they're actually

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
 import { VScroller } from "@/components/Scroller";
+import { STAGES } from "@/lib/talentStages";
 
 type Requisition = {
   id: string;
@@ -64,20 +65,6 @@ type PipelineSummary = {
   risks: string[];
 };
 
-const STAGES = [
-  { id: "applied", label: "Applied" },
-  { id: "screening", label: "Screening" },
-  { id: "hm_review", label: "HM Review" },
-  { id: "interview_1", label: "Interview 1" },
-  { id: "interview_2", label: "Interview 2" },
-  { id: "hr_interview", label: "HR Interview" },
-  { id: "selected", label: "Offer in process" },
-  { id: "offer", label: "Offered" },
-  { id: "bgv", label: "BGV" },
-  { id: "ready_to_join", label: "Ready to Join" },
-  { id: "joined", label: "Joined" },
-  { id: "rejected", label: "Rejected" },
-];
 // "Offer in process" (id: selected) and "Offered" are gated -- dual sign-off,
 // then comp + Move to Offer -- reachable only via the dedicated actions in
 // CandidateDetail, never the plain prev/next stepper. Once a candidate is

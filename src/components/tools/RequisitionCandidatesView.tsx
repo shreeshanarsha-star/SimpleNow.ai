@@ -4,22 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { HScroller } from "@/components/Scroller";
-
-const STAGES: { id: string; label: string }[] = [
-  { id: "applied", label: "Applied" },
-  { id: "screening", label: "Screening" },
-  { id: "hm_review", label: "HM Review" },
-  { id: "interview_1", label: "Interview 1" },
-  { id: "interview_2", label: "Interview 2" },
-  { id: "hr_interview", label: "HR Interview" },
-  { id: "selected", label: "Offer in process" },
-  { id: "offer", label: "Offered" },
-  { id: "bgv", label: "BGV" },
-  { id: "ready_to_join", label: "Ready to Join" },
-  { id: "joined", label: "Joined" },
-  { id: "rejected", label: "Rejected" },
-];
-const STAGE_LABEL: Record<string, string> = Object.fromEntries(STAGES.map((s) => [s.id, s.label]));
+import { STAGES, STAGE_LABEL } from "@/lib/talentStages";
 
 type Candidate = {
   id: string;
