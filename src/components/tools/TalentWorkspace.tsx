@@ -74,7 +74,12 @@ export default function TalentWorkspace() {
       {tab === "assign" && <AssignPanel />}
       {tab === "recruiter" && <RecruiterToolsPanel />}
       {tab === "jobs" && <EmployeeJobsPanel />}
-      {tab === "admin" && <AdminPanel />}
+      {tab === "admin" && (
+        <div className="flex flex-col gap-6">
+          <AdminDashboard onNavigate={setTab} />
+          <AdminPanel />
+        </div>
+      )}
     </div>
   );
 }
@@ -346,7 +351,7 @@ function FunnelPanel() {
 
 const STAGES_ORDER = ["applied", "screening", "shortlisted", "hm_review", "interview", "selected", "offer", "rejected"];
 
-function StatCard({ label, value, accent }: { label: string; value: number; accent?: "good" | "critical" }) {
+function StatCard({ label, value, accent }: { label: string; value: number | string; accent?: "good" | "critical" }) {
   const valueClass = accent === "good" ? "text-good-text" : accent === "critical" ? "text-critical" : "text-ink";
   return (
     <div className="border border-border rounded-md p-3.5 bg-surface flex flex-col gap-1">
@@ -831,6 +836,156 @@ function EmployeeJobsPanel() {
 
 type Profile = { id: string; email: string | null; full_name: string | null; manager_id: string | null; is_admin: boolean };
 type RoleRow = { id: string; user_id: string; role: string };
+
+// ---------------- Admin Dashboard ----------------
+
+type DashboardCounts = {
+  totalRequisitions: number;
+  totalCandidates: number;
+  openPositions: number;
+  offersThisMonth: number;
+  avgDaysToFirstOffer: number | null;
+};
+type DeptRow = { department: string; count: number };
+type ActivityRow = { id: string; title: string; fromStatus: string; toStatus: string; actor: string; changedAt: string };
+type AdminProfileRow = { id: string; email: string | null; full_name: string | null; is_admin: boolean; org_role: string | null };
+
+function timeAgo(iso: string) {
+  const mins = Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+function AdminDashboard({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  const [counts, setCounts] = useState<DashboardCounts | null>(null);
+  const [depts, setDepts] = useState<DeptRow[]>([]);
+  const [activity, setActivity] = useState<ActivityRow[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<ActionItem[]>([]);
+  const [users, setUsers] = useState<AdminProfileRow[]>([]);
+
+  useEffect(() => {
+    fetch("/api/talent-ai/admin/dashboard").then((r) => r.json()).then((d) => {
+      setCounts(d.counts || null);
+      setDepts(d.departmentBreakdown || []);
+      setActivity(d.recentActivity || []);
+    });
+    fetch("/api/talent-ai/action-queue").then((r) => r.json()).then((d) => {
+      setPendingApprovals((d.items || []).filter((it: ActionItem) => it.kind === "approval"));
+    });
+    fetch("/api/talent-ai/admin").then((r) => r.json()).then((d) => setUsers(d.profiles || []));
+  }, []);
+
+  const maxDept = Math.max(1, ...depts.map((d) => d.count));
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h3 className="m-0 text-[15px] font-bold">Administrator dashboard</h3>
+        <div className="flex items-center gap-2">
+          <button onClick={() => onNavigate("overview")} className="text-[12px] font-semibold px-3 py-1.5 border border-border rounded-md hover:border-brand">Requisitions</button>
+          <button onClick={() => onNavigate("funnel")} className="text-[12px] font-semibold px-3 py-1.5 border border-border rounded-md hover:border-brand">Funnel &amp; Sources</button>
+        </div>
+      </div>
+
+      {!counts ? (
+        <div className="text-[12.5px] text-ink-muted">Loading...</div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <StatCard label="Total requisitions" value={counts.totalRequisitions} />
+          <StatCard label="Total candidates" value={counts.totalCandidates} />
+          <StatCard label="Open positions" value={counts.openPositions} />
+          <StatCard label="Offers extended (this mo.)" value={counts.offersThisMonth} />
+          <StatCard
+            label="Avg days: req → first offer"
+            value={counts.avgDaysToFirstOffer === null ? "—" : counts.avgDaysToFirstOffer}
+          />
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="px-3.5 py-2.5 bg-surface-muted border-b border-border text-[12px] font-bold">
+            Requisitions by department
+          </div>
+          <div className="p-3.5 flex flex-col gap-2">
+            {depts.length === 0 && <div className="text-[12px] text-ink-muted">No requisitions yet.</div>}
+            {depts.map((d) => (
+              <div key={d.department} className="flex items-center gap-2">
+                <div className="w-[110px] text-[11.5px] text-ink-muted truncate flex-shrink-0">{d.department}</div>
+                <div className="flex-1 h-[8px] rounded-full bg-page overflow-hidden">
+                  <div className="h-full bg-brand rounded-full" style={{ width: `${(d.count / maxDept) * 100}%` }} />
+                </div>
+                <div className="w-[24px] text-[11.5px] font-semibold text-right flex-shrink-0">{d.count}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="flex items-center justify-between px-3.5 py-2.5 bg-surface-muted border-b border-border">
+            <div className="text-[12px] font-bold">Approvals pending ({pendingApprovals.length})</div>
+            <button onClick={() => onNavigate("approvals")} className="text-[11px] font-semibold text-brand">View all →</button>
+          </div>
+          <div className="divide-y divide-border max-h-[220px] overflow-y-auto">
+            {pendingApprovals.length === 0 && <div className="p-3.5 text-[12px] text-ink-muted">Nothing waiting on an approver right now.</div>}
+            {pendingApprovals.slice(0, 6).map((it) => (
+              <a key={it.id} href={it.link} className="flex items-center justify-between gap-2 px-3.5 py-2.5 hover:bg-brand-wash/40 text-[12px]">
+                <span><strong>{it.title}</strong> — <span className="text-ink-muted">{it.detail}</span></span>
+                <span className="text-[10.5px] text-ink-muted flex-shrink-0">{it.daysWaiting}d</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="border border-border rounded-lg overflow-hidden">
+        <div className="px-3.5 py-2.5 bg-surface-muted border-b border-border text-[12px] font-bold">
+          Recent requisition activity
+        </div>
+        <div className="divide-y divide-border">
+          {activity.length === 0 && <div className="p-3.5 text-[12px] text-ink-muted">No status changes recorded yet.</div>}
+          {activity.map((a) => (
+            <div key={a.id} className="flex items-center justify-between gap-2 px-3.5 py-2.5 text-[12px]">
+              <span>
+                <strong>{a.actor}</strong> moved <strong>{a.title}</strong>{" "}
+                <span className="text-ink-muted">{a.fromStatus.replace(/_/g, " ")} → {a.toStatus.replace(/_/g, " ")}</span>
+              </span>
+              <span className="text-[10.5px] text-ink-muted flex-shrink-0">{timeAgo(a.changedAt)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="border border-border rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between px-3.5 py-2.5 bg-surface-muted border-b border-border">
+          <div className="text-[12px] font-bold">People in your org ({users.length})</div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-left text-ink-muted border-b border-border">
+                <th className="px-3.5 py-2 font-semibold">Name</th>
+                <th className="px-3.5 py-2 font-semibold">Email</th>
+                <th className="px-3.5 py-2 font-semibold">Org role</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {users.map((u) => (
+                <tr key={u.id}>
+                  <td className="px-3.5 py-2">{u.full_name || "—"}</td>
+                  <td className="px-3.5 py-2 text-ink-muted">{u.email}</td>
+                  <td className="px-3.5 py-2">{u.is_admin ? "Platform admin" : u.org_role === "org_admin" ? "Org admin" : "Member"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function AdminPanel() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
