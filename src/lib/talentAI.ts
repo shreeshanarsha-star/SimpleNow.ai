@@ -128,3 +128,52 @@ export async function summarizePipeline(
   );
   return parseJsonResponse(text);
 }
+
+export type ParsedRequisition = {
+  title: string | null;
+  department: string | null;
+  location: string | null;
+  work_mode: "remote" | "hybrid" | "onsite" | null;
+  employment_type: string | null;
+  headcount: number | null;
+  job_level: string | null;
+  hiring_manager: string | null;
+  cost_center: string | null;
+  comp_min: number | null;
+  comp_max: number | null;
+  key_requirements: string[];
+  role_summary: string;
+};
+
+// Turns an uploaded/pasted job description into structured requisition
+// fields so opening a req is "attach the JD, review, submit" instead of
+// re-typing everything the JD already says. This extracts role FACTS only
+// (title, level, location, comp band if stated, must-have skills) -- it
+// never drafts the business justification for the headcount, since that's
+// a judgment call for the requisition owner, not something a JD implies.
+const JD_PARSE_PROMPT = `You extract structured role details from a raw job description document for an
+ATS requisition intake form. Respond as JSON only (no markdown fences, no prose):
+{
+  "title": string or null,
+  "department": string or null,
+  "location": string or null,
+  "work_mode": "remote" or "hybrid" or "onsite" or null,
+  "employment_type": "full-time" or "part-time" or "contract" or "intern" or null,
+  "headcount": number or null,
+  "job_level": string or null (e.g. "IC3", "Senior", "M2" -- only if the document names a level/grade/band),
+  "hiring_manager": string or null,
+  "cost_center": string or null,
+  "comp_min": number or null,
+  "comp_max": number or null,
+  "key_requirements": array of short strings (max 8, the must-have qualifications/skills as stated),
+  "role_summary": string (~50 words, factual, what the role actually does per the document)
+}
+Extract only what is explicitly stated in the document -- never invent a location, comp figure,
+level, or headcount that isn't written there. Do not estimate market-rate compensation; comp_min/
+comp_max should be null unless the document itself states a pay range. Never use age or any
+age-implying detail.`;
+
+export async function parseJDToRequisition(jdText: string): Promise<ParsedRequisition> {
+  const text = await callClaude(`${JD_PARSE_PROMPT}\n\n--- Job description text ---\n${jdText}`, 900);
+  return parseJsonResponse(text);
+}
