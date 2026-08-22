@@ -20,7 +20,9 @@ export async function GET() {
 
   const { data: steps, error } = await admin
     .from("talent_approval_steps")
-    .select("*, talent_requisitions(id, title, department, location, headcount, priority, requisition_type, cost_center, comp_min, comp_max, created_by, status, is_confidential, org_id)")
+    .select(
+      "*, talent_requisitions(id, title, department, location, headcount, priority, requisition_type, cost_center, comp_min, comp_max, created_by, status, is_confidential, org_id, description, jd_source_text, work_mode, employment_type, job_level, target_hire_date, comments, replacement_name, replacement_employee_id)"
+    )
     .in("status", ["pending", "hold"])
     .order("created_at", { ascending: true });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

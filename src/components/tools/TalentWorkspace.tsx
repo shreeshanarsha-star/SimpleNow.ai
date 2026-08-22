@@ -86,6 +86,9 @@ type ApprovalStep = {
     id: string; title: string; department: string | null; location: string | null; headcount: number;
     priority: string; requisition_type: string; cost_center: string | null; comp_min: number | null; comp_max: number | null;
     is_confidential: boolean;
+    description: string | null; jd_source_text: string | null; work_mode: string | null;
+    employment_type: string | null; job_level: string | null; target_hire_date: string | null;
+    comments: string | null; replacement_name: string | null; replacement_employee_id: string | null;
   };
 };
 
@@ -95,6 +98,7 @@ function ApprovalsPanel() {
   const [comments, setComments] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   async function load() {
     setLoading(true);
@@ -143,6 +147,47 @@ function ApprovalsPanel() {
               {[r.department, r.location, `${r.headcount} headcount`, r.requisition_type].filter(Boolean).join(" · ")}
               {r.comp_min != null && ` · ${r.comp_min}–${r.comp_max ?? r.comp_min}`}
             </div>
+            <button
+              type="button"
+              onClick={() => setExpanded((prev) => ({ ...prev, [s.id]: !prev[s.id] }))}
+              className="text-[11.5px] font-bold text-brand self-start"
+            >
+              {expanded[s.id] ? "Hide details ↑" : "View full details ↓"}
+            </button>
+            {expanded[s.id] && (
+              <div className="border border-border rounded-sm bg-page p-3 flex flex-col gap-2 text-[12.5px]">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-ink-2">
+                  {r.work_mode && <div><span className="text-ink-muted">Work mode:</span> {r.work_mode}</div>}
+                  {r.employment_type && <div><span className="text-ink-muted">Employment type:</span> {r.employment_type}</div>}
+                  {r.job_level && <div><span className="text-ink-muted">Level:</span> {r.job_level}</div>}
+                  {r.target_hire_date && <div><span className="text-ink-muted">Target hire date:</span> {r.target_hire_date}</div>}
+                  {r.requisition_type === "replacement" && r.replacement_name && (
+                    <div className="col-span-2"><span className="text-ink-muted">Replacing:</span> {r.replacement_name} {r.replacement_employee_id ? `(${r.replacement_employee_id})` : ""}</div>
+                  )}
+                </div>
+                {r.description && (
+                  <div>
+                    <div className="text-[10.5px] font-bold uppercase tracking-wider text-ink-muted mb-1">Role summary</div>
+                    <p className="m-0 text-ink-2 whitespace-pre-wrap">{r.description}</p>
+                  </div>
+                )}
+                {r.jd_source_text && (
+                  <div>
+                    <div className="text-[10.5px] font-bold uppercase tracking-wider text-ink-muted mb-1">Full job description</div>
+                    <p className="m-0 text-ink-2 whitespace-pre-wrap max-h-64 overflow-y-auto">{r.jd_source_text}</p>
+                  </div>
+                )}
+                {r.comments && (
+                  <div>
+                    <div className="text-[10.5px] font-bold uppercase tracking-wider text-ink-muted mb-1">Requester notes</div>
+                    <p className="m-0 text-ink-2 whitespace-pre-wrap">{r.comments}</p>
+                  </div>
+                )}
+                {!r.description && !r.jd_source_text && (
+                  <p className="m-0 text-ink-muted italic">No job description was attached to this requisition.</p>
+                )}
+              </div>
+            )}
             <input
               value={comments[s.id] || ""}
               onChange={(e) => setComments((prev) => ({ ...prev, [s.id]: e.target.value }))}
