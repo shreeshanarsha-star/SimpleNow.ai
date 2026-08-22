@@ -6,12 +6,12 @@ import TalentAiBoard from "@/components/tools/TalentAiBoard";
 
 type Me = { roles: string[]; isAdmin: boolean; isOrgAdmin?: boolean; profile: { full_name: string | null; email: string | null; manager_id: string | null } | null };
 type ActionItem = { id: string; kind: string; title: string; detail: string; link: string; daysWaiting: number };
-type Tab = "overview" | "funnel" | "approvals" | "assign" | "recruiter" | "jobs" | "admin";
+type Tab = "home" | "overview" | "funnel" | "approvals" | "assign" | "recruiter" | "jobs" | "admin";
 
 export default function TalentWorkspace() {
   const [me, setMe] = useState<Me | null>(null);
   const [items, setItems] = useState<ActionItem[]>([]);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("home");
 
   useEffect(() => {
     fetch("/api/talent-ai/me").then((r) => r.json()).then((d) => setMe(d));
@@ -27,6 +27,7 @@ export default function TalentWorkspace() {
   const canRecruit = isAdmin || roles.includes("recruiter") || roles.includes("ta_head");
 
   const tabs: { id: Tab; label: string; show: boolean }[] = [
+    { id: "home", label: "Home", show: true },
     { id: "overview", label: "Requisitions", show: true },
     { id: "funnel", label: "Funnel & Sources", show: canRecruit || canAssign || isAdmin },
     { id: "approvals", label: "Approvals", show: canApprove },
@@ -52,7 +53,7 @@ export default function TalentWorkspace() {
         ))}
       </div>
 
-      {items.length > 0 && (
+      {tab !== "home" && items.length > 0 && (
         <div className="border border-border rounded-md p-3 bg-brand-wash flex flex-col gap-1.5">
           <div className="text-[11px] font-bold uppercase tracking-wider text-brand">Needs your action ({items.length})</div>
           {items.slice(0, 5).map((it) => (
@@ -66,6 +67,7 @@ export default function TalentWorkspace() {
         </div>
       )}
 
+      {tab === "home" && <HomePanel me={me} items={items} roleFlags={{ canApprove, canAssign, canRecruit, isAdmin, isOrgAdmin }} onNavigate={setTab} />}
       {tab === "overview" && <TalentAiBoard />}
       {tab === "funnel" && <FunnelPanel />}
       {tab === "approvals" && <ApprovalsPanel />}
@@ -73,6 +75,115 @@ export default function TalentWorkspace() {
       {tab === "recruiter" && <RecruiterToolsPanel />}
       {tab === "jobs" && <EmployeeJobsPanel />}
       {tab === "admin" && <AdminPanel />}
+    </div>
+  );
+}
+
+// ---------------- Home (role-based dashboard) ----------------
+
+const KIND_META: Record<
+  ActionItem["kind"],
+  { label: string; sectionTitle: string; goTab: Tab }
+> = {
+  approval: { label: "Approval", sectionTitle: "Waiting on your decision", goTab: "approvals" },
+  assignment: { label: "Assignment", sectionTitle: "Needs a recruiter assigned", goTab: "assign" },
+  candidate: { label: "Candidate", sectionTitle: "Candidates to move forward", goTab: "recruiter" },
+  requisition: { label: "Requisition", sectionTitle: "Your requisitions needing edits", goTab: "overview" },
+};
+
+const KIND_ORDER: ActionItem["kind"][] = ["approval", "assignment", "candidate", "requisition"];
+
+function HomePanel({
+  me,
+  items,
+  roleFlags,
+  onNavigate,
+}: {
+  me: Me | null;
+  items: ActionItem[];
+  roleFlags: { canApprove: boolean; canAssign: boolean; canRecruit: boolean; isAdmin: boolean; isOrgAdmin: boolean };
+  onNavigate: (t: Tab) => void;
+}) {
+  const name = me?.profile?.full_name || me?.profile?.email?.split("@")[0] || "there";
+  const roleLabels: string[] = [];
+  if (roleFlags.isAdmin) roleLabels.push("Platform admin");
+  else if (roleFlags.isOrgAdmin) roleLabels.push("Org admin");
+  for (const r of me?.roles || []) {
+    if (!roleLabels.includes(r)) roleLabels.push(r.replace(/_/g, " "));
+  }
+  if (roleLabels.length === 0) roleLabels.push("Team member");
+
+  const byKind: Record<string, ActionItem[]> = {};
+  for (const it of items) {
+    (byKind[it.kind] ||= []).push(it);
+  }
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div>
+        <div className="text-[18px] font-bold text-ink">
+          {greeting}, {name}
+        </div>
+        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+          {roleLabels.map((r) => (
+            <span key={r} className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-wash text-brand capitalize">
+              {r}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {KIND_ORDER.map((k) => {
+          const meta = KIND_META[k];
+          const count = (byKind[k] || []).length;
+          return (
+            <button
+              key={k}
+              onClick={() => onNavigate(meta.goTab)}
+              className="text-left border border-border rounded-lg p-3 hover:border-brand transition-colors bg-surface"
+            >
+              <div className="text-[24px] font-bold text-ink leading-none">{count}</div>
+              <div className="text-[11px] text-ink-muted mt-1.5 leading-tight">{meta.sectionTitle}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {items.length === 0 ? (
+        <div className="border border-dashed border-border rounded-lg p-6 text-center text-[13px] text-ink-muted">
+          Nothing needs your attention right now. Check &ldquo;Requisitions&rdquo; for the full pipeline.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {KIND_ORDER.filter((k) => (byKind[k] || []).length > 0).map((k) => {
+            const meta = KIND_META[k];
+            const list = (byKind[k] || []).slice().sort((a, b) => b.daysWaiting - a.daysWaiting);
+            return (
+              <div key={k} className="border border-border rounded-lg overflow-hidden">
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-surface-muted border-b border-border">
+                  <div className="text-[12px] font-bold text-ink">{meta.sectionTitle}</div>
+                  <button onClick={() => onNavigate(meta.goTab)} className="text-[11px] font-semibold text-brand">
+                    View all →
+                  </button>
+                </div>
+                <div className="divide-y divide-border">
+                  {list.map((it) => (
+                    <a key={it.id} href={it.link} className="flex items-center justify-between gap-2 px-3.5 py-2.5 hover:bg-brand-wash/40 text-[12.5px]">
+                      <span>
+                        <strong>{it.title}</strong> — <span className="text-ink-muted">{it.detail}</span>
+                      </span>
+                      <span className="text-[10.5px] text-ink-muted flex-shrink-0">{it.daysWaiting}d waiting</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
