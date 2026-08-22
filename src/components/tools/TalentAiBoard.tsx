@@ -15,6 +15,8 @@ type Requisition = {
   hiring_manager: string | null;
   description: string | null;
   created_at: string;
+  is_published?: boolean;
+  posting_channels?: { name: string; posted: boolean }[];
   talent_candidates?: { id: string; stage: string }[];
 };
 
@@ -85,6 +87,7 @@ export default function TalentAiBoard() {
   const [showAddCandidate, setShowAddCandidate] = useState(false);
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [summarizing, setSummarizing] = useState(false);
+  const [publishBusy, setPublishBusy] = useState(false);
 
   useEffect(() => {
     loadRequisitions();
@@ -188,6 +191,26 @@ export default function TalentAiBoard() {
       setError(err instanceof Error ? err.message : "AI summary failed.");
     } finally {
       setSummarizing(false);
+    }
+  }
+
+  async function togglePublish() {
+    if (!selected) return;
+    setPublishBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/talent-ai/requisitions/${selected.id}/workflow`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: selected.is_published ? "unpublish" : "publish" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not update publish status.");
+      await openRequisition(selected.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update publish status.");
+    } finally {
+      setPublishBusy(false);
     }
   }
 
@@ -370,12 +393,29 @@ export default function TalentAiBoard() {
           {summarizing ? "Summarizing…" : "Summarize with AI"}
         </button>
         <button
+          onClick={togglePublish}
+          disabled={publishBusy}
+          className={`text-[12.5px] font-bold px-3 py-2 rounded-sm flex-shrink-0 disabled:opacity-50 ${
+            selected.is_published
+              ? "border border-border bg-surface text-ink"
+              : "bg-good-wash text-good-text border border-transparent"
+          }`}
+        >
+          {publishBusy ? "…" : selected.is_published ? "Unpublish" : "Publish role"}
+        </button>
+        <button
           onClick={() => setShowAddCandidate(true)}
           className="bg-brand text-white text-[12.5px] font-bold px-3 py-2 rounded-sm shadow-soft-sm flex-shrink-0"
         >
           + Add candidate
         </button>
       </div>
+
+      {selected.is_published && (
+        <div className="text-[12px] text-ink-muted -mt-2">
+          Live on Employee Jobs{selected.posting_channels?.length ? ` · Channels: ${selected.posting_channels.map((c) => c.name).join(", ")}` : ""}
+        </div>
+      )}
 
       {error && <div className="bg-critical-wash text-critical text-[12.5px] rounded-sm px-3 py-2">{error}</div>}
 
