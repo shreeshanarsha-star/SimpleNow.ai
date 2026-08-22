@@ -10,12 +10,10 @@ type Tab = "home" | "funnel" | "approvals" | "assign" | "recruiter" | "projects"
 
 export default function TalentWorkspace() {
   const [me, setMe] = useState<Me | null>(null);
-  const [items, setItems] = useState<ActionItem[]>([]);
   const [tab, setTab] = useState<Tab>("home");
 
   useEffect(() => {
     fetch("/api/talent-ai/me").then((r) => r.json()).then((d) => setMe(d));
-    fetch("/api/talent-ai/action-queue").then((r) => r.json()).then((d) => setItems(d.items || []));
   }, [tab]);
 
   const roles = me?.roles || [];
@@ -53,20 +51,6 @@ export default function TalentWorkspace() {
           </button>
         ))}
       </div>
-
-      {items.length > 0 && (
-        <div className="border border-border rounded-md p-3 bg-brand-wash flex flex-col gap-1.5">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-brand">Needs your action ({items.length})</div>
-          {items.slice(0, 5).map((it) => (
-            <div key={it.id} className="text-[12.5px] flex items-center justify-between gap-2">
-              <span>
-                <strong>{it.title}</strong> — <span className="text-ink-muted">{it.detail}</span>
-              </span>
-              <span className="text-[10.5px] text-ink-muted flex-shrink-0">{it.daysWaiting}d waiting</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {tab === "home" && <MyRequisitionsPanel me={me} roleFlags={{ canApprove, canAssign, canRecruit, isAdmin, isOrgAdmin }} onNavigate={setTab} />}
       {tab === "funnel" && <FunnelPanel />}
