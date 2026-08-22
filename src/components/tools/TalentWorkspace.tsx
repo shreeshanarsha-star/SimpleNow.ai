@@ -37,34 +37,36 @@ export default function TalentWorkspace() {
   ];
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-1.5 border-b border-border overflow-x-auto">
+    <div className="flex gap-5 items-start">
+      <nav className="flex flex-col gap-0.5 w-[168px] flex-shrink-0 sticky top-4">
         {tabs.filter((t) => t.show).map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`text-[12.5px] font-bold px-3 py-2.5 border-b-2 flex-shrink-0 ${
-              tab === t.id ? "border-brand text-brand" : "border-transparent text-ink-muted"
+            className={`text-left text-[12.5px] font-bold px-3 py-2.5 rounded-md border-l-2 ${
+              tab === t.id ? "border-brand text-brand bg-brand-wash" : "border-transparent text-ink-muted hover:bg-surface-muted"
             }`}
           >
             {t.label}
           </button>
         ))}
-      </div>
+      </nav>
 
-      {tab === "home" && <MyRequisitionsPanel me={me} roleFlags={{ canApprove, canAssign, canRecruit, isAdmin, isOrgAdmin }} onNavigate={setTab} />}
-      {tab === "funnel" && <FunnelPanel />}
-      {tab === "approvals" && <ApprovalsPanel />}
-      {tab === "assign" && <AssignPanel />}
-      {tab === "recruiter" && <RecruiterToolsPanel />}
-      {tab === "projects" && <ProjectsPanel />}
-      {tab === "jobs" && <EmployeeJobsPanel />}
-      {tab === "admin" && (
-        <div className="flex flex-col gap-6">
-          <AdminDashboard onNavigate={setTab} />
-          <UserManagementPanel />
-        </div>
-      )}
+      <div className="flex-1 min-w-0">
+        {tab === "home" && <MyRequisitionsPanel me={me} roleFlags={{ canApprove, canAssign, canRecruit, isAdmin, isOrgAdmin }} onNavigate={setTab} />}
+        {tab === "funnel" && <FunnelPanel />}
+        {tab === "approvals" && <ApprovalsPanel />}
+        {tab === "assign" && <AssignPanel />}
+        {tab === "recruiter" && <RecruiterToolsPanel />}
+        {tab === "projects" && <ProjectsPanel />}
+        {tab === "jobs" && <EmployeeJobsPanel />}
+        {tab === "admin" && (
+          <div className="flex flex-col gap-6">
+            <AdminDashboard onNavigate={setTab} />
+            <UserManagementPanel />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -81,6 +83,7 @@ function MyRequisitionsPanel({
   onNavigate: (t: Tab) => void;
 }) {
   const [focusRequisitionId, setFocusRequisitionId] = useState<string | null>(null);
+  const [focusStage, setFocusStage] = useState<string | null>(null);
   const name = me?.profile?.full_name || me?.profile?.email?.split("@")[0] || "there";
   const roleLabels: string[] = [];
   if (roleFlags.isAdmin) roleLabels.push("Platform admin");
@@ -104,9 +107,27 @@ function MyRequisitionsPanel({
 
       {roleFlags.canAssign && <TAHeadSnapshot onNavigate={onNavigate} />}
       <ManagerSnapshot onNavigate={onNavigate} />
-      {roleFlags.canRecruit && <RecruiterSnapshot onNavigate={onNavigate} onOpenRequisition={setFocusRequisitionId} />}
+      {roleFlags.canRecruit && (
+        <RecruiterSnapshot
+          onNavigate={onNavigate}
+          onOpenRequisition={(id) => {
+            setFocusStage(null);
+            setFocusRequisitionId(id);
+          }}
+          onOpenStage={(id, stage) => {
+            setFocusStage(stage);
+            setFocusRequisitionId(id);
+          }}
+        />
+      )}
 
-      <TalentAiBoard focusRequisitionId={focusRequisitionId} onFocusHandled={() => setFocusRequisitionId(null)} />
+      <TalentAiBoard
+        focusRequisitionId={focusRequisitionId}
+        onFocusHandled={() => setFocusRequisitionId(null)}
+        focusStage={focusStage}
+        onStageFocusHandled={() => setFocusStage(null)}
+        hideListWhenIdle={roleFlags.canRecruit}
+      />
     </div>
   );
 }
@@ -473,7 +494,15 @@ function reqLabel(r: { req_no?: string; title: string; location?: string | null 
 }
 type FunnelColumn = { id: string; label: string };
 
-function RecruiterSnapshot({ onNavigate, onOpenRequisition }: { onNavigate: (t: Tab) => void; onOpenRequisition: (id: string) => void }) {
+function RecruiterSnapshot({
+  onNavigate,
+  onOpenRequisition,
+  onOpenStage,
+}: {
+  onNavigate: (t: Tab) => void;
+  onOpenRequisition: (id: string) => void;
+  onOpenStage: (id: string, stage: string) => void;
+}) {
   const [funnelColumns, setFunnelColumns] = useState<FunnelColumn[]>([]);
   const [myRequisitions, setMyRequisitions] = useState<RecruiterReqRow[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -492,43 +521,68 @@ function RecruiterSnapshot({ onNavigate, onOpenRequisition }: { onNavigate: (t: 
   return (
     <div className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-surface">
       <div className="flex items-center justify-between">
-        <div className="text-[13px] font-bold text-ink">My requisitions</div>
+        <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Pipeline</div>
         <button onClick={() => onNavigate("recruiter")} className="text-[11.5px] font-semibold px-2.5 py-1 border border-border rounded-md hover:border-brand">Search candidates</button>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-[12px]">
-          <thead>
-            <tr>
-              <th className="text-left font-bold text-ink-muted uppercase tracking-wider text-[10px] px-2.5 py-2 border-b border-border sticky left-0 bg-surface">
-                Requisition
-              </th>
-              {funnelColumns.map((col) => (
-                <th key={col.id} className="text-right font-bold text-ink-muted uppercase tracking-wider text-[9.5px] px-2 py-2 border-b border-border whitespace-nowrap">
-                  {col.label}
+      <div className="flex gap-4 items-start flex-wrap">
+        {/* Name list -- click a role to open its full pipeline. */}
+        <div className="flex flex-col gap-1 w-full sm:w-[220px] flex-shrink-0">
+          {myRequisitions.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => onOpenRequisition(r.id)}
+              className="text-left px-2.5 py-2 rounded-md border border-border hover:border-brand hover:bg-brand-wash/30"
+            >
+              <div className="font-bold text-[12.5px]">{reqLabel(r)}</div>
+              <div className="text-[10.5px] text-ink-muted">{r.department || "No department"}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* Numbers -- req # only (name already listed on the left); click a
+            count to jump straight into that requisition's pipeline, scrolled
+            to that stage's candidates. */}
+        <div className="overflow-x-auto flex-1 min-w-[260px]">
+          <table className="w-full border-collapse text-[12px]">
+            <thead>
+              <tr>
+                <th className="text-left font-bold text-ink-muted uppercase tracking-wider text-[10px] px-2.5 py-2 border-b border-border sticky left-0 bg-surface">
+                  Req #
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {myRequisitions.map((r) => (
-              <tr key={r.id} className="hover:bg-brand-wash/30 cursor-pointer" onClick={() => onOpenRequisition(r.id)}>
-                <td className="px-2.5 py-2 border-b border-border sticky left-0 bg-surface">
-                  <div className="font-bold text-[12.5px]">{reqLabel(r)}</div>
-                  <div className="text-[10.5px] text-ink-muted">{r.department || "No department"}</div>
-                </td>
-                {funnelColumns.map((col) => {
-                  const n = r.stageCounts?.[col.id] ?? 0;
-                  return (
-                    <td key={col.id} className={`text-right px-2 py-2 border-b border-border tabular-nums ${n > 0 ? "font-bold text-ink" : "text-ink-muted"}`}>
-                      {n}
-                    </td>
-                  );
-                })}
+                {funnelColumns.map((col) => (
+                  <th key={col.id} className="text-right font-bold text-ink-muted uppercase tracking-wider text-[9.5px] px-2 py-2 border-b border-border whitespace-nowrap">
+                    {col.label}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {myRequisitions.map((r) => (
+                <tr key={r.id}>
+                  <td className="px-2.5 py-2 border-b border-border sticky left-0 bg-surface font-bold text-[11.5px] tabular-nums">
+                    {r.req_no || "—"}
+                  </td>
+                  {funnelColumns.map((col) => {
+                    const n = r.stageCounts?.[col.id] ?? 0;
+                    const clickable = n > 0 && col.id !== "all";
+                    return (
+                      <td
+                        key={col.id}
+                        onClick={() => clickable && onOpenStage(r.id, col.id)}
+                        className={`text-right px-2 py-2 border-b border-border tabular-nums ${
+                          n > 0 ? "font-bold text-ink" : "text-ink-muted"
+                        } ${clickable ? "cursor-pointer hover:text-brand hover:underline" : ""}`}
+                      >
+                        {n}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

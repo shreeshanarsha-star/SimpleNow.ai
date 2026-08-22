@@ -104,9 +104,15 @@ function stepperRange(stage: string): { min: number; max: number } | null {
 export default function TalentAiBoard({
   focusRequisitionId,
   onFocusHandled,
+  focusStage,
+  onStageFocusHandled,
+  hideListWhenIdle,
 }: {
   focusRequisitionId?: string | null;
   onFocusHandled?: () => void;
+  focusStage?: string | null;
+  onStageFocusHandled?: () => void;
+  hideListWhenIdle?: boolean;
 } = {}) {
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,6 +127,7 @@ export default function TalentAiBoard({
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [summarizing, setSummarizing] = useState(false);
   const [publishBusy, setPublishBusy] = useState(false);
+  const [highlightStageId, setHighlightStageId] = useState<string | null>(null);
 
   useEffect(() => {
     loadRequisitions();
@@ -131,6 +138,20 @@ export default function TalentAiBoard({
     openRequisition(focusRequisitionId).finally(() => onFocusHandled?.());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusRequisitionId]);
+
+  // Once the requisition's pipeline has actually rendered, scroll the
+  // requested stage column into view and give it a brief highlight --
+  // "click a number, land on those profiles" from the funnel table.
+  useEffect(() => {
+    if (!focusStage || !selected) return;
+    const el = document.getElementById(`stage-col-${focusStage}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    setHighlightStageId(focusStage);
+    onStageFocusHandled?.();
+    const t = setTimeout(() => setHighlightStageId(null), 2500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusStage, selected]);
 
   async function loadRequisitions() {
     setLoading(true);
@@ -346,7 +367,8 @@ export default function TalentAiBoard({
 
         {showNewReq && <RequisitionForm onCancel={() => setShowNewReq(false)} onSubmit={createRequisition} />}
 
-        {requisitions.length === 0 ? (
+{!hideListWhenIdle && (
+                requisitions.length === 0 ? (
           <div className="border border-dashed border-border rounded-md py-14 flex flex-col items-center gap-2 text-center">
             <Icon name="briefcase" className="w-7 h-7 text-ink-muted" />
             <div className="text-[13.5px] font-bold">No requisitions yet</div>
@@ -394,6 +416,16 @@ export default function TalentAiBoard({
                 </button>
               );
             })}
+          </div>
+        )
+      )}
+
+        {hideListWhenIdle && (
+          <div className="border border-dashed border-border rounded-md py-14 flex flex-col items-center gap-2 text-center">
+            <Icon name="briefcase" className="w-7 h-7 text-ink-muted" />
+            <p className="m-0 text-[12.5px] text-ink-muted max-w-xs">
+              Pick a requisition from the list to open its pipeline.
+            </p>
           </div>
         )}
 
@@ -521,7 +553,13 @@ export default function TalentAiBoard({
           const stageCandidates = candidates.filter((c) => c.stage === stage.id);
           const range = stepperRange(stage.id);
           return (
-            <div key={stage.id} className="bg-page rounded-md p-2.5 flex flex-col gap-2 min-h-[160px]">
+            <div
+              key={stage.id}
+              id={`stage-col-${stage.id}`}
+              className={`bg-page rounded-md p-2.5 flex flex-col gap-2 min-h-[160px] transition-shadow ${
+                highlightStageId === stage.id ? "ring-2 ring-brand" : ""
+              }`}
+            >
               <div className="flex items-center justify-between px-1">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">{stage.label}</span>
                 <span className="text-[11px] font-bold text-ink-muted">{stageCandidates.length}</span>
