@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { DEPARTMENTS, PERSONAL_TOOLS } from "@/lib/departments";
+import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
 import LogoMark from "./LogoMark";
 import ThemeSwitcher from "./ThemeSwitcher";
@@ -26,6 +28,32 @@ export default function Sidebar({
   alwaysDrawer?: boolean;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  // Real signed-in identity -- previously this row was hardcoded to
+  // "Shree / Owner" regardless of who was actually logged in, which is
+  // both wrong and left non-owner users with no way to tell they were
+  // signed in as themselves.
+  const [email, setEmail] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      setEmail(data.user?.email ?? null);
+    });
+  }, []);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
+
+  const initials = email ? email.slice(0, 2).toUpperCase() : "?";
+  const displayName = email ?? "Not signed in";
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
@@ -107,11 +135,13 @@ export default function Sidebar({
           sticky-bottom row in the main column. */}
       <div className="border-t border-border/70 px-4 py-3.5 flex items-center gap-2.5">
         <div className="w-[30px] h-[30px] rounded-full bg-gradient-to-br from-brand to-brand-dark text-white text-[11.5px] font-semibold flex items-center justify-center flex-shrink-0 shadow-emblem">
-          SN
+          {initials}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[12.5px] font-semibold truncate text-ink">Shree</div>
-          <div className="text-[11px] text-ink-muted">Owner</div>
+          <div className="text-[12.5px] font-semibold truncate text-ink" title={displayName}>
+            {displayName}
+          </div>
+          <div className="text-[11px] text-ink-muted">{email ? "Signed in" : "Guest"}</div>
         </div>
         <Link
           href="/admin"
@@ -120,6 +150,18 @@ export default function Sidebar({
         >
           <Icon name="gear" className="w-[15px] h-[15px]" />
         </Link>
+        {email && (
+          <button
+            type="button"
+            onClick={handleSignOut}
+            disabled={signingOut}
+            className="text-ink-muted hover:text-ink p-1 disabled:opacity-50"
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            <Icon name="logout" className="w-[15px] h-[15px]" />
+          </button>
+        )}
       </div>
       </aside>
     </>
