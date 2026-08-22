@@ -32,7 +32,7 @@ export default function AppShell({
       <div className="flex-1 min-w-0 flex flex-col bg-surface rounded-[20px] sm:rounded-[28px] shadow-soft overflow-hidden">
         <Topbar title={title} onMenuClick={() => setNavOpen(true)} alwaysShowMenu={alwaysDrawer} />
         <main className="flex-1 min-h-0 flex flex-col max-w-[1180px] w-full mx-auto">
-          <VScroller className="flex-1 min-h-0" trackClassName="h-full p-4 sm:p-[26px]">
+          <VScroller className="flex-1 min-h-0" trackClassName="h-full p-4 sm:p-[26px] flex flex-col">
             {children}
           </VScroller>
         </main>
