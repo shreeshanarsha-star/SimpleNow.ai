@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { callTextModel } from "@/lib/aiClient";
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
 
@@ -15,9 +15,9 @@ export async function POST(request: Request) {
     return res as Response;
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY is not set on the server. AI polish is unavailable until it's configured." },
+      { error: "OPENAI_API_KEY is not set on the server. AI polish is unavailable until it's configured." },
       { status: 503 }
     );
   }
@@ -35,9 +35,6 @@ export async function POST(request: Request) {
   if (!candidateName || !roleTitle) {
     return NextResponse.json({ error: "Candidate name and role are required." }, { status: 400 });
   }
-
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929";
 
   const componentLines = components
     .map((c) => `- ${c.label}: ${currency} ${c.annual}/year`)
@@ -60,18 +57,7 @@ export async function POST(request: Request) {
     .join("\n");
 
   try {
-    const message = await anthropic.messages.create(
-      { model, max_tokens: 1200, messages: [{ role: "user", content: prompt }] },
-      { timeout: REQUEST_TIMEOUT_MS }
-    );
-    const text = message.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
-    if (!text) {
-      return NextResponse.json({ error: "The model returned an empty response. Try again." }, { status: 502 });
-    }
+    const text = await callTextModel(prompt, 1200, REQUEST_TIMEOUT_MS);
     return NextResponse.json({ polished: text });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

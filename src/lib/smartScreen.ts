@@ -1,19 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { callTextModel } from "@/lib/aiClient";
 
-// Shared with the two Smart Screen.ai AI calls (structure + score). Same
-// pattern as /api/job-postings/polish: explicit per-call timeout, model id
-// from ANTHROPIC_MODEL, never a silent empty result.
-export const AI_TIMEOUT_MS = 25_000;
-
-export function getAnthropic() {
-  if (!process.env.ANTHROPIC_API_KEY) return null;
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-}
-
-export function getModel() {
-  return process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929";
-}
-
+// Shared with the two Smart Screen.ai AI calls (structure + score). Text
+// generation is delegated to lib/aiClient.ts (OpenAI), never a silent
+// empty result.
 function parseJsonResponse(text: string) {
   const cleaned = text.replace(/```json|```/g, "").trim();
   return JSON.parse(cleaned);
@@ -44,22 +33,7 @@ Read the JD text and extract, as JSON only (no markdown fences, no prose):
 Never fabricate a CTC figure or requirement that isn't in the text -- use null if it's not stated.`;
 
 export async function structureCriteria(jdText: string): Promise<Criteria> {
-  const anthropic = getAnthropic();
-  if (!anthropic) throw new Error("ANTHROPIC_API_KEY is not set on the server.");
-  const message = await anthropic.messages.create(
-    {
-      model: getModel(),
-      max_tokens: 800,
-      messages: [{ role: "user", content: `${STRUCTURE_PROMPT}\n\n--- JD text ---\n${jdText}` }],
-    },
-    { timeout: AI_TIMEOUT_MS }
-  );
-  const text = message.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
-  if (!text) throw new Error("The model returned an empty response.");
+  const text = await callTextModel(`${STRUCTURE_PROMPT}\n\n--- JD text ---\n${jdText}`, 800);
   return parseJsonResponse(text);
 }
 
@@ -141,9 +115,6 @@ export async function screenCandidate(
   criteria: Criteria,
   resumeText: string
 ): Promise<ScreenResult> {
-  const anthropic = getAnthropic();
-  if (!anthropic) throw new Error("ANTHROPIC_API_KEY is not set on the server.");
-
   const context = `Role: ${criteria.role_title || "not specified"}
 Minimum years of experience: ${criteria.min_years_experience ?? "not specified"}
 CTC budget (max): ${criteria.ctc_budget || "not specified"}
@@ -154,19 +125,6 @@ Other notes / non-negotiables: ${criteria.other_notes || "none stated"}
 --- Candidate resume text ---
 ${resumeText}`;
 
-  const message = await anthropic.messages.create(
-    {
-      model: getModel(),
-      max_tokens: 1400,
-      messages: [{ role: "user", content: `${SCREEN_PROMPT}\n\n${context}` }],
-    },
-    { timeout: AI_TIMEOUT_MS }
-  );
-  const text = message.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
-  if (!text) throw new Error("The model returned an empty response.");
+  const text = await callTextModel(`${SCREEN_PROMPT}\n\n${context}`, 1400);
   return parseJsonResponse(text);
 }
