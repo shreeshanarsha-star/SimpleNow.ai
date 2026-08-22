@@ -353,8 +353,8 @@ function RecruiterToolsPanel() {
     <div className="flex flex-col gap-6">
       <div>
         <h3 className="m-0 text-[15px] font-bold mb-2">Search the candidate database</h3>
-        <div className="flex gap-2">
-          <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runSearch()} className="input" placeholder="Name, skill, email…" />
+        <div className="flex gap-2 flex-wrap">
+          <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runSearch()} className="input flex-1 min-w-[180px]" placeholder="Name, skill, email…" />
           <label className="flex items-center gap-1.5 text-[12px] flex-shrink-0">
             <input type="checkbox" checked={external} onChange={(e) => setExternal(e.target.checked)} /> Also search LinkedIn
           </label>

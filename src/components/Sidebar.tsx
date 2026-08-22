@@ -7,14 +7,37 @@ import Icon from "./Icon";
 import LogoMark from "./LogoMark";
 import ThemeSwitcher from "./ThemeSwitcher";
 
-export default function Sidebar() {
+export default function Sidebar({
+  mobileOpen = false,
+  onClose,
+}: {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+}) {
   const pathname = usePathname();
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
 
+  // Desktop: normal in-flow panel, always visible (unchanged from before).
+  // Mobile/tablet (<lg): off-canvas drawer that slides in from the left
+  // over a dim backdrop, toggled by the hamburger button in Topbar.
   return (
-    <aside className="w-[256px] flex-shrink-0 bg-gradient-to-b from-surface to-brand-wash flex flex-col h-full rounded-[28px] shadow-soft overflow-hidden">
+    <>
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={onClose}
+          className="lg:hidden fixed inset-0 z-40 bg-black/40"
+        />
+      )}
+      <aside
+        className={`w-[256px] flex-shrink-0 bg-gradient-to-b from-surface to-brand-wash flex flex-col h-full rounded-[28px] shadow-soft overflow-hidden
+          fixed inset-y-4 left-4 z-50 transition-transform duration-200 ease-out
+          ${mobileOpen ? "translate-x-0" : "-translate-x-[calc(100%+16px)]"}
+          lg:static lg:inset-auto lg:translate-x-0 lg:z-auto`}
+      >
       {/* Same vertical padding (py-3) as Topbar's px-[26px] py-3, so the
           brand block and the "Overview" title land on one continuous
           horizontal line across the sidebar/main-column seam. */}
@@ -83,7 +106,8 @@ export default function Sidebar() {
           <Icon name="gear" className="w-[15px] h-[15px]" />
         </Link>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 

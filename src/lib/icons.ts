@@ -32,6 +32,7 @@ export const ICONS: Record<string, string> = {
   search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.35-4.35",
   check: "M20 6 9 17l-5-5",
   x: "M18 6 6 18M6 6l12 12",
+  menu: "M3 12h18 M3 6h18 M3 18h18",
   chevronLeft: "M15 18l-6-6 6-6",
   arrowUp: "M12 19V5 M5 12l7-7 7 7",
   bell: "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9 M13.73 21a2 2 0 0 1-3.46 0",

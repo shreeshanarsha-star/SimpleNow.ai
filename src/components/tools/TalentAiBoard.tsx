@@ -352,7 +352,7 @@ export default function TalentAiBoard() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-3 flex-wrap">
         <button
           onClick={() => {
             setSelected(null);
@@ -695,7 +695,7 @@ function RequisitionForm({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Role title">
           <input value={title} onChange={(e) => setTitle(e.target.value)} className="input" />
         </Field>
@@ -703,7 +703,7 @@ function RequisitionForm({
           <input value={department} onChange={(e) => setDepartment(e.target.value)} className="input" />
         </Field>
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Field label="Location">
           <input value={location} onChange={(e) => setLocation(e.target.value)} className="input" />
         </Field>
@@ -724,7 +724,7 @@ function RequisitionForm({
           </select>
         </Field>
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Field label="Headcount">
           <input type="number" min="1" value={headcount} onChange={(e) => setHeadcount(e.target.value)} className="input" />
         </Field>
@@ -739,7 +739,7 @@ function RequisitionForm({
           </select>
         </Field>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Compensation min">
           <input type="number" value={compMin} onChange={(e) => setCompMin(e.target.value)} className="input" />
         </Field>
@@ -758,7 +758,7 @@ function RequisitionForm({
           ))}
         </div>
         {requisitionType === "replacement" && (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Replacement name">
               <input value={replacementName} onChange={(e) => setReplacementName(e.target.value)} className="input" />
             </Field>
@@ -769,7 +769,7 @@ function RequisitionForm({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Hiring manager">
           <input value={hiringManager} onChange={(e) => setHiringManager(e.target.value)} className="input" />
         </Field>
@@ -838,7 +838,7 @@ function CandidateForm({
 
   return (
     <div className="border border-border rounded-md p-4 bg-surface shadow-soft-sm flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Name">
           <input value={name} onChange={(e) => setName(e.target.value)} className="input" />
         </Field>
@@ -851,7 +851,7 @@ function CandidateForm({
           </select>
         </Field>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Email">
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input" />
         </Field>
@@ -991,7 +991,7 @@ function CandidateDetail({
 
         <div className="border border-border rounded-md p-3.5 flex flex-col gap-3">
           <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Selection &amp; Offer</div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Field label="Current CTC">
               <input type="number" value={currentCtc} onChange={(e) => setCurrentCtc(e.target.value)} className="input" />
             </Field>
@@ -1076,7 +1076,7 @@ function CandidateDetail({
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <select value={scRating} onChange={(e) => setScRating(e.target.value)} className="input">
                 {[1, 2, 3, 4, 5].map((n) => (
                   <option key={n} value={n}>
