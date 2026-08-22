@@ -95,17 +95,11 @@ function MyRequisitionsPanel({
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
+      <div className="flex items-baseline gap-2 flex-wrap">
         <div className="text-[18px] font-bold text-ink">
           {greeting}, {name}
         </div>
-        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-          {roleLabels.map((r) => (
-            <span key={r} className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-wash text-brand capitalize">
-              {r}
-            </span>
-          ))}
-        </div>
+        <span className="text-[12px] text-ink-muted capitalize">{roleLabels.join(" · ")}</span>
       </div>
 
       {roleFlags.canAssign && <TAHeadSnapshot onNavigate={onNavigate} />}
