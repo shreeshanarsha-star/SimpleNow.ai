@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Icon from "@/components/Icon";
 
@@ -8,11 +9,31 @@ type Component = { label: string; annual: string };
 type Step = "draft" | "polishing" | "review" | "submitting" | "done";
 
 export default function OfferAiForm() {
+  const searchParams = useSearchParams();
   const [step, setStep] = useState<Step>("draft");
   const [candidateName, setCandidateName] = useState("");
   const [candidateEmail, setCandidateEmail] = useState("");
   const [roleTitle, setRoleTitle] = useState("");
   const [proposedCtc, setProposedCtc] = useState("");
+  const [talentCandidateId, setTalentCandidateId] = useState<string | null>(null);
+
+  // Talent.ai links here from a candidate at the Offer stage with these
+  // params pre-filled, so recruiters don't retype what's already on file.
+  // talentCandidateId (not user-editable) round-trips back to /api/offers
+  // so the created offer can be traced to its ATS pipeline record.
+  useEffect(() => {
+    const name = searchParams.get("candidateName");
+    const email = searchParams.get("candidateEmail");
+    const role = searchParams.get("roleTitle");
+    const ctc = searchParams.get("proposedCtc");
+    const cid = searchParams.get("talentCandidateId");
+    if (name) setCandidateName(name);
+    if (email) setCandidateEmail(email);
+    if (role) setRoleTitle(role);
+    if (ctc) setProposedCtc(ctc);
+    if (cid) setTalentCandidateId(cid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [currency, setCurrency] = useState("INR");
   const [components, setComponents] = useState<Component[]>([{ label: "Basic", annual: "" }]);
   const [noticePeriod, setNoticePeriod] = useState("");
@@ -84,6 +105,7 @@ export default function OfferAiForm() {
           joiningDate: joiningDate || null,
           draftNotes,
           aiPolishedLetter: polished || null,
+          talentCandidateId,
         }),
       });
       const data = await res.json();

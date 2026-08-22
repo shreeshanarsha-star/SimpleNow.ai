@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const FEATURE_KEY = "Talent.ai";
 
@@ -49,7 +50,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     otherApplications = others || [];
   }
 
-  return NextResponse.json({ candidate, otherApplications });
+  // Linked Offer.ai record, if a recruiter has already created one for
+  // this candidate -- read via the admin client since offers isn't a
+  // Talent.ai-scoped table (its RLS is keyed to Offer.ai feature access,
+  // not Talent.ai), so the requesting user's RLS-scoped client can't see
+  // it even though they're allowed to know an offer exists here.
+  const admin = createAdminClient();
+  const { data: linkedOffer } = await admin
+    .from("offers")
+    .select("id, status, created_at")
+    .eq("talent_candidate_id", id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return NextResponse.json({ candidate, otherApplications, linkedOffer: linkedOffer || null });
 }
 
 // Update a candidate -- most importantly, moving stage. Every stage change

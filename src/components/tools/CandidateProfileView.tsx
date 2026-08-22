@@ -42,6 +42,8 @@ type OtherApplication = {
   talent_requisitions: { id: string; req_no: string; title: string; location: string | null; department: string | null } | null;
 };
 
+type LinkedOffer = { id: string; status: string; created_at: string } | null;
+
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
@@ -55,6 +57,7 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
   const router = useRouter();
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [otherApplications, setOtherApplications] = useState<OtherApplication[]>([]);
+  const [linkedOffer, setLinkedOffer] = useState<LinkedOffer>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,6 +83,7 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
       if (!res.ok) throw new Error(data.error || "Could not load candidate.");
       setCandidate(data.candidate);
       setOtherApplications(data.otherApplications || []);
+      setLinkedOffer(data.linkedOffer || null);
       setForm({
         current_company: data.candidate.current_company || "",
         current_location: data.candidate.current_location || "",
@@ -220,6 +224,25 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
               </div>
             );
           })()
+        )}
+        {candidate.stage === "offer" && (
+          <div className="mt-2">
+            {linkedOffer ? (
+              <Link
+                href="/tools/offer-ai"
+                className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-brand"
+              >
+                Offer created — {linkedOffer.status.replace(/_/g, " ")} · view in Offer.ai →
+              </Link>
+            ) : (
+              <Link
+                href={`/tools/offer-ai?candidateName=${encodeURIComponent(candidate.name)}&candidateEmail=${encodeURIComponent(candidate.email || "")}&roleTitle=${encodeURIComponent(candidate.talent_requisitions?.title || "")}&proposedCtc=${encodeURIComponent(candidate.expected_ctc != null ? String(candidate.expected_ctc) : "")}&talentCandidateId=${encodeURIComponent(candidate.id)}`}
+                className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-brand"
+              >
+                Create offer in Offer.ai →
+              </Link>
+            )}
+          </div>
         )}
       </div>
 

@@ -35,12 +35,36 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   // it from the real stage-history audit trail instead of trusting a
   // single mutable timestamp.
   type StageHistoryRow = { created_at: string };
-  type CandidateWithHistory = { created_at: string; talent_stage_history?: StageHistoryRow[] | null };
+  type CandidateWithHistory = { id: string; created_at: string; talent_stage_history?: StageHistoryRow[] | null };
   if (requisition?.talent_candidates) {
-    requisition.talent_candidates = (requisition.talent_candidates as CandidateWithHistory[]).map((c) => {
+    const candidateRows = requisition.talent_candidates as CandidateWithHistory[];
+
+    // Linked Offer.ai records for candidates at the Offer stage -- see the
+    // candidate detail route for why this needs the admin client (offers
+    // RLS is keyed to Offer.ai feature access, not Talent.ai).
+    const offerCandidateIds = candidateRows.map((c) => c.id);
+    let offerByCandidateId = new Map<string, { id: string; status: string }>();
+    if (offerCandidateIds.length > 0) {
+      const admin = createAdminClient();
+      const { data: linkedOffers } = await admin
+        .from("offers")
+        .select("id, status, talent_candidate_id, created_at")
+        .in("talent_candidate_id", offerCandidateIds)
+        .order("created_at", { ascending: false });
+      // linkedOffers is already ordered most-recent-first; only keep the
+      // first (i.e. latest) offer seen per candidate.
+      for (const o of linkedOffers || []) {
+        const cid = o.talent_candidate_id as string;
+        if (!offerByCandidateId.has(cid)) {
+          offerByCandidateId.set(cid, { id: o.id, status: o.status });
+        }
+      }
+    }
+
+    requisition.talent_candidates = candidateRows.map((c) => {
       const history = c.talent_stage_history || [];
       const latest = history.reduce<string | null>((max, h) => (!max || h.created_at > max ? h.created_at : max), null);
-      return { ...c, stage_entered_at: latest || c.created_at };
+      return { ...c, stage_entered_at: latest || c.created_at, linked_offer: offerByCandidateId.get(c.id) || null };
     });
   }
 

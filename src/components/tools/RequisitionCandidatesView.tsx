@@ -27,6 +27,7 @@ type Candidate = {
   resume_text: string | null;
   rejection_reason: string | null;
   stage_entered_at: string | null;
+  linked_offer: { id: string; status: string } | null;
   created_at: string;
 };
 
@@ -490,6 +491,7 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
               <th className="px-2 py-2 font-semibold">LinkedIn</th>
               <th className="px-2 py-2 font-semibold">Days in stage</th>
               <th className="px-2 py-2 font-semibold">Action</th>
+              <th className="px-2 py-2 font-semibold">Offer.ai</th>
               <th className="px-2 py-2 font-semibold">Rejection reason</th>
             </tr>
           </thead>
@@ -558,6 +560,22 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
                       </option>
                     ))}
                   </select>
+                </td>
+                <td className="px-2 py-2">
+                  {c.stage !== "offer" ? (
+                    <span className="text-ink-muted">—</span>
+                  ) : c.linked_offer ? (
+                    <Link href="/tools/offer-ai" className="text-brand font-semibold hover:underline">
+                      {c.linked_offer.status.replace(/_/g, " ")}
+                    </Link>
+                  ) : (
+                    <Link
+                      href={`/tools/offer-ai?candidateName=${encodeURIComponent(c.name)}&candidateEmail=${encodeURIComponent(c.email || "")}&roleTitle=${encodeURIComponent(requisition.title)}&proposedCtc=${encodeURIComponent(c.expected_ctc != null ? String(c.expected_ctc) : "")}&talentCandidateId=${encodeURIComponent(c.id)}`}
+                      className="text-brand font-semibold hover:underline"
+                    >
+                      Create offer
+                    </Link>
+                  )}
                 </td>
                 <td className="px-2 py-2 text-[11.5px] text-ink-muted">
                   {c.stage === "rejected" ? rejectionReasonLabel(c.rejection_reason) : "—"}

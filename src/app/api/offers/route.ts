@@ -24,6 +24,8 @@ export async function POST(request: Request) {
   const draftNotes = typeof body?.draftNotes === "string" ? body.draftNotes.trim() : null;
   const aiPolishedLetter =
     typeof body?.aiPolishedLetter === "string" ? body.aiPolishedLetter.trim() : null;
+  const talentCandidateId =
+    typeof body?.talentCandidateId === "string" && body.talentCandidateId ? body.talentCandidateId : null;
 
   if (!candidateName || !candidateEmail || !roleTitle) {
     return NextResponse.json(
@@ -48,6 +50,7 @@ export async function POST(request: Request) {
       ai_polished_letter: aiPolishedLetter,
       status: "pending_approval",
       org_id: orgId,
+      talent_candidate_id: talentCandidateId,
     })
     .select()
     .single();
