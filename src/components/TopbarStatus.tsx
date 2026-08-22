@@ -1,12 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Icon from "./Icon";
 
 // Bengaluru -- fallback location used only when the browser doesn't
 // share a real one (geolocation denied/unavailable). Askshree is
 // India-based, so this is a reasonable default rather than a guess.
 const DEFAULT_COORDS = { lat: 12.9716, lon: 77.5946 };
+
+type Notification = {
+  id: string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  read: boolean;
+  created_at: string;
+};
 
 function weatherIcon(code: number): string {
   if (code === 0) return "sun";
@@ -26,10 +36,22 @@ function weatherLabel(code: number): string {
   return "Overcast";
 }
 
+function timeAgo(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.max(0, Math.round(diffMs / 60_000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
 export default function TopbarStatus() {
+  const router = useRouter();
   const [now, setNow] = useState<Date | null>(null);
   const [weather, setWeather] = useState<{ temp: number; code: number } | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Live clock -- updates every 30s, which is plenty for a "day/date/time"
   // readout that isn't a stopwatch.
@@ -72,6 +94,53 @@ export default function TopbarStatus() {
       cancelled = true;
     };
   }, []);
+
+  // Real in-app notifications -- polled quietly so a requisition owner
+  // sees status changes (approved, on hold, filled, etc.) without having
+  // to refresh or go looking for them.
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/notifications");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setNotifications(data.notifications || []);
+      } catch {
+        // silent -- notifications are a convenience, not load-bearing
+      }
+    }
+    load();
+    const t = setInterval(load, 45_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, []);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  async function markAllRead() {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    try {
+      await fetch("/api/notifications", { method: "PATCH" });
+    } catch {
+      // best-effort
+    }
+  }
+
+  async function handleNotifClick(n: Notification) {
+    if (!n.read) {
+      setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+      fetch(`/api/notifications/${n.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ read: true }),
+      }).catch(() => {});
+    }
+    setNotifOpen(false);
+    if (n.link) router.push(n.link);
+  }
 
   const dateStr = now
     ? now.toLocaleDateString("en-US", {
@@ -117,9 +186,14 @@ export default function TopbarStatus() {
           type="button"
           aria-label="Notifications"
           onClick={() => setNotifOpen((v) => !v)}
-          className="w-8 h-8 rounded-full border border-border bg-surface flex items-center justify-center text-ink-2 hover:border-border-strong hover:text-ink transition-colors flex-shrink-0"
+          className="relative w-8 h-8 rounded-full border border-border bg-surface flex items-center justify-center text-ink-2 hover:border-border-strong hover:text-ink transition-colors flex-shrink-0"
         >
           <Icon name="bell" className="w-[15px] h-[15px]" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-critical text-white text-[9.5px] font-bold flex items-center justify-center leading-none">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
         </button>
         {notifOpen && (
           <>
@@ -129,9 +203,44 @@ export default function TopbarStatus() {
               onClick={() => setNotifOpen(false)}
               className="fixed inset-0 z-10 cursor-default"
             />
-            <div className="absolute right-0 top-[calc(100%+8px)] w-56 bg-surface border border-border rounded-md shadow-soft-sm p-3 z-20">
-              <div className="text-[12px] font-semibold text-ink mb-0.5">Notifications</div>
-              <div className="text-[11.5px] text-ink-muted">No new notifications yet.</div>
+            <div className="absolute right-0 top-[calc(100%+8px)] w-80 max-h-[420px] overflow-y-auto bg-surface border border-border rounded-md shadow-soft-sm p-3 z-20">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="text-[12px] font-semibold text-ink">Notifications</div>
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={markAllRead}
+                    className="text-[11px] font-semibold text-brand"
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
+              {notifications.length === 0 ? (
+                <div className="text-[11.5px] text-ink-muted">No new notifications yet.</div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {notifications.map((n) => (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => handleNotifClick(n)}
+                      className={`text-left rounded-sm px-2 py-2 text-[12px] leading-snug transition-colors ${
+                        n.read ? "text-ink-2 hover:bg-page" : "bg-brand-wash text-ink font-medium hover:opacity-90"
+                      }`}
+                    >
+                      <div className="flex items-start gap-1.5">
+                        {!n.read && <span className="mt-1 w-1.5 h-1.5 rounded-full bg-brand flex-shrink-0" />}
+                        <div className="min-w-0">
+                          <div className="truncate">{n.title}</div>
+                          {n.body && <div className="text-[11px] text-ink-muted truncate">{n.body}</div>}
+                          <div className="text-[10px] text-ink-muted mt-0.5">{timeAgo(n.created_at)}</div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </>
         )}
