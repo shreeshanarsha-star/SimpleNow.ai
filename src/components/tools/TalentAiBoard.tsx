@@ -30,6 +30,13 @@ type Candidate = {
   rating: number | null;
   tags: string[];
   created_at: string;
+  current_ctc?: number | null;
+  expected_ctc?: number | null;
+  proposed_ctc?: number | null;
+  comp_currency?: string;
+  selected_hm_by?: string | null;
+  selected_ta_by?: string | null;
+  moved_to_offer_at?: string | null;
   talent_notes?: Note[];
   talent_scorecards?: Scorecard[];
 };
@@ -48,11 +55,17 @@ type PipelineSummary = {
 const STAGES = [
   { id: "applied", label: "Applied" },
   { id: "screening", label: "Screening" },
+  { id: "shortlisted", label: "Shortlisted" },
+  { id: "hm_review", label: "HM Review" },
   { id: "interview", label: "Interview" },
+  { id: "selected", label: "Selected" },
   { id: "offer", label: "Offer" },
-  { id: "hired", label: "Hired" },
   { id: "rejected", label: "Rejected" },
 ];
+// Selected and Offer are gated (dual sign-off, then comp + Move to Offer) --
+// the simple prev/next stepper stops one short of Selected; those two are
+// only reachable via the dedicated actions in CandidateDetail.
+const STEPPER_MAX_INDEX = STAGES.findIndex((s) => s.id === "interview");
 
 function stageIndex(stage: string) {
   const i = STAGES.findIndex((s) => s.id === stage);
@@ -144,14 +157,14 @@ export default function TalentAiBoard() {
 
   async function moveStage(candidate: Candidate, direction: 1 | -1) {
     const nextIndex = stageIndex(candidate.stage) + direction;
-    if (nextIndex < 0 || nextIndex >= STAGES.length) return;
+    if (nextIndex < 0 || nextIndex > STEPPER_MAX_INDEX) return;
     const newStage = STAGES[nextIndex].id;
     setCandidates((prev) => prev.map((c) => (c.id === candidate.id ? { ...c, stage: newStage } : c)));
     try {
-      await fetch(`/api/talent-ai/candidates/${candidate.id}`, {
-        method: "PATCH",
+      await fetch(`/api/talent-ai/candidates/${candidate.id}/workflow`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stage: newStage }),
+        body: JSON.stringify({ action: "set_stage", stage: newStage }),
       });
     } catch {
       // best-effort optimistic update; a refresh will reconcile if it failed
@@ -423,7 +436,7 @@ export default function TalentAiBoard() {
                           e.stopPropagation();
                           moveStage(c, 1);
                         }}
-                        disabled={idx === STAGES.length - 1}
+                        disabled={idx >= STEPPER_MAX_INDEX}
                         className="text-ink-muted text-[13px] font-bold disabled:opacity-25 px-1"
                         aria-label="Move to next stage"
                       >
@@ -444,6 +457,10 @@ export default function TalentAiBoard() {
           onClose={() => setDetailCandidate(null)}
           onAddNote={addNote}
           onAddScorecard={addScorecard}
+          onChanged={async () => {
+            if (selected) await openRequisition(selected.id);
+            setDetailCandidate(null);
+          }}
         />
       )}
 
@@ -465,11 +482,12 @@ export default function TalentAiBoard() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <label className="block">
       <span className="block text-[12px] font-bold mb-1.5">{label}</span>
       {children}
+      {hint && <span className="block text-[11px] text-ink-muted mt-1">{hint}</span>}
     </label>
   );
 }
@@ -484,14 +502,159 @@ function RequisitionForm({
   const [title, setTitle] = useState("");
   const [department, setDepartment] = useState("");
   const [location, setLocation] = useState("");
+  const [workMode, setWorkMode] = useState("");
   const [employmentType, setEmploymentType] = useState("full-time");
   const [headcount, setHeadcount] = useState("1");
+  const [jobLevel, setJobLevel] = useState("");
   const [priority, setPriority] = useState("medium");
   const [hiringManager, setHiringManager] = useState("");
-  const [description, setDescription] = useState("");
+  const [costCenter, setCostCenter] = useState("");
+  const [targetHireDate, setTargetHireDate] = useState("");
+  const [compMin, setCompMin] = useState("");
+  const [compMax, setCompMax] = useState("");
+  const [requisitionType, setRequisitionType] = useState("new");
+  const [replacementName, setReplacementName] = useState("");
+  const [replacementEmployeeId, setReplacementEmployeeId] = useState("");
+  const [description, setDescription] = useState(""); // "Justification"
+  const [comments, setComments] = useState("");
+  const [isConfidential, setIsConfidential] = useState(false);
+  const [isInternalOnly, setIsInternalOnly] = useState(false);
+
+  const [jdMode, setJdMode] = useState<"file" | "paste">("file");
+  const [jdFile, setJdFile] = useState<File | null>(null);
+  const [jdPasteText, setJdPasteText] = useState("");
+  const [jdSourceText, setJdSourceText] = useState("");
+  const [jdFileName, setJdFileName] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [parsedPreview, setParsedPreview] = useState<{ role_summary: string; key_requirements: string[] } | null>(null);
+
+  async function analyzeJD() {
+    setParseError(null);
+    if (jdMode === "file" && !jdFile) {
+      setParseError("Attach a JD file first.");
+      return;
+    }
+    if (jdMode === "paste" && !jdPasteText.trim()) {
+      setParseError("Paste the JD text first.");
+      return;
+    }
+    setParsing(true);
+    try {
+      const formData = new FormData();
+      if (jdMode === "file" && jdFile) formData.append("file", jdFile);
+      if (jdMode === "paste") formData.append("text", jdPasteText);
+      const res = await fetch("/api/talent-ai/requisitions/parse-jd", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not analyze that JD.");
+      const p = data.parsed || {};
+      if (p.title) setTitle(p.title);
+      if (p.department) setDepartment(p.department);
+      if (p.location) setLocation(p.location);
+      if (p.work_mode) setWorkMode(p.work_mode);
+      if (p.employment_type) setEmploymentType(p.employment_type);
+      if (p.headcount) setHeadcount(String(p.headcount));
+      if (p.job_level) setJobLevel(p.job_level);
+      if (p.hiring_manager) setHiringManager(p.hiring_manager);
+      if (p.cost_center) setCostCenter(p.cost_center);
+      if (p.comp_min != null) setCompMin(String(p.comp_min));
+      if (p.comp_max != null) setCompMax(String(p.comp_max));
+      if (p.role_summary) setDescription(p.role_summary);
+      setJdSourceText(data.sourceText || "");
+      setJdFileName(data.fileName || "");
+      setParsedPreview({ role_summary: p.role_summary || "", key_requirements: p.key_requirements || [] });
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : "Could not analyze that JD.");
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  const canSubmit = title.trim() && (requisitionType !== "replacement" || replacementName.trim());
+
+  function submit() {
+    onSubmit({
+      title,
+      department,
+      location,
+      workMode: workMode || null,
+      employmentType,
+      headcount,
+      jobLevel,
+      priority,
+      hiringManager,
+      costCenter,
+      targetHireDate: targetHireDate || null,
+      compMin: compMin === "" ? null : compMin,
+      compMax: compMax === "" ? null : compMax,
+      requisitionType,
+      replacementName: requisitionType === "replacement" ? replacementName : "",
+      replacementEmployeeId: requisitionType === "replacement" ? replacementEmployeeId : "",
+      description,
+      comments,
+      isConfidential,
+      isInternalOnly,
+      jdSourceText,
+      jdFileName,
+    });
+  }
 
   return (
     <div className="border border-border rounded-md p-4 bg-surface shadow-soft-sm flex flex-col gap-4">
+      <div className="border border-dashed border-border rounded-md p-3.5 flex flex-col gap-3 bg-page">
+        <div className="text-[12px] font-bold">Attach a job description — AI fills in the fields below</div>
+        <div className="flex items-center gap-4 text-[12px]">
+          <label className="flex items-center gap-1.5">
+            <input type="radio" checked={jdMode === "file"} onChange={() => setJdMode("file")} /> Upload file
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="radio" checked={jdMode === "paste"} onChange={() => setJdMode("paste")} /> Paste text
+          </label>
+        </div>
+        {jdMode === "file" ? (
+          <input
+            type="file"
+            accept=".pdf,.docx,.txt"
+            onChange={(e) => setJdFile(e.target.files?.[0] || null)}
+            className="text-[12.5px]"
+          />
+        ) : (
+          <textarea
+            value={jdPasteText}
+            onChange={(e) => setJdPasteText(e.target.value)}
+            className="input min-h-[90px]"
+            placeholder="Paste the job description text here…"
+          />
+        )}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={analyzeJD}
+            disabled={parsing}
+            className="bg-brand text-white text-[12.5px] font-bold px-3 py-2 rounded-sm shadow-soft-sm disabled:opacity-50 flex items-center gap-1.5"
+          >
+            <Icon name="sparkle" className="w-3.5 h-3.5" />
+            {parsing ? "Analyzing…" : "Analyze with AI"}
+          </button>
+          {parseError && <span className="text-[12px] text-critical">{parseError}</span>}
+        </div>
+        {parsedPreview && (
+          <div className="border border-border rounded-sm p-2.5 bg-surface">
+            <p className="m-0 text-[12px] text-ink-2">{parsedPreview.role_summary}</p>
+            {parsedPreview.key_requirements.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {parsedPreview.key_requirements.map((r, i) => (
+                  <span key={i} className="text-[10.5px] bg-page px-2 py-0.5 rounded-full text-ink-2">
+                    {r}
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="m-0 mt-2 text-[11px] text-ink-muted">Everything below is editable — review before creating.</p>
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <Field label="Role title">
           <input value={title} onChange={(e) => setTitle(e.target.value)} className="input" />
@@ -504,6 +667,14 @@ function RequisitionForm({
         <Field label="Location">
           <input value={location} onChange={(e) => setLocation(e.target.value)} className="input" />
         </Field>
+        <Field label="Work mode">
+          <select value={workMode} onChange={(e) => setWorkMode(e.target.value)} className="input">
+            <option value="">—</option>
+            <option value="remote">Remote</option>
+            <option value="hybrid">Hybrid</option>
+            <option value="onsite">Onsite</option>
+          </select>
+        </Field>
         <Field label="Employment type">
           <select value={employmentType} onChange={(e) => setEmploymentType(e.target.value)} className="input">
             <option value="full-time">Full-time</option>
@@ -512,11 +683,14 @@ function RequisitionForm({
             <option value="intern">Intern</option>
           </select>
         </Field>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
         <Field label="Headcount">
           <input type="number" min="1" value={headcount} onChange={(e) => setHeadcount(e.target.value)} className="input" />
         </Field>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
+        <Field label="Job level / grade">
+          <input value={jobLevel} onChange={(e) => setJobLevel(e.target.value)} className="input" placeholder="e.g. IC3, M2" />
+        </Field>
         <Field label="Priority">
           <select value={priority} onChange={(e) => setPriority(e.target.value)} className="input">
             <option value="low">Low</option>
@@ -524,24 +698,71 @@ function RequisitionForm({
             <option value="high">High</option>
           </select>
         </Field>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Compensation min">
+          <input type="number" value={compMin} onChange={(e) => setCompMin(e.target.value)} className="input" />
+        </Field>
+        <Field label="Compensation max">
+          <input type="number" value={compMax} onChange={(e) => setCompMax(e.target.value)} className="input" />
+        </Field>
+      </div>
+
+      <div className="border border-border rounded-md p-3.5 flex flex-col gap-3">
+        <div className="text-[12px] font-bold">Requisition type</div>
+        <div className="flex items-center gap-4 text-[12.5px]">
+          {["new", "replacement", "perpetual"].map((t) => (
+            <label key={t} className="flex items-center gap-1.5 capitalize">
+              <input type="radio" checked={requisitionType === t} onChange={() => setRequisitionType(t)} /> {t}
+            </label>
+          ))}
+        </div>
+        {requisitionType === "replacement" && (
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Replacement name">
+              <input value={replacementName} onChange={(e) => setReplacementName(e.target.value)} className="input" />
+            </Field>
+            <Field label="Replacement employee ID">
+              <input value={replacementEmployeeId} onChange={(e) => setReplacementEmployeeId(e.target.value)} className="input" />
+            </Field>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
         <Field label="Hiring manager">
           <input value={hiringManager} onChange={(e) => setHiringManager(e.target.value)} className="input" />
         </Field>
+        <Field label="Cost center">
+          <input value={costCenter} onChange={(e) => setCostCenter(e.target.value)} className="input" />
+        </Field>
       </div>
-      <Field label="Description">
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          className="input min-h-[90px]"
-          placeholder="Role summary, must-haves…"
-        />
+
+      <Field label="Target hire date">
+        <input type="date" value={targetHireDate} onChange={(e) => setTargetHireDate(e.target.value)} className="input max-w-[220px]" />
       </Field>
+
+      <Field label="Justification" hint="The business case for this headcount — why now, why this role.">
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="input min-h-[80px]" placeholder="Why this requisition is needed…" />
+      </Field>
+
+      <Field label="Comments">
+        <textarea value={comments} onChange={(e) => setComments(e.target.value)} className="input min-h-[60px]" placeholder="Anything else worth noting…" />
+      </Field>
+
+      <div className="flex items-center gap-5">
+        <label className="flex items-center gap-2 text-[12.5px] text-ink-2">
+          <input type="checkbox" checked={isConfidential} onChange={(e) => setIsConfidential(e.target.checked)} /> Confidential
+        </label>
+        <label className="flex items-center gap-2 text-[12.5px] text-ink-2">
+          <input type="checkbox" checked={isInternalOnly} onChange={(e) => setIsInternalOnly(e.target.checked)} /> Internal only
+        </label>
+      </div>
+
       <div className="flex gap-2">
         <button
-          onClick={() =>
-            onSubmit({ title, department, location, employmentType, headcount, priority, hiringManager, description })
-          }
-          disabled={!title.trim()}
+          onClick={submit}
+          disabled={!canSubmit}
           className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 shadow-soft-sm"
         >
           Create requisition
@@ -631,16 +852,48 @@ function CandidateDetail({
   onClose,
   onAddNote,
   onAddScorecard,
+  onChanged,
 }: {
   candidate: Candidate;
   onClose: () => void;
   onAddNote: (body: string) => void;
   onAddScorecard: (payload: Record<string, unknown>) => void;
+  onChanged: () => void;
 }) {
   const [noteText, setNoteText] = useState("");
   const [scRating, setScRating] = useState("4");
   const [scRecommendation, setScRecommendation] = useState("yes");
   const [scFeedback, setScFeedback] = useState("");
+
+  const [currentCtc, setCurrentCtc] = useState(candidate.current_ctc != null ? String(candidate.current_ctc) : "");
+  const [expectedCtc, setExpectedCtc] = useState(candidate.expected_ctc != null ? String(candidate.expected_ctc) : "");
+  const [proposedCtc, setProposedCtc] = useState(candidate.proposed_ctc != null ? String(candidate.proposed_ctc) : "");
+  const [wfError, setWfError] = useState<string | null>(null);
+  const [wfBusy, setWfBusy] = useState(false);
+
+  async function workflowAction(action: string, extra: Record<string, unknown> = {}) {
+    setWfError(null);
+    setWfBusy(true);
+    try {
+      const res = await fetch(`/api/talent-ai/candidates/${candidate.id}/workflow`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...extra }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "That action failed.");
+      if (data.offerUrl) window.open(data.offerUrl, "_blank");
+      onChanged();
+    } catch (err) {
+      setWfError(err instanceof Error ? err.message : "That action failed.");
+    } finally {
+      setWfBusy(false);
+    }
+  }
+
+  const isSelected = candidate.stage === "selected" || candidate.stage === "offer";
+  const bothSignedOff = !!candidate.selected_hm_by && !!candidate.selected_ta_by;
+  const compComplete = candidate.current_ctc != null && candidate.expected_ctc != null && candidate.proposed_ctc != null;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
@@ -668,6 +921,59 @@ function CandidateDetail({
             </p>
           </div>
         )}
+
+        {wfError && <div className="bg-critical-wash text-critical text-[12px] rounded-sm px-3 py-2">{wfError}</div>}
+
+        <div className="border border-border rounded-md p-3.5 flex flex-col gap-3">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Selection &amp; Offer</div>
+          <div className="grid grid-cols-3 gap-2">
+            <Field label="Current CTC">
+              <input type="number" value={currentCtc} onChange={(e) => setCurrentCtc(e.target.value)} className="input" />
+            </Field>
+            <Field label="Expected CTC">
+              <input type="number" value={expectedCtc} onChange={(e) => setExpectedCtc(e.target.value)} className="input" />
+            </Field>
+            <Field label="Proposed CTC">
+              <input type="number" value={proposedCtc} onChange={(e) => setProposedCtc(e.target.value)} className="input" />
+            </Field>
+          </div>
+          <button
+            onClick={() => workflowAction("set_comp", { currentCtc, expectedCtc, proposedCtc })}
+            disabled={wfBusy}
+            className="border border-border text-[12px] font-bold px-3 py-1.5 rounded-sm bg-surface self-start disabled:opacity-50"
+          >
+            Save compensation
+          </button>
+
+          <div className="flex items-center gap-2 text-[12px] text-ink-2">
+            <span className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold ${candidate.selected_hm_by ? "bg-good-wash text-good-text" : "bg-page text-ink-muted"}`}>
+              HM sign-off {candidate.selected_hm_by ? "✓" : "pending"}
+            </span>
+            <span className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold ${candidate.selected_ta_by ? "bg-good-wash text-good-text" : "bg-page text-ink-muted"}`}>
+              Recruiter/TA sign-off {candidate.selected_ta_by ? "✓" : "pending"}
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => workflowAction("select_signoff")}
+              disabled={wfBusy || bothSignedOff}
+              className="border border-border text-[12px] font-bold px-3 py-1.5 rounded-sm bg-surface disabled:opacity-50"
+            >
+              Sign off on Selection
+            </button>
+            <button
+              onClick={() => workflowAction("move_to_offer")}
+              disabled={wfBusy || candidate.stage === "offer" || !bothSignedOff || !compComplete}
+              className="bg-brand text-white text-[12px] font-bold px-3 py-1.5 rounded-sm shadow-soft-sm disabled:opacity-50"
+              title={!bothSignedOff ? "Needs both sign-offs first" : !compComplete ? "Save all three compensation figures first" : ""}
+            >
+              {candidate.stage === "offer" ? "Moved to Offer ✓" : "Move to Offer →"}
+            </button>
+          </div>
+          {isSelected && !bothSignedOff && (
+            <p className="m-0 text-[11px] text-ink-muted">Both a Hiring Manager and a Recruiter/TA Head sign-off are required before Move to Offer unlocks.</p>
+          )}
+        </div>
 
         <div>
           <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1.5">Scorecards</div>

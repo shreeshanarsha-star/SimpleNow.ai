@@ -25,8 +25,12 @@ export async function GET() {
     .order("created_at", { ascending: true });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  const { data: viewerProfile } = await admin.from("profiles").select("is_admin").eq("id", user.id).single();
   const mine = (steps || []).filter(
-    (s) => s.approver_user_id === user.id || (s.approver_user_id === null && myRoles.includes(s.approver_role))
+    (s) =>
+      viewerProfile?.is_admin ||
+      s.approver_user_id === user.id ||
+      (s.approver_user_id === null && myRoles.includes(s.approver_role))
   );
 
   // Only surface steps that are actually next in line (earlier steps done).
@@ -67,8 +71,11 @@ export async function POST(req: Request) {
   }
 
   const myRoles = await getUserRoles(admin, user.id);
+  const { data: actingProfile } = await admin.from("profiles").select("is_admin").eq("id", user.id).single();
   const authorized =
-    step.approver_user_id === user.id || (step.approver_user_id === null && myRoles.includes(step.approver_role));
+    actingProfile?.is_admin ||
+    step.approver_user_id === user.id ||
+    (step.approver_user_id === null && myRoles.includes(step.approver_role));
   if (!authorized) {
     return NextResponse.json({ error: "You are not the approver for this step." }, { status: 403 });
   }

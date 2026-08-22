@@ -97,16 +97,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const patch: Record<string, unknown> = {};
-    if (isHm || isAdmin) {
+    if (isHm && !candidate.selected_hm_by) {
       patch.selected_hm_by = user.id;
       patch.selected_hm_at = new Date().toISOString();
-    }
-    if ((isRecruiter || isTaHead) && !isHm) {
+    } else if ((isRecruiter || isTaHead) && !candidate.selected_ta_by) {
       patch.selected_ta_by = user.id;
       patch.selected_ta_at = new Date().toISOString();
+    } else if (isAdmin) {
+      // Admin can stand in for whichever sign-off is still missing --
+      // keeps the flow testable/unblockable without needing every role
+      // populated with a real distinct user.
+      if (!candidate.selected_hm_by) {
+        patch.selected_hm_by = user.id;
+        patch.selected_hm_at = new Date().toISOString();
+      } else if (!candidate.selected_ta_by) {
+        patch.selected_ta_by = user.id;
+        patch.selected_ta_at = new Date().toISOString();
+      }
     }
     if (Object.keys(patch).length === 0) {
-      return NextResponse.json({ error: "Nothing to sign off." }, { status: 400 });
+      return NextResponse.json({ error: "Nothing to sign off, or you already signed off." }, { status: 400 });
     }
     const { data: updated, error } = await admin.from("talent_candidates").update(patch).eq("id", id).select().single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
