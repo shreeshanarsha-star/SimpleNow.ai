@@ -1,0 +1,116 @@
+import { NextResponse } from "next/server";
+import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
+import { parseResumeToCandidate } from "@/lib/talentAI";
+
+const FEATURE_KEY = "Talent.ai";
+
+export async function GET(req: Request) {
+  let supabase;
+  try {
+    ({ supabase } = await requireFeatureAccess(FEATURE_KEY));
+  } catch (res) {
+    return res as Response;
+  }
+
+  const { searchParams } = new URL(req.url);
+  const requisitionId = searchParams.get("requisitionId");
+
+  let query = supabase
+    .from("talent_candidates")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (requisitionId) query = query.eq("requisition_id", requisitionId);
+
+  const { data: candidates, error } = await query;
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ candidates });
+}
+
+// Add a candidate. If resumeText is provided and name/email aren't, runs
+// the AI parser to fill them in (and, when the requisition's description
+// is available, adds a short fit_notes read) -- but a plain manual add
+// with just a name always works, no AI required.
+export async function POST(req: Request) {
+  let supabase, user;
+  try {
+    ({ supabase, user } = await requireFeatureAccess(FEATURE_KEY));
+  } catch (res) {
+    return res as Response;
+  }
+
+  const body = await req.json();
+  const requisitionId = body.requisitionId;
+  if (!requisitionId) {
+    return NextResponse.json({ error: "requisitionId is required." }, { status: 400 });
+  }
+
+  let name = (body.name || "").trim();
+  let email = body.email || null;
+  let phone = body.phone || null;
+  let summaryTags: string[] = Array.isArray(body.tags) ? body.tags : [];
+  let fitNote: string | null = null;
+  const resumeText = body.resumeText || null;
+
+  if (resumeText && (!name || body.autoParse)) {
+    try {
+      let requisitionContext: string | undefined;
+      const { data: req_ } = await supabase
+        .from("talent_requisitions")
+        .select("title, description")
+        .eq("id", requisitionId)
+        .single();
+      if (req_) requisitionContext = `Role: ${req_.title}\n${req_.description || ""}`;
+
+      const parsed = await parseResumeToCandidate(resumeText, requisitionContext);
+      name = name || parsed.name || "Unnamed candidate";
+      email = email || parsed.email;
+      phone = phone || parsed.phone;
+      if (parsed.key_skills?.length) summaryTags = Array.from(new Set([...summaryTags, ...parsed.key_skills]));
+      fitNote = parsed.fit_notes;
+    } catch {
+      // AI parse is best-effort -- fall through to whatever the form supplied.
+      name = name || "Unnamed candidate";
+    }
+  }
+  if (!name) name = "Unnamed candidate";
+
+  const { data: candidate, error } = await supabase
+    .from("talent_candidates")
+    .insert({
+      requisition_id: requisitionId,
+      name,
+      email,
+      phone,
+      resume_text: resumeText,
+      source: body.source || "other",
+      stage: body.stage || "applied",
+      tags: summaryTags,
+      created_by: user.id,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  await supabase.from("talent_stage_history").insert({
+    candidate_id: candidate.id,
+    from_stage: null,
+    to_stage: candidate.stage,
+    changed_by: user.id,
+    note: "Added to pipeline",
+  });
+
+  if (fitNote) {
+    await supabase.from("talent_notes").insert({
+      candidate_id: candidate.id,
+      author_id: user.id,
+      body: `AI resume read: ${fitNote}`,
+    });
+  }
+
+  return NextResponse.json({ candidate });
+}
