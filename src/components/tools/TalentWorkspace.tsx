@@ -140,6 +140,7 @@ function HomePanel({
         </div>
       </div>
 
+      {roleFlags.canAssign && <TAHeadSnapshot onNavigate={onNavigate} />}
       {roleFlags.canRecruit && <RecruiterSnapshot onNavigate={onNavigate} />}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -345,6 +346,99 @@ function FunnelPanel() {
               <span className="text-ink-muted font-bold flex-shrink-0">{r.count} candidate{r.count === 1 ? "" : "s"}</span>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------- TA Head snapshot (embedded in Home) ----------------
+
+type TADeptRow = { department: string; count: number };
+type TATrendRow = { month: string; avgDays: number | null; offers: number };
+type TARequesterRow = { name: string; requisitions: number };
+
+function TAHeadSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  const [counts, setCounts] = useState<{ openRequisitions: number; activeCandidates: number; avgDaysToFirstOffer: number | null } | null>(null);
+  const [departmentBreakdown, setDepartmentBreakdown] = useState<TADeptRow[]>([]);
+  const [timeToHireTrend, setTimeToHireTrend] = useState<TATrendRow[]>([]);
+  const [topRequesters, setTopRequesters] = useState<TARequesterRow[]>([]);
+
+  useEffect(() => {
+    fetch("/api/talent-ai/ta-dashboard").then((r) => r.json()).then((d) => {
+      if (d.error) return; // not a TA head/admin -- silently skip, HomePanel already gates on canAssign
+      setCounts(d.counts || null);
+      setDepartmentBreakdown(d.departmentBreakdown || []);
+      setTimeToHireTrend(d.timeToHireTrend || []);
+      setTopRequesters(d.topRequesters || []);
+    });
+  }, []);
+
+  if (!counts) return null;
+
+  const maxDept = Math.max(1, ...departmentBreakdown.map((d) => d.count));
+  const maxTrendDays = Math.max(1, ...timeToHireTrend.map((t) => t.avgDays || 0));
+
+  return (
+    <div className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-surface">
+      <div className="flex items-center justify-between">
+        <div className="text-[13px] font-bold text-ink">TA overview (org-wide)</div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => onNavigate("funnel")} className="text-[11.5px] font-semibold px-2.5 py-1 border border-border rounded-md hover:border-brand">Funnel &amp; sources</button>
+          <button onClick={() => onNavigate("assign")} className="text-[11.5px] font-semibold px-2.5 py-1 border border-border rounded-md hover:border-brand">TA assignment</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <StatCard label="Open requisitions" value={counts.openRequisitions} />
+        <StatCard label="Active candidates" value={counts.activeCandidates} />
+        <StatCard label="Avg days: req → first offer" value={counts.avgDaysToFirstOffer === null ? "—" : counts.avgDaysToFirstOffer} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="border border-border rounded-md overflow-hidden">
+          <div className="px-3 py-2 bg-surface-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-ink-muted">Requisitions by department</div>
+          <div className="p-3 flex flex-col gap-2">
+            {departmentBreakdown.length === 0 && <div className="text-[12px] text-ink-muted">No requisitions yet.</div>}
+            {departmentBreakdown.map((d) => (
+              <div key={d.department} className="flex items-center gap-2">
+                <div className="w-[100px] text-[11px] text-ink-muted truncate flex-shrink-0">{d.department}</div>
+                <div className="flex-1 h-[7px] rounded-full bg-page overflow-hidden">
+                  <div className="h-full bg-brand rounded-full" style={{ width: `${(d.count / maxDept) * 100}%` }} />
+                </div>
+                <div className="w-[20px] text-[11px] font-semibold text-right flex-shrink-0">{d.count}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="border border-border rounded-md overflow-hidden">
+          <div className="px-3 py-2 bg-surface-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-ink-muted">Time to hire trend (last 6 months)</div>
+          <div className="p-3 flex flex-col gap-2">
+            {timeToHireTrend.map((t) => (
+              <div key={t.month} className="flex items-center gap-2">
+                <div className="w-[46px] text-[11px] text-ink-muted flex-shrink-0">{t.month}</div>
+                <div className="flex-1 h-[7px] rounded-full bg-page overflow-hidden">
+                  {t.avgDays !== null && <div className="h-full bg-good rounded-full" style={{ width: `${(t.avgDays / maxTrendDays) * 100}%` }} />}
+                </div>
+                <div className="w-[64px] text-[11px] font-semibold text-right flex-shrink-0">{t.avgDays === null ? "no offers" : `${t.avgDays}d (${t.offers})`}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {topRequesters.length > 0 && (
+        <div className="border border-border rounded-md overflow-hidden">
+          <div className="px-3 py-2 bg-surface-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-ink-muted">Top requisition requesters</div>
+          <div className="divide-y divide-border">
+            {topRequesters.map((r) => (
+              <div key={r.name} className="flex items-center justify-between gap-2 px-3 py-2 text-[12.5px]">
+                <span>{r.name}</span>
+                <span className="text-ink-muted">{r.requisitions} requisitions</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
