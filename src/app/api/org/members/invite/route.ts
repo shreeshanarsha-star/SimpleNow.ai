@@ -101,8 +101,10 @@ export async function POST(req: Request) {
     userId: newUserId,
     emailSent: emailResult.ok,
     emailError: emailResult.ok ? undefined : emailResult.error,
-    // Only returned so an admin can hand it over manually if the email
-    // provider isn't configured yet (RESEND_API_KEY unset) -- never logged.
-    setupLink: emailResult.ok ? undefined : linkData.properties.action_link,
+    // Always returned, not just on email failure -- the org admin may want
+    // to hand this over directly (Slack/WhatsApp/in person) instead of
+    // relying on email deliverability, or set the password themselves on
+    // the new hire's behalf and tell them out of band. One-time use.
+    setupLink: linkData.properties.action_link,
   });
 }

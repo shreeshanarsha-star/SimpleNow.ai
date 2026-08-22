@@ -67,7 +67,11 @@ export default function OrgSettingsPanel({ org, meId }: { org: Org; meId: string
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not create the account.");
       if (data.emailSent) {
-        setInviteNotice({ ok: true, text: `Account created -- an email with a "set your password" link was sent to ${inviteEmail.trim()}.` });
+        setInviteNotice({
+          ok: true,
+          text: `Account created -- an email with a "set your password" link was sent to ${inviteEmail.trim()}. You can also copy the link below and share it yourself (Slack, WhatsApp, in person) instead of waiting on email:`,
+          link: data.setupLink,
+        });
       } else {
         setInviteNotice({
           ok: true,
