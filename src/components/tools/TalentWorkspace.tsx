@@ -523,64 +523,52 @@ function RecruiterSnapshot({
         <button onClick={() => onNavigate("recruiter")} className="text-[11.5px] font-semibold px-2.5 py-1 border border-border rounded-md hover:border-brand">Search candidates</button>
       </div>
 
-      <div className="flex gap-4 items-start flex-wrap">
-        {/* Name list -- click a role to open its full pipeline. */}
-        <div className="flex flex-col gap-1 w-full sm:w-[220px] flex-shrink-0">
-          {myRequisitions.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => onOpenRequisition(r.id)}
-              className="text-left px-2.5 py-2 rounded-md border border-border hover:border-brand hover:bg-brand-wash/30"
-            >
-              <div className="font-bold text-[12.5px]">{reqLabel(r)}</div>
-              <div className="text-[10.5px] text-ink-muted">{r.department || "No department"}</div>
-            </button>
-          ))}
-        </div>
-
-        {/* Numbers -- req # only (name already listed on the left); click a
-            count to jump straight into that requisition's pipeline, scrolled
-            to that stage's candidates. */}
-        <div className="overflow-x-auto flex-1 min-w-[260px]">
-          <table className="w-full border-collapse text-[12px]">
-            <thead>
-              <tr>
-                <th className="text-left font-bold text-ink-muted uppercase tracking-wider text-[10px] px-2.5 py-2 border-b border-border sticky left-0 bg-surface">
-                  Req #
+      {/* Single table: requisition + stage counts share one row each, so
+          the name/req# is always exactly aligned with its own numbers --
+          no separate list that can drift out of sync. */}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-[12px]">
+          <thead>
+            <tr>
+              <th className="text-left font-bold text-ink-muted uppercase tracking-wider text-[10px] px-2.5 py-2 border-b border-border sticky left-0 bg-surface min-w-[200px]">
+                Requisition
+              </th>
+              {funnelColumns.map((col) => (
+                <th key={col.id} className="text-right font-bold text-ink-muted uppercase tracking-wider text-[9.5px] px-2 py-2 border-b border-border whitespace-nowrap">
+                  {col.label}
                 </th>
-                {funnelColumns.map((col) => (
-                  <th key={col.id} className="text-right font-bold text-ink-muted uppercase tracking-wider text-[9.5px] px-2 py-2 border-b border-border whitespace-nowrap">
-                    {col.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {myRequisitions.map((r) => (
-                <tr key={r.id}>
-                  <td className="px-2.5 py-2 border-b border-border sticky left-0 bg-surface font-bold text-[11.5px] tabular-nums">
-                    {r.req_no || "—"}
-                  </td>
-                  {funnelColumns.map((col) => {
-                    const n = r.stageCounts?.[col.id] ?? 0;
-                    const clickable = n > 0 && col.id !== "all";
-                    return (
-                      <td
-                        key={col.id}
-                        onClick={() => clickable && onOpenStage(r.id, col.id)}
-                        className={`text-right px-2 py-2 border-b border-border tabular-nums ${
-                          n > 0 ? "font-bold text-ink" : "text-ink-muted"
-                        } ${clickable ? "cursor-pointer hover:text-brand hover:underline" : ""}`}
-                      >
-                        {n}
-                      </td>
-                    );
-                  })}
-                </tr>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </tr>
+          </thead>
+          <tbody>
+            {myRequisitions.map((r) => (
+              <tr key={r.id}>
+                <td className="px-2.5 py-2 border-b border-border sticky left-0 bg-surface">
+                  <button onClick={() => onOpenRequisition(r.id)} className="text-left hover:text-brand">
+                    <div className="font-bold text-[11.5px] tabular-nums">{r.req_no || "—"}</div>
+                    <div className="text-[11px] text-ink">{r.title}{r.location ? `-${r.location}` : ""}</div>
+                    <div className="text-[10px] text-ink-muted">{r.department || "No department"}</div>
+                  </button>
+                </td>
+                {funnelColumns.map((col) => {
+                  const n = r.stageCounts?.[col.id] ?? 0;
+                  const clickable = n > 0 && col.id !== "all";
+                  return (
+                    <td
+                      key={col.id}
+                      onClick={() => clickable && onOpenStage(r.id, col.id)}
+                      className={`text-right px-2 py-2 border-b border-border tabular-nums align-top ${
+                        n > 0 ? "font-bold text-ink" : "text-ink-muted"
+                      } ${clickable ? "cursor-pointer hover:text-brand hover:underline" : ""}`}
+                    >
+                      {n}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
