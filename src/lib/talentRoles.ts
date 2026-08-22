@@ -41,6 +41,33 @@ export const ROLE_IMPLIES: Partial<Record<TalentRole, TalentRole>> = {
   hr_head: "hr_approver",
 };
 
+// Requisition number: R-DDMMYYNN -- 2-digit day, 2-digit month, 2-digit year,
+// then a 2-digit sequence that resets every calendar day, scoped per org so
+// two organizations creating requisitions the same day don't collide.
+// Computed from the current max for that org+day rather than a DB sequence
+// (no per-org-per-day sequence object exists), with a short retry loop
+// against the unique (org_id, req_no) index to absorb the rare race between
+// two requisitions created in the same org at nearly the same instant.
+export async function generateReqNo(admin: SupabaseClient, orgId: string | null): Promise<string> {
+  const now = new Date();
+  const dd = String(now.getUTCDate()).padStart(2, "0");
+  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const yy = String(now.getUTCFullYear()).slice(-2);
+  const datePrefix = `R-${dd}${mm}${yy}`;
+
+  let query = admin
+    .from("talent_requisitions")
+    .select("req_no")
+    .like("req_no", `${datePrefix}%`)
+    .order("req_no", { ascending: false })
+    .limit(1);
+  query = orgId ? query.eq("org_id", orgId) : query.is("org_id", null);
+  const { data } = await query;
+
+  const lastSeq = data && data[0]?.req_no ? parseInt(data[0].req_no.slice(-2), 10) || 0 : 0;
+  return `${datePrefix}${String(lastSeq + 1).padStart(2, "0")}`;
+}
+
 export type ApprovalStepRole = "reporting_manager" | "hr_approver";
 
 // Fixed two-step chain: reporting manager (named, from profiles.manager_id)

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { buildApprovalChain, logAudit, notifyUser } from "@/lib/talentRoles";
+import { buildApprovalChain, generateReqNo, logAudit, notifyUser } from "@/lib/talentRoles";
 
 const FEATURE_KEY = "Talent.ai";
 const REQ_TYPES = new Set(["new", "replacement", "perpetual"]);
@@ -89,44 +89,65 @@ export async function POST(req: Request) {
   }
   const workMode = WORK_MODES.has(body.workMode) ? body.workMode : null;
 
-  const { data: requisition, error } = await supabase
-    .from("talent_requisitions")
-    .insert({
-      title,
-      department: body.department || null,
-      location: body.location || null,
-      employment_type: body.employmentType || "full-time",
-      headcount: Number(body.headcount) || 1,
-      status: saveAsDraft ? "draft" : "pending_approval",
-      priority: body.priority || "medium",
-      hiring_manager: body.hiringManager || null,
-      description: body.description || null, // relabeled "Justification" in the UI
-      created_by: user.id,
-      org_id: orgId,
-      requisition_type: requisitionType,
-      replacement_name: requisitionType === "replacement" ? body.replacementName || null : null,
-      replacement_employee_id:
-        requisitionType === "replacement" ? body.replacementEmployeeId || null : null,
-      is_confidential: !!body.isConfidential,
-      is_internal_only: !!body.isInternalOnly,
-      cost_center: body.costCenter || null,
-      comments: body.comments || null,
-      target_hire_date: body.targetHireDate || null,
-      work_mode: workMode,
-      comp_min: body.compMin === "" || body.compMin == null ? null : Number(body.compMin),
-      comp_max: body.compMax === "" || body.compMax == null ? null : Number(body.compMax),
-      job_level: body.jobLevel || null,
-      jd_source_text: body.jdSourceText || null,
-      jd_file_name: body.jdFileName || null,
-    })
-    .select()
-    .single();
+  const admin = createAdminClient();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  // Retry a handful of times against the unique (org_id, req_no) index --
+  // two requisitions created in the same org within the same instant would
+  // otherwise both compute the same next sequence number.
+  let requisition: any = null;
+  let error: { message: string; code?: string } | null = null;
+  for (let attempt = 0; attempt < 5 && !requisition; attempt++) {
+    const reqNo = await generateReqNo(admin, orgId);
+    const result = await supabase
+      .from("talent_requisitions")
+      .insert({
+        title,
+        req_no: reqNo,
+        department: body.department || null,
+        location: body.location || null,
+        employment_type: body.employmentType || "full-time",
+        headcount: Number(body.headcount) || 1,
+        status: saveAsDraft ? "draft" : "pending_approval",
+        priority: body.priority || "medium",
+        hiring_manager: body.hiringManager || null,
+        description: body.description || null, // relabeled "Justification" in the UI
+        created_by: user.id,
+        org_id: orgId,
+        requisition_type: requisitionType,
+        replacement_name: requisitionType === "replacement" ? body.replacementName || null : null,
+        replacement_employee_id:
+          requisitionType === "replacement" ? body.replacementEmployeeId || null : null,
+        is_confidential: !!body.isConfidential,
+        is_internal_only: !!body.isInternalOnly,
+        cost_center: body.costCenter || null,
+        comments: body.comments || null,
+        target_hire_date: body.targetHireDate || null,
+        work_mode: workMode,
+        comp_min: body.compMin === "" || body.compMin == null ? null : Number(body.compMin),
+        comp_max: body.compMax === "" || body.compMax == null ? null : Number(body.compMax),
+        job_level: body.jobLevel || null,
+        jd_source_text: body.jdSourceText || null,
+        jd_file_name: body.jdFileName || null,
+      })
+      .select()
+      .single();
+
+    if (result.error) {
+      // 23505 = unique_violation on (org_id, req_no) -- another requisition
+      // grabbed this sequence number first; loop to try the next one.
+      if (result.error.code === "23505") {
+        error = result.error;
+        continue;
+      }
+      return NextResponse.json({ error: result.error.message }, { status: 500 });
+    }
+    requisition = result.data;
+    error = null;
   }
 
-  const admin = createAdminClient();
+  if (!requisition) {
+    return NextResponse.json({ error: error?.message || "Could not generate a requisition number." }, { status: 500 });
+  }
 
   if (saveAsDraft) {
     await admin.from("talent_requisition_status_history").insert({

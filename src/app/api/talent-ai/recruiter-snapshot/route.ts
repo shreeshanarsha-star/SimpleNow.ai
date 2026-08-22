@@ -54,7 +54,7 @@ export async function GET() {
 
   const { data: requisitions } = await admin
     .from("talent_requisitions")
-    .select("id, title, department, status, headcount")
+    .select("id, req_no, title, department, location, status, headcount")
     .in("id", reqIds)
     .eq("org_id", orgId);
   const reqById = new Map((requisitions || []).map((r) => [r.id, r]));
@@ -75,8 +75,10 @@ export async function GET() {
     stageCounts.rejected = reqCandidates.filter((c) => c.stage === "rejected").length;
     return {
       id: r.id,
+      req_no: r.req_no,
       title: r.title,
       department: r.department,
+      location: r.location,
       status: r.status,
       headcount: r.headcount,
       candidateCount: reqCandidates.length,

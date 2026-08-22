@@ -460,14 +460,23 @@ function ManagerSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
 
 type RecruiterReqRow = {
   id: string;
+  req_no?: string;
   title: string;
   department: string | null;
+  location?: string | null;
   status: string;
   headcount: number | null;
   candidateCount: number;
   activeCandidateCount: number;
   stageCounts: Record<string, number>;
 };
+
+// "R-23082601 Sales Manager-Bangalore" -- req number, then title, then
+// location hyphenated on (location omitted if not set).
+function reqLabel(r: { req_no?: string; title: string; location?: string | null }) {
+  const suffix = r.location ? `${r.title}-${r.location}` : r.title;
+  return r.req_no ? `${r.req_no} ${suffix}` : suffix;
+}
 type FunnelColumn = { id: string; label: string };
 
 function RecruiterSnapshot({ onNavigate, onOpenRequisition }: { onNavigate: (t: Tab) => void; onOpenRequisition: (id: string) => void }) {
@@ -511,7 +520,7 @@ function RecruiterSnapshot({ onNavigate, onOpenRequisition }: { onNavigate: (t: 
             {myRequisitions.map((r) => (
               <tr key={r.id} className="hover:bg-brand-wash/30 cursor-pointer" onClick={() => onOpenRequisition(r.id)}>
                 <td className="px-2.5 py-2 border-b border-border sticky left-0 bg-surface">
-                  <div className="font-bold text-[12.5px]">{r.title}</div>
+                  <div className="font-bold text-[12.5px]">{reqLabel(r)}</div>
                   <div className="text-[10.5px] text-ink-muted">{r.department || "No department"}</div>
                 </td>
                 {funnelColumns.map((col) => {
@@ -564,7 +573,7 @@ type ApprovalStep = {
   approver_role: string;
   status: string;
   talent_requisitions: {
-    id: string; title: string; department: string | null; location: string | null; headcount: number;
+    id: string; req_no?: string; title: string; department: string | null; location: string | null; headcount: number;
     priority: string; requisition_type: string; cost_center: string | null; comp_min: number | null; comp_max: number | null;
     is_confidential: boolean;
     description: string | null; jd_source_text: string | null; work_mode: string | null;
@@ -621,7 +630,7 @@ function ApprovalsPanel() {
         return (
           <div key={s.id} className="border border-border rounded-md p-3.5 bg-surface flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
-              <div className="text-[13.5px] font-bold">{r.title} {r.is_confidential && <span className="text-[10px] bg-warning-wash px-1.5 py-0.5 rounded-full ml-1">Confidential</span>}</div>
+              <div className="text-[13.5px] font-bold">{reqLabel(r)} {r.is_confidential && <span className="text-[10px] bg-warning-wash px-1.5 py-0.5 rounded-full ml-1">Confidential</span>}</div>
               <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-page text-ink-muted capitalize">{s.approver_role.replace("_", " ")} step</span>
             </div>
             <div className="text-[12px] text-ink-muted">
@@ -690,7 +699,7 @@ function ApprovalsPanel() {
 
 // ---------------- TA Assignment ----------------
 
-type Req = { id: string; title: string; department: string | null; status: string; created_at: string };
+type Req = { id: string; req_no?: string; title: string; department: string | null; location?: string | null; status: string; created_at: string };
 type Recruiter = { id: string; email: string | null; full_name: string | null };
 
 function AssignPanel() {
@@ -744,7 +753,7 @@ function AssignPanel() {
       {reqs.map((r) => (
         <div key={r.id} className="border border-border rounded-md p-3.5 bg-surface flex items-center gap-3">
           <div className="flex-1">
-            <div className="text-[13px] font-bold">{r.title}</div>
+            <div className="text-[13px] font-bold">{reqLabel(r)}</div>
             <div className="text-[11.5px] text-ink-muted">{r.department || "No department"}</div>
           </div>
           <select

@@ -5,6 +5,7 @@ import Icon from "@/components/Icon";
 
 type Requisition = {
   id: string;
+  req_no: string;
   title: string;
   department: string | null;
   location: string | null;
@@ -19,6 +20,13 @@ type Requisition = {
   posting_channels?: { channel: string; posted: boolean }[];
   talent_candidates?: { id: string; stage: string }[];
 };
+
+// "R-23082601 Sales Manager-Bangalore" -- req number, then title, then
+// location hyphenated on (location omitted if not set).
+function reqLabel(r: { req_no?: string; title: string; location: string | null }) {
+  const suffix = r.location ? `${r.title}-${r.location}` : r.title;
+  return r.req_no ? `${r.req_no} ${suffix}` : suffix;
+}
 
 type Candidate = {
   id: string;
@@ -358,7 +366,7 @@ export default function TalentAiBoard({
                   className="text-left border border-border rounded-md p-4 bg-surface shadow-soft-sm hover:border-brand"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="text-[14px] font-bold">{r.title}</div>
+                    <div className="text-[14px] font-bold">{reqLabel(r)}</div>
                     <span
                       className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
                         r.status === "open"
@@ -423,7 +431,7 @@ export default function TalentAiBoard({
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="m-0 text-[17px] font-bold">{selected.title}</h2>
+            <h2 className="m-0 text-[17px] font-bold">{reqLabel(selected)}</h2>
             <span
               className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full ${
                 selected.status === "open"
