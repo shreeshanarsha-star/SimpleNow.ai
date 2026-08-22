@@ -140,6 +140,8 @@ function HomePanel({
         </div>
       </div>
 
+      {roleFlags.canRecruit && <RecruiterSnapshot onNavigate={onNavigate} />}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {KIND_ORDER.map((k) => {
           const meta = KIND_META[k];
@@ -343,6 +345,90 @@ function FunnelPanel() {
               <span className="text-ink-muted font-bold flex-shrink-0">{r.count} candidate{r.count === 1 ? "" : "s"}</span>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------- Recruiter snapshot (embedded in Home) ----------------
+
+type RecruiterReqRow = { id: string; title: string; department: string | null; status: string; headcount: number | null; candidateCount: number; activeCandidateCount: number };
+type RecruiterInterviewRow = { id: string; candidateName: string; requisitionTitle: string; roundName: string | null; scheduledAt: string | null; mode: string | null };
+type RecruiterCandidateRow = { id: string; name: string; stage: string; requisitionTitle: string; requisitionId: string; updatedAt: string };
+
+function RecruiterSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  const [counts, setCounts] = useState<{ myRequisitions: number; activeCandidates: number; interviewsToday: number; offersInProgress: number } | null>(null);
+  const [myRequisitions, setMyRequisitions] = useState<RecruiterReqRow[]>([]);
+  const [interviewsToday, setInterviewsToday] = useState<RecruiterInterviewRow[]>([]);
+  const [recentCandidates, setRecentCandidates] = useState<RecruiterCandidateRow[]>([]);
+
+  useEffect(() => {
+    fetch("/api/talent-ai/recruiter-snapshot").then((r) => r.json()).then((d) => {
+      setCounts(d.counts || null);
+      setMyRequisitions(d.myRequisitions || []);
+      setInterviewsToday(d.interviewsToday || []);
+      setRecentCandidates(d.recentCandidates || []);
+    });
+  }, []);
+
+  if (!counts) return null;
+  if (counts.myRequisitions === 0) return null; // nothing assigned yet -- don't show an empty recruiting section
+
+  return (
+    <div className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-surface">
+      <div className="flex items-center justify-between">
+        <div className="text-[13px] font-bold text-ink">My recruiting</div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => onNavigate("overview")} className="text-[11.5px] font-semibold px-2.5 py-1 border border-border rounded-md hover:border-brand">My requisitions</button>
+          <button onClick={() => onNavigate("recruiter")} className="text-[11.5px] font-semibold px-2.5 py-1 border border-border rounded-md hover:border-brand">Search database</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard label="My requisitions" value={counts.myRequisitions} />
+        <StatCard label="Active candidates" value={counts.activeCandidates} />
+        <StatCard label="Interviews today" value={counts.interviewsToday} />
+        <StatCard label="Offers in progress" value={counts.offersInProgress} />
+      </div>
+
+      {interviewsToday.length > 0 && (
+        <div className="border border-border rounded-md overflow-hidden">
+          <div className="px-3 py-2 bg-surface-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-ink-muted">Interviews today</div>
+          <div className="divide-y divide-border">
+            {interviewsToday.map((iv) => (
+              <div key={iv.id} className="flex items-center justify-between gap-2 px-3 py-2 text-[12.5px]">
+                <span><strong>{iv.candidateName}</strong> — <span className="text-ink-muted">{iv.requisitionTitle}{iv.roundName ? ` · ${iv.roundName}` : ""}</span></span>
+                <span className="text-[10.5px] text-ink-muted flex-shrink-0">{iv.scheduledAt ? new Date(iv.scheduledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Time TBD"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="border border-border rounded-md overflow-hidden">
+        <div className="px-3 py-2 bg-surface-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-ink-muted">My requisitions</div>
+        <div className="divide-y divide-border">
+          {myRequisitions.map((r) => (
+            <a key={r.id} href={`/tools/talent-ai?requisition=${r.id}`} className="flex items-center justify-between gap-2 px-3 py-2 text-[12.5px] hover:bg-brand-wash/40">
+              <span><strong>{r.title}</strong> — <span className="text-ink-muted">{r.department || "No department"} · {r.status.replace(/_/g, " ")}</span></span>
+              <span className="text-[11px] text-ink-muted flex-shrink-0">{r.activeCandidateCount} active / {r.candidateCount} total</span>
+            </a>
+          ))}
+        </div>
+      </div>
+
+      {recentCandidates.length > 0 && (
+        <div className="border border-border rounded-md overflow-hidden">
+          <div className="px-3 py-2 bg-surface-muted border-b border-border text-[11px] font-bold uppercase tracking-wider text-ink-muted">Recent candidates</div>
+          <div className="divide-y divide-border">
+            {recentCandidates.map((c) => (
+              <a key={c.id} href={`/tools/talent-ai?requisition=${c.requisitionId}`} className="flex items-center justify-between gap-2 px-3 py-2 text-[12.5px] hover:bg-brand-wash/40">
+                <span><strong>{c.name}</strong> — <span className="text-ink-muted">{c.requisitionTitle}</span></span>
+                <span className="text-[10.5px] font-bold uppercase tracking-wider text-brand flex-shrink-0">{c.stage.replace(/_/g, " ")}</span>
+              </a>
+            ))}
+          </div>
         </div>
       )}
     </div>
