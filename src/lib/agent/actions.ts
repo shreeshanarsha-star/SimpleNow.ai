@@ -116,11 +116,19 @@ const getWeather: ActionSpec = {
     if (location) {
       try {
         const geoRes = await fetch(
-          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1`
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=8`
         );
         const geo = await geoRes.json();
-        const hit = geo?.results?.[0];
-        if (!hit) return { ok: false, error: `Couldn't find a location matching "${location}".` };
+        const results: Array<{ latitude: number; longitude: number; name: string; admin1?: string; country?: string; population?: number }> =
+          geo?.results || [];
+        if (!results.length) return { ok: false, error: `Couldn't find a location matching "${location}".` };
+        // The geocoder returns several same-named places worldwide (e.g. a
+        // small village in Sindh, Pakistan also called "Bangalore") with no
+        // relevance ranking -- picking result[0] blindly used to surface
+        // the wrong one. Prefer whichever candidate has the largest
+        // population, since that's virtually always the place a casual
+        // query like "weather in Bangalore" actually means.
+        const hit = results.reduce((best, cur) => ((cur.population || 0) > (best.population || 0) ? cur : best), results[0]);
         lat = hit.latitude;
         lon = hit.longitude;
         locationLabel = [hit.name, hit.admin1, hit.country].filter(Boolean).join(", ");
