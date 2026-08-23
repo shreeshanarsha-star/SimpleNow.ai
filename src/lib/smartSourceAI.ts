@@ -235,7 +235,12 @@ Respond as JSON only: { "candidates": [
     "evaluation_summary": string, "evaluation_strengths": array of strings, "evaluation_gaps": array of strings }
 ] }`;
 
-const SCORE_BATCH_SIZE = 25;
+// Smaller than a plain match-score batch would need -- each candidate now
+// carries a structured evaluation (summary + strengths + gaps), which
+// roughly doubles output tokens per candidate versus a single-line
+// match_reason, so a smaller batch keeps each call comfortably inside
+// its timeout instead of risking a large batch getting cut off.
+const SCORE_BATCH_SIZE = 15;
 
 async function scoreBatch(batch: RawResult[], criteria: SearchCriteria): Promise<ScoredCandidate[]> {
   const context = `Target company: ${criteria.company || "not specified"}
@@ -248,7 +253,11 @@ Target domain: ${criteria.domain || "not specified"}
 --- Search results ---
 ${batch.map((r, i) => `${i + 1}. Title: ${r.title}\nSnippet: ${r.snippet || ""}\nLink: ${r.link}`).join("\n\n")}`;
 
-  const raw = await callTextModel(`${SCORE_PROMPT}\n\n${context}`, 6000);
+  // 45s, not the default 25s -- a 15-candidate batch with full evaluations
+  // (summary + strengths + gaps each) is a large structured completion and
+  // routinely needs more than the default budget; the route's maxDuration
+  // (90s) has headroom for this since batches run concurrently, not in series.
+  const raw = await callTextModel(`${SCORE_PROMPT}\n\n${context}`, 4000, 45_000);
   const parsed = parseJsonResponse(raw);
   return parsed.candidates || [];
 }
