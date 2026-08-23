@@ -66,6 +66,8 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
   const [saving, setSaving] = useState(false);
 
   const [noteText, setNoteText] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
   const [movingStage, setMovingStage] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
 
@@ -147,15 +149,22 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
 
   async function addNote() {
     if (!noteText.trim()) return;
-    const res = await fetch(`/api/talent-ai/candidates/${candidateId}/notes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body: noteText }),
-    });
-    const data = await res.json();
-    if (res.ok) {
+    setSavingNote(true);
+    setNoteError(null);
+    try {
+      const res = await fetch(`/api/talent-ai/candidates/${candidateId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: noteText }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not save that note.");
       setCandidate((prev) => (prev ? { ...prev, talent_notes: [data.note, ...(prev.talent_notes || [])] } : prev));
       setNoteText("");
+    } catch (err) {
+      setNoteError(err instanceof Error ? err.message : "Could not save that note.");
+    } finally {
+      setSavingNote(false);
     }
   }
 
@@ -388,18 +397,26 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
           ))}
           {(candidate.talent_notes || []).length === 0 && <p className="text-[12px] text-ink-muted">No notes yet.</p>}
         </div>
-        <div className="flex gap-2">
+        {noteError && (
+          <div className="bg-critical-wash text-critical text-[11.5px] rounded-sm px-2.5 py-1.5 mb-2">{noteError}</div>
+        )}
+        <div className="flex items-stretch gap-2">
           <input
             value={noteText}
             onChange={(e) => setNoteText(e.target.value)}
-            className="input"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !savingNote) addNote();
+            }}
+            className="input flex-1 min-w-0"
             placeholder="Add a note…"
+            disabled={savingNote}
           />
           <button
             onClick={addNote}
-            className="bg-brand text-white text-[12.5px] font-bold px-3 py-2 rounded-sm shadow-soft-sm flex-shrink-0"
+            disabled={savingNote || !noteText.trim()}
+            className="bg-brand text-white text-[12.5px] font-bold px-4 py-2 rounded-sm shadow-soft-sm flex-shrink-0 disabled:opacity-50"
           >
-            Add
+            {savingNote ? "Adding…" : "Add"}
           </button>
         </div>
       </div>
