@@ -302,7 +302,9 @@ function FeedCard({ turn }: { turn: FeedTurn }) {
     const tomorrow = data.tomorrow as { maxC?: number; minC?: number; label?: string } | undefined;
     return (
       <div className="self-start w-full bg-surface border border-border rounded-md p-3.5 shadow-soft-sm flex items-center gap-4">
-        <div className="text-[28px] leading-none">{current?.icon || "🌤️"}</div>
+        <div className="w-9 h-9 rounded-full bg-brand-wash flex items-center justify-center flex-shrink-0">
+          <Icon name={current?.icon || "cloud"} className="w-[18px] h-[18px] text-brand" />
+        </div>
         <div className="flex-1">
           <div className="text-[13px] text-ink">{turn.content}</div>
           <div className="text-[11.5px] text-ink-muted mt-0.5">

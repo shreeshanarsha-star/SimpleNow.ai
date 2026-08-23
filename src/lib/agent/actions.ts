@@ -62,7 +62,10 @@ const searchWeb: ActionSpec = {
   riskTier: "read",
   async run(args) {
     const apiKey = process.env.SERPER_API_KEY;
-    if (!apiKey) return { ok: false, error: "Web search is not configured on the server." };
+    if (!apiKey) {
+      console.error("[ask-shree] search_web: SERPER_API_KEY is not set");
+      return { ok: false, error: "Web search is not configured on the server." };
+    }
     const query = String(args?.query || "").trim();
     if (!query) return { ok: false, error: "No search query given." };
     try {
@@ -71,7 +74,11 @@ const searchWeb: ActionSpec = {
         headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({ q: query, num: 6 }),
       });
-      if (!res.ok) return { ok: false, error: `Search failed (${res.status}).` };
+      if (!res.ok) {
+        const bodyText = await res.text().catch(() => "");
+        console.error("[ask-shree] search_web: Serper returned", res.status, bodyText.slice(0, 300));
+        return { ok: false, error: `Search failed (${res.status}).` };
+      }
       const json = await res.json();
       const results = (json.organic || [])
         .slice(0, 6)
