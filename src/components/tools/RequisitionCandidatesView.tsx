@@ -27,6 +27,8 @@ type Candidate = {
   linkedin_url: string | null;
   experience_years: number | null;
   resume_text: string | null;
+  match_score: number | null;
+  match_score_note: string | null;
   rejection_reason: string | null;
   stage_entered_at: string | null;
   linked_offer: { id: string; status: string } | null;
@@ -84,6 +86,8 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [scoring, setScoring] = useState(false);
+  const [scoreError, setScoreError] = useState<string | null>(null);
 
   useEffect(() => {
     load();
@@ -247,12 +251,13 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
 
   const EXPORT_COLUMNS = [
     "Name",
+    "Matching score",
     "Experience",
+    "Qualification",
     "Current company",
     "Current location",
     "Current CTC",
     "Expected CTC",
-    "Qualification",
     "Notice period",
     "Stage",
     "Email",
@@ -262,12 +267,13 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
   function rowToArray(c: Candidate) {
     return [
       c.name,
+      c.match_score != null ? `${c.match_score}%` : "",
       c.experience_years != null ? `${c.experience_years} yrs` : "",
+      c.qualification || "",
       c.current_company || "",
       c.current_location || "",
       fmtCtc(c.current_ctc),
       fmtCtc(c.expected_ctc),
-      c.qualification || "",
       c.notice_period || "",
       STAGE_LABEL[c.stage] || c.stage,
       c.email || "",
@@ -320,6 +326,21 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
     }
   }
 
+  async function scoreCandidates() {
+    setScoring(true);
+    setScoreError(null);
+    try {
+      const res = await fetch(`/api/talent-ai/requisitions/${requisitionId}/score-candidates`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not score candidates.");
+      await load();
+    } catch (err) {
+      setScoreError(err instanceof Error ? err.message : "Could not score candidates.");
+    } finally {
+      setScoring(false);
+    }
+  }
+
   if (loading) {
     return <div className="flex-1 flex items-center justify-center text-[13px] text-ink-muted">Loading…</div>;
   }
@@ -335,6 +356,7 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
   }
 
   const allSelected = filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
+  const unscoredCount = candidates.filter((c) => c.resume_text && c.match_score == null).length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -373,8 +395,20 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
           >
             <Icon name="book" className={`w-4 h-4 ${exporting === "pdf" ? "animate-pulse" : ""}`} />
           </button>
+          {unscoredCount > 0 && (
+            <button
+              onClick={scoreCandidates}
+              disabled={scoring}
+              className="text-[11.5px] font-semibold px-3 py-2 border border-border rounded-md hover:border-brand hover:text-brand text-ink-2 disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <Icon name="sparkle" className={`w-3.5 h-3.5 ${scoring ? "animate-pulse" : ""}`} />
+              {scoring ? "Scoring…" : `Score ${unscoredCount} candidate${unscoredCount === 1 ? "" : "s"}`}
+            </button>
+          )}
         </div>
       </div>
+
+      {scoreError && <div className="bg-critical-wash text-critical text-[12px] rounded-sm px-3 py-2">{scoreError}</div>}
 
       <RequisitionTabs requisitionId={requisitionId} active="candidates" />
 
@@ -547,12 +581,13 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
               </th>
               <th className="px-2 py-2 font-semibold">Candidate name</th>
+              <th className="px-2 py-2 font-semibold">Matching score</th>
               <th className="px-2 py-2 font-semibold">Experience</th>
+              <th className="px-2 py-2 font-semibold">Qualification</th>
               <th className="px-2 py-2 font-semibold">Current company</th>
               <th className="px-2 py-2 font-semibold">Current location</th>
               <th className="px-2 py-2 font-semibold">Current CTC</th>
               <th className="px-2 py-2 font-semibold">Expected CTC</th>
-              <th className="px-2 py-2 font-semibold">Qualification</th>
               <th className="px-2 py-2 font-semibold">Notice period</th>
               <th className="px-2 py-2 font-semibold">LinkedIn</th>
               <th className="px-2 py-2 font-semibold">Days in stage</th>
@@ -564,7 +599,7 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
           <tbody className="divide-y divide-border">
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-2 py-8 text-center text-ink-muted">
+                <td colSpan={15} className="px-2 py-8 text-center text-ink-muted">
                   No candidates match these filters.
                 </td>
               </tr>
@@ -580,12 +615,32 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
                   </Link>
                   <div className="text-[10.5px] text-ink-muted">{c.email || c.phone || ""}</div>
                 </td>
+                <td className="px-2 py-2">
+                  {c.match_score != null ? (
+                    <span
+                      title={c.match_score_note || undefined}
+                      className={`inline-flex items-center gap-1 font-bold rounded-sm px-1.5 py-0.5 text-[11px] tabular-nums ${
+                        c.match_score >= 70
+                          ? "bg-good-wash text-good"
+                          : c.match_score >= 40
+                          ? "bg-warning-wash text-warning"
+                          : "bg-critical-wash text-critical"
+                      }`}
+                    >
+                      {c.match_score}%
+                    </span>
+                  ) : c.resume_text ? (
+                    <span className="text-ink-muted text-[11px]">Not scored</span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className="px-2 py-2 tabular-nums">{c.experience_years != null ? `${c.experience_years} yrs` : "—"}</td>
+                <td className="px-2 py-2">{c.qualification || "—"}</td>
                 <td className="px-2 py-2">{c.current_company || "—"}</td>
                 <td className="px-2 py-2">{c.current_location || "—"}</td>
                 <td className="px-2 py-2 tabular-nums">{fmtCtc(c.current_ctc)}</td>
                 <td className="px-2 py-2 tabular-nums">{fmtCtc(c.expected_ctc)}</td>
-                <td className="px-2 py-2">{c.qualification || "—"}</td>
                 <td className="px-2 py-2">{c.notice_period || "—"}</td>
                 <td className="px-2 py-2">
                   {c.linkedin_url ? (

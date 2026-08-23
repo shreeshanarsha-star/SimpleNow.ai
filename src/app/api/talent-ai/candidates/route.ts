@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
-import { parseResumeToCandidate } from "@/lib/talentAI";
+import { parseResumeToCandidate, scoreCandidateFit } from "@/lib/talentAI";
 
 const FEATURE_KEY = "Talent.ai";
 
@@ -62,6 +62,8 @@ export async function POST(req: Request) {
   const resumeText = body.resumeText || null;
   const resumeFilePath: string | null = body.resumeFilePath || null;
   const resumeFileName: string | null = body.resumeFileName || null;
+  let matchScore: number | null = null;
+  let matchScoreNote: string | null = null;
 
   const { data: requisitionRow } = await supabase
     .from("talent_requisitions")
@@ -94,6 +96,20 @@ export async function POST(req: Request) {
     }
   }
   if (!name) name = "Unnamed candidate";
+
+  // Match score against the JD -- same best-effort spirit as the parse
+  // above (a candidate is still added if this fails or the requisition has
+  // no description to score against; the table just shows "not scored").
+  const jdText = (requisitionRow.description || "").trim();
+  if (resumeText && jdText) {
+    try {
+      const match = await scoreCandidateFit(resumeText, jdText);
+      matchScore = match.score;
+      matchScoreNote = match.note || null;
+    } catch {
+      // best-effort
+    }
+  }
 
   // Look up-or-create the person's identity record, scoped to this org and
   // deduped by email (when we have one) so the same person applying to
@@ -160,6 +176,9 @@ export async function POST(req: Request) {
       expected_ctc: expectedCtc,
       resume_file_path: resumeFilePath,
       resume_file_name: resumeFileName,
+      match_score: matchScore,
+      match_score_note: matchScoreNote,
+      match_score_computed_at: matchScore != null ? new Date().toISOString() : null,
     })
     .select()
     .single();

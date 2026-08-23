@@ -66,6 +66,42 @@ export async function parseResumeToCandidate(
   return parseJsonResponse(text);
 }
 
+export type MatchScore = {
+  score: number;
+  note: string;
+};
+
+// A fast, AI-estimated fit signal for the candidate table -- not a
+// replacement for the human scorecards under talent_scorecards, which
+// remain the authoritative hiring-decision record. This is deliberately
+// narrower and cheaper than Smart Screen.ai's full screen (no red flags,
+// interview questions, etc.) since its only job is to help a recruiter
+// triage a long candidate list at a glance.
+const MATCH_SCORE_PROMPT = `You are estimating how well one candidate's resume matches a role's job
+description, for a recruiter scanning a candidate table. Score 0-100 from these weighted dimensions:
+- Skills match -- semantic relevance of actual experience to the role, not just shared vocabulary: up to 45
+- Experience relevance -- years AND domain/seniority fit: up to 25
+- Qualification / education match: up to 15
+- Career stability and progression, judged relative to career stage: up to 15
+If a dimension has no information to judge from the resume, exclude it and redistribute its weight
+proportionally across the rest so the total still scales to 100 -- never penalize missing data as a
+negative signal, and never invent experience the resume doesn't state.
+Respond as JSON only (no markdown fences, no prose):
+{
+  "score": number (0-100, integer),
+  "note": string (~15 words, the single biggest reason for the score -- a strength or a gap)
+}`;
+
+export async function scoreCandidateFit(resumeText: string, jdText: string): Promise<MatchScore> {
+  const text = await callClaude(
+    `${MATCH_SCORE_PROMPT}\n\n--- Job description ---\n${jdText}\n\n--- Resume text ---\n${resumeText}`,
+    300
+  );
+  const parsed = parseJsonResponse(text);
+  const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+  return { score, note: typeof parsed.note === "string" ? parsed.note : "" };
+}
+
 export type PipelineSummary = {
   headline: string;
   stage_counts: Record<string, number>;
