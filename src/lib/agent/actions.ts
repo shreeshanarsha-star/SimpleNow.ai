@@ -30,6 +30,34 @@ export type ActionSpec = {
 
 const DEFAULT_COORDS = { lat: 12.9716, lon: 77.5946 }; // Bangalore -- same fallback the Topbar weather chip already uses
 
+// Open-Meteo's geocoder indexes several Indian cities only under their
+// official post-renaming name (e.g. "Bengaluru", not the still-universally-
+// used colloquial "Bangalore") and has no fuzzy/alias matching -- searching
+// the colloquial name can silently return an unrelated same-named village
+// elsewhere in the world (confirmed live: "Bangalore" alone matched a
+// village in Sindh, Pakistan, since Bengaluru itself isn't indexed under
+// that name at all). Normalize the handful of common cases before geocoding.
+const CITY_ALIASES: Record<string, string> = {
+  bangalore: "Bengaluru",
+  bombay: "Mumbai",
+  calcutta: "Kolkata",
+  madras: "Chennai",
+  poona: "Pune",
+  mysore: "Mysuru",
+  cochin: "Kochi",
+  trivandrum: "Thiruvananthapuram",
+  baroda: "Vadodara",
+  gurgaon: "Gurugram",
+};
+
+function normalizeCityName(location: string): string {
+  const trimmed = location.trim();
+  const firstWord = trimmed.split(/[\s,]+/)[0]?.toLowerCase();
+  const alias = firstWord ? CITY_ALIASES[firstWord] : undefined;
+  if (!alias) return trimmed;
+  return alias + trimmed.slice(firstWord!.length);
+}
+
 function weatherIcon(code: number): string {
   if (code === 0) return "sun";
   if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return "cloudRain";
@@ -116,7 +144,7 @@ const getWeather: ActionSpec = {
     if (location) {
       try {
         const geoRes = await fetch(
-          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=8`
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(normalizeCityName(location))}&count=8`
         );
         const geo = await geoRes.json();
         const results: Array<{ latitude: number; longitude: number; name: string; admin1?: string; country?: string; population?: number }> =
