@@ -18,7 +18,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { data: candidate, error } = await supabase
     .from("talent_candidates")
     .select(
-      "*, talent_notes(*), talent_scorecards(*), talent_requisitions(id, req_no, title, location, department), talent_stage_history(created_at)"
+      "*, talent_notes(*), talent_scorecards(*), talent_requisitions(id, req_no, title, location, department), talent_stage_history(from_stage, to_stage, note, changed_by, created_at)"
     )
     .eq("id", id)
     .single();
@@ -29,7 +29,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   // Same "real stage-history audit trail, not the mutable updated_at
   // column" logic as the requisition candidates list -- see that route
-  // for the full rationale.
+  // for the full rationale. The full rows (not just created_at) are kept
+  // on the candidate object and returned as-is, since the Details page
+  // renders the whole stage-change timeline, not just the latest date.
   {
     const history = (candidate.talent_stage_history as { created_at: string }[] | null) || [];
     const latest = history.reduce<string | null>((max, h) => (!max || h.created_at > max ? h.created_at : max), null);
@@ -64,7 +66,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .limit(1)
     .maybeSingle();
 
-  return NextResponse.json({ candidate, otherApplications, linkedOffer: linkedOffer || null });
+  // Signed URL to the original CV file (if one was captured at upload
+  // time -- candidates added before resume file storage existed only have
+  // the parsed text, not the original file). Short-lived like the
+  // Apply.ai admin viewer uses for the same "resumes" bucket.
+  let resumeFileUrl: string | null = null;
+  const resumeFilePath = (candidate as { resume_file_path?: string | null }).resume_file_path;
+  if (resumeFilePath) {
+    const { data: signed } = await admin.storage.from("resumes").createSignedUrl(resumeFilePath, 600);
+    resumeFileUrl = signed?.signedUrl || null;
+  }
+
+  return NextResponse.json({ candidate, otherApplications, linkedOffer: linkedOffer || null, resumeFileUrl });
 }
 
 // Update a candidate -- most importantly, moving stage. Every stage change

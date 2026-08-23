@@ -2,15 +2,19 @@ import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
 import { createClient } from "@/lib/supabase/server";
 import CandidateProfileView from "@/components/tools/CandidateProfileView";
+import CandidateDetailsView from "@/components/tools/CandidateDetailsView";
 
 const FEATURE_KEY = "Talent.ai";
 
 export default async function CandidateProfilePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ view?: string }>;
 }) {
   const { id } = await params;
+  const { view } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -53,7 +57,11 @@ export default async function CandidateProfilePage({
   return (
     <AppShell title="Talent.ai">
       {hasAccess ? (
-        <CandidateProfileView candidateId={id} />
+        view === "details" ? (
+          <CandidateDetailsView candidateId={id} />
+        ) : (
+          <CandidateProfileView candidateId={id} />
+        )
       ) : (
         <AccessDenied reason='The admin hasn’t granted you access to "Talent.ai" yet.' />
       )}

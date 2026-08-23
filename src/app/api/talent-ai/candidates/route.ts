@@ -60,6 +60,8 @@ export async function POST(req: Request) {
   let summaryTags: string[] = Array.isArray(body.tags) ? body.tags : [];
   let fitNote: string | null = null;
   const resumeText = body.resumeText || null;
+  const resumeFilePath: string | null = body.resumeFilePath || null;
+  const resumeFileName: string | null = body.resumeFileName || null;
 
   const { data: requisitionRow } = await supabase
     .from("talent_requisitions")
@@ -156,6 +158,8 @@ export async function POST(req: Request) {
       notice_period: noticePeriod,
       current_ctc: currentCtc,
       expected_ctc: expectedCtc,
+      resume_file_path: resumeFilePath,
+      resume_file_name: resumeFileName,
     })
     .select()
     .single();

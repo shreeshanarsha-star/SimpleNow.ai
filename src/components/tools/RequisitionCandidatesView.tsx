@@ -167,6 +167,8 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
         body: JSON.stringify({
           requisitionId,
           resumeText: parseData.text,
+          resumeFilePath: parseData.filePath || null,
+          resumeFileName: parseData.fileName || null,
           autoParse: true,
           source: "sourced",
         }),

@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { VScroller } from "@/components/Scroller";
 import { STAGES, stageLabel } from "@/lib/talentStages";
 import { rejectionReasonLabel } from "@/lib/talentRejectionReasons";
 import RejectionReasonModal from "@/components/tools/RejectionReasonModal";
+import CandidateTabs from "@/components/tools/CandidateTabs";
 import { daysSince, isStale } from "@/lib/talentSla";
 
 type Note = { id: string; body: string; created_at: string };
@@ -64,6 +64,7 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [noteText, setNoteText] = useState("");
   const [savingNote, setSavingNote] = useState(false);
@@ -107,6 +108,7 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
 
   async function save() {
     setSaving(true);
+    setSaveError(null);
     try {
       const res = await fetch(`/api/talent-ai/candidates/${candidateId}`, {
         method: "PATCH",
@@ -124,10 +126,12 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
           email: form.email || null,
         }),
       });
-      if (res.ok) {
-        setEditing(false);
-        await load();
-      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not save those changes.");
+      setEditing(false);
+      await load();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Could not save those changes.");
     } finally {
       setSaving(false);
     }
@@ -255,6 +259,8 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
         )}
       </div>
 
+      <CandidateTabs candidateId={candidateId} active="summary" />
+
       {rejectModalOpen && (
         <RejectionReasonModal
           candidateName={candidate.name}
@@ -270,12 +276,12 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
         <div className="flex items-center justify-between mb-3">
           <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Profile details</div>
           {!editing ? (
-            <button onClick={() => setEditing(true)} className="text-[11.5px] font-semibold text-brand">
+            <button onClick={() => { setEditing(true); setSaveError(null); }} className="text-[11.5px] font-semibold text-brand">
               Edit
             </button>
           ) : (
             <div className="flex items-center gap-2">
-              <button onClick={() => setEditing(false)} className="text-[11.5px] font-semibold text-ink-muted">
+              <button onClick={() => { setEditing(false); setSaveError(null); }} className="text-[11.5px] font-semibold text-ink-muted">
                 Cancel
               </button>
               <button
@@ -288,6 +294,10 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
             </div>
           )}
         </div>
+
+        {saveError && (
+          <div className="bg-critical-wash text-critical text-[11.5px] rounded-sm px-2.5 py-1.5 mb-3">{saveError}</div>
+        )}
 
         {!editing ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -339,12 +349,16 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
       </div>
 
       {candidate.resume_text && (
-        <div className="border border-border rounded-lg p-4 bg-surface">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1.5">Resume</div>
-          <VScroller className="max-h-72">
-            <p className="text-[12px] text-ink-2 whitespace-pre-wrap m-0">{candidate.resume_text}</p>
-          </VScroller>
-        </div>
+        <Link
+          href={`/tools/talent-ai/candidates/${candidateId}?view=details`}
+          className="border border-border rounded-lg p-4 bg-surface flex items-center justify-between hover:border-brand"
+        >
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1">Resume &amp; CV</div>
+            <div className="text-[12px] text-ink-2">View the original CV and full parsed resume on the Details tab</div>
+          </div>
+          <span className="text-[12px] font-semibold text-brand flex-shrink-0">View details →</span>
+        </Link>
       )}
 
       {otherApplications.length > 0 && (

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const FEATURE_KEY = "Talent.ai";
 const MAX_BYTES = 8 * 1024 * 1024; // 8MB
@@ -62,5 +63,25 @@ export async function POST(req: Request) {
   }
   if (text.length > 40_000) text = text.slice(0, 40_000);
 
-  return NextResponse.json({ text, fileName: file.name });
+  // Keep the original file too, not just the extracted text -- recruiters
+  // want to open the actual CV as the candidate submitted it (formatting,
+  // layout, attachments), not a re-flowed plain-text reconstruction.
+  // Reuses the same "resumes" storage bucket Apply.ai already writes to,
+  // under a talent/ prefix so the two flows never collide. Best-effort: if
+  // the upload fails for some reason, we still return the parsed text so
+  // adding the candidate isn't blocked on it.
+  let filePath: string | null = null;
+  try {
+    const admin = createAdminClient();
+    const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const path = `talent/${Date.now()}-${safeName}`;
+    const { error: uploadError } = await admin.storage
+      .from("resumes")
+      .upload(path, buffer, { contentType: file.type || "application/octet-stream" });
+    if (!uploadError) filePath = path;
+  } catch {
+    // Non-fatal -- see comment above.
+  }
+
+  return NextResponse.json({ text, fileName: file.name, filePath });
 }
