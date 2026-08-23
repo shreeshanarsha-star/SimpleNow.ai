@@ -85,6 +85,8 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+  const [uploadFailures, setUploadFailures] = useState<{ name: string; message: string }[]>([]);
   const [exporting, setExporting] = useState<string | null>(null);
   const [scoring, setScoring] = useState(false);
   const [scoreError, setScoreError] = useState<string | null>(null);
@@ -154,36 +156,66 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
     });
   }
 
-  async function handleResumeFile(file: File | null) {
-    if (!file) return;
+  // Adds one resume: parse it, then create the candidate record. Throws on
+  // failure so the batch runner below can attribute the error to this file
+  // by name instead of losing track of which upload failed.
+  async function addOneResume(file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    const parseRes = await fetch("/api/talent-ai/candidates/parse-resume", { method: "POST", body: form });
+    const parseData = await parseRes.json();
+    if (!parseRes.ok) throw new Error(parseData.error || "Could not read that resume.");
+
+    const addRes = await fetch("/api/talent-ai/candidates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requisitionId,
+        resumeText: parseData.text,
+        resumeFilePath: parseData.filePath || null,
+        resumeFileName: parseData.fileName || null,
+        autoParse: true,
+        source: "sourced",
+      }),
+    });
+    const addData = await addRes.json();
+    if (!addRes.ok) throw new Error(addData.error || "Could not add candidate.");
+  }
+
+  // Handles both a single drag-and-drop resume and a bulk drop of many at
+  // once (e.g. sourcing 100 resumes for a requisition in one go). Files are
+  // processed one at a time -- not Promise.all -- so a batch of 100 doesn't
+  // fire 100 concurrent parse+create requests and get rate-limited or time
+  // out; each file's success/failure is tracked independently so one bad
+  // resume (corrupt PDF, unsupported format) doesn't lose the other 99.
+  async function handleResumeFiles(fileList: FileList | File[] | null) {
+    const files = fileList ? Array.from(fileList) : [];
+    if (files.length === 0) return;
     setUploading(true);
     setUploadError(null);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const parseRes = await fetch("/api/talent-ai/candidates/parse-resume", { method: "POST", body: form });
-      const parseData = await parseRes.json();
-      if (!parseRes.ok) throw new Error(parseData.error || "Could not read that resume.");
+    setUploadFailures([]);
+    setUploadProgress({ done: 0, total: files.length });
 
-      const addRes = await fetch("/api/talent-ai/candidates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requisitionId,
-          resumeText: parseData.text,
-          resumeFilePath: parseData.filePath || null,
-          resumeFileName: parseData.fileName || null,
-          autoParse: true,
-          source: "sourced",
-        }),
-      });
-      const addData = await addRes.json();
-      if (!addRes.ok) throw new Error(addData.error || "Could not add candidate.");
-      await load();
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Could not add candidate.");
-    } finally {
-      setUploading(false);
+    const failures: { name: string; message: string }[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        await addOneResume(file);
+      } catch (err) {
+        failures.push({ name: file.name, message: err instanceof Error ? err.message : "Could not add candidate." });
+      }
+      setUploadProgress({ done: i + 1, total: files.length });
+    }
+
+    await load();
+    setUploading(false);
+    setUploadFailures(failures);
+    if (failures.length > 0) {
+      setUploadError(
+        files.length === 1
+          ? failures[0].message
+          : `Added ${files.length - failures.length} of ${files.length}. ${failures.length} failed -- see details below.`
+      );
     }
   }
 
@@ -498,8 +530,7 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
           onDrop={(e) => {
             e.preventDefault();
             setDragOver(false);
-            const file = e.dataTransfer.files?.[0];
-            if (file) handleResumeFile(file);
+            handleResumeFiles(e.dataTransfer.files);
           }}
           onClick={() => document.getElementById("req-candidate-resume-input")?.click()}
           className={`w-full sm:w-[210px] flex-shrink-0 border rounded-lg px-4 py-3 text-center cursor-pointer transition-colors flex flex-col items-center justify-center gap-1.5 ${
@@ -510,24 +541,40 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
             id="req-candidate-resume-input"
             type="file"
             accept=".pdf,.docx,.txt"
+            multiple
             className="hidden"
-            onChange={(e) => handleResumeFile(e.target.files?.[0] || null)}
+            onChange={(e) => handleResumeFiles(e.target.files)}
           />
-          {uploading ? (
-            <p className="m-0 text-[12px] text-ink-muted">Adding candidate…</p>
+          {uploading && uploadProgress ? (
+            <p className="m-0 text-[12px] text-ink-muted">
+              Adding {uploadProgress.done} of {uploadProgress.total}…
+            </p>
           ) : (
             <>
               <Icon name="upload" className="w-4 h-4 text-brand" />
               <p className="m-0 text-[12px] leading-snug">
-                <span className="text-brand font-bold">Add a candidate</span>
+                <span className="text-brand font-bold">Add candidates</span>
                 <br />
-                <span className="text-ink-muted">Drag & drop a resume</span>
+                <span className="text-ink-muted">Drag & drop one or many resumes</span>
               </p>
             </>
           )}
         </div>
       </div>
-      {uploadError && <div className="bg-critical-wash text-critical text-[12px] rounded-sm px-3 py-2">{uploadError}</div>}
+      {uploadError && (
+        <div className="bg-critical-wash text-critical text-[12px] rounded-sm px-3 py-2 flex flex-col gap-1">
+          <span>{uploadError}</span>
+          {uploadFailures.length > 0 && (
+            <ul className="m-0 pl-4 list-disc">
+              {uploadFailures.map((f, i) => (
+                <li key={i}>
+                  <span className="font-semibold">{f.name}</span>: {f.message}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="text-[11.5px] text-ink-muted">
         {filtered.length} of {candidates.length} candidate{candidates.length === 1 ? "" : "s"}
