@@ -16,7 +16,7 @@ export async function GET() {
   }
   const admin = createAdminClient();
   const roles = await getUserRoles(admin, user.id);
-  const { data: profile } = await admin.from("profiles").select("is_admin, org_id, org_role, manager_id, full_name, email").eq("id", user.id).single();
+  const { data: profile } = await admin.from("profiles").select("is_admin, org_id, org_role, manager_id, full_name, email, avatar_url").eq("id", user.id).single();
   return NextResponse.json({
     roles,
     isAdmin: !!profile?.is_admin,

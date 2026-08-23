@@ -18,6 +18,27 @@ type FeedTurn = {
 
 const STORAGE_KEY = "askShreeConversationId";
 
+// Some tool pages (Talent.ai) keep their own internal tab state that a
+// same-URL router.push can't reset -- Next treats navigating to the exact
+// URL you're already on as a no-op, so a user sitting on e.g. the Admin
+// tab who asks Ask Shree to "open Talent.ai" would otherwise be left
+// exactly where they were. Dispatching this event lets that page's own
+// component reset itself locally when routing alone won't trigger it.
+function goToFeature(router: ReturnType<typeof useRouter>, href: string) {
+  try {
+    if (typeof window !== "undefined") {
+      const targetPath = href.split("?")[0];
+      if (window.location.pathname === targetPath) {
+        window.dispatchEvent(new CustomEvent("askshree:same-page-nav", { detail: { pathname: targetPath } }));
+      }
+    }
+  } catch {
+    // non-fatal -- worst case the same-page reset doesn't fire and the
+    // user just stays on their current tab, no different from today
+  }
+  router.push(href);
+}
+
 // Speech Recognition isn't in the standard TS DOM lib -- narrow, local typing
 // for just what we use, rather than pulling in a whole ambient-types package.
 type SpeechRecognitionLike = {
@@ -148,7 +169,7 @@ export default function GlobalSearchBar() {
       // access to -- let them see the confirmation for a beat, then take
       // them there, same as the existing exact-name fast path already does.
       if (data.resultType === "navigate" && data.resultData?.hasAccess && data.resultData?.href) {
-        setTimeout(() => router.push(data.resultData.href), 700);
+        setTimeout(() => goToFeature(router, data.resultData.href as string), 700);
       }
     } catch (err) {
       setFeed((f) => [
@@ -173,7 +194,7 @@ export default function GlobalSearchBar() {
 
     const match = findLocalMatch(query);
     if (match) {
-      router.push(match.href);
+      goToFeature(router, match.href);
       return;
     }
     askShree(raw);

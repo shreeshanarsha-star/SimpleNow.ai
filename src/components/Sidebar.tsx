@@ -7,6 +7,7 @@ import { DEPARTMENTS, PERSONAL_TOOLS } from "@/lib/departments";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
 import LogoMark from "./LogoMark";
+import Avatar from "./Avatar";
 
 export default function Sidebar({
   open = false,
@@ -34,6 +35,8 @@ export default function Sidebar({
   // both wrong and left non-owner users with no way to tell they were
   // signed in as themselves.
   const [email, setEmail] = useState<string | null>(null);
+  const [fullName, setFullName] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [settingsHref, setSettingsHref] = useState<string | null>(null);
   // Team Chat is org-scoped (RLS-enforced, one chat per org) -- it has no
@@ -61,12 +64,14 @@ export default function Sidebar({
       }
       const { data: profile } = await supabase
         .from("profiles")
-        .select("is_admin, org_role, org_id")
+        .select("is_admin, org_role, org_id, full_name, avatar_url")
         .eq("id", user.id)
         .maybeSingle();
       if (profile?.is_admin) setSettingsHref("/admin");
       else if (profile?.org_role === "org_admin") setSettingsHref("/org/settings");
       setHasOrg(!!profile?.org_id);
+      setFullName(profile?.full_name ?? null);
+      setAvatarUrl(profile?.avatar_url ?? null);
 
       if (profile?.is_admin) {
         setVisibleDeptIds(new Set(DEPARTMENTS.map((d) => d.id)));
@@ -130,7 +135,6 @@ export default function Sidebar({
     }
   }
 
-  const initials = email ? email.slice(0, 2).toUpperCase() : "?";
   const displayName = email ?? "Not signed in";
 
   const isActive = (href: string) =>
@@ -234,9 +238,7 @@ export default function Sidebar({
           </Link>
         ) : (
           <>
-        <div className="w-[30px] h-[30px] rounded-full bg-gradient-to-br from-brand to-brand-dark text-white text-[11.5px] font-semibold flex items-center justify-center flex-shrink-0 shadow-emblem">
-          {initials}
-        </div>
+        <Avatar name={fullName} email={email} avatarUrl={avatarUrl} size={30} className="shadow-emblem" />
         <div className="flex-1 min-w-0">
           <div className="text-[12.5px] font-semibold truncate text-ink" title={displayName}>
             {displayName}

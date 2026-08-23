@@ -5,9 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import TalentAiBoard from "@/components/tools/TalentAiBoard";
 import { HScroller, VScroller } from "@/components/Scroller";
+import ProfileAvatar from "@/components/ProfileAvatar";
 import { FUNNEL_STAGES, STAGE_ORDER as STAGES_ORDER } from "@/lib/talentStages";
 
-type Me = { roles: string[]; isAdmin: boolean; isOrgAdmin?: boolean; profile: { full_name: string | null; email: string | null; manager_id: string | null } | null };
+type Me = { roles: string[]; isAdmin: boolean; isOrgAdmin?: boolean; profile: { full_name: string | null; email: string | null; manager_id: string | null; avatar_url?: string | null } | null };
 type ActionItem = { id: string; kind: string; title: string; detail: string; link: string; daysWaiting: number };
 type Tab = "home" | "funnel" | "approvals" | "assign" | "recruiter" | "projects" | "jobs" | "admin";
 
@@ -20,13 +21,30 @@ export default function TalentWorkspace() {
 
   useEffect(() => {
     fetch("/api/talent-ai/me").then((r) => r.json()).then((d) => setMe(d));
-  }, [tab]);
+  }, []);
+
+  // Same-page "go to Talent.ai" clicks (Ask Shree's open_feature / the
+  // search bar's exact-name fast path) resolve to the bare /tools/talent-ai
+  // href already sitting in the address bar when the user is already on
+  // this page, so Next's router treats it as a no-op navigation -- nothing
+  // fires, and the user is left stranded on whatever tab they were on.
+  // GlobalSearchBar dispatches this event in that exact situation so we
+  // can reset locally instead of relying on routing that won't happen.
+  useEffect(() => {
+    function onSamePageNav(e: Event) {
+      const detail = (e as CustomEvent<{ pathname?: string }>).detail;
+      if (detail?.pathname === "/tools/talent-ai") setTab("home");
+    }
+    window.addEventListener("askshree:same-page-nav", onSamePageNav);
+    return () => window.removeEventListener("askshree:same-page-nav", onSamePageNav);
+  }, []);
 
   // Ask Shree's open_feature tool lands here with ?action=new-requisition
   // -- pick it up once, then strip it so a refresh/back-nav doesn't
   // reopen the form every time.
   useEffect(() => {
     if (searchParams.get("action") === "new-requisition") {
+      setTab("home");
       setAutoOpenNewRequisition(true);
       router.replace("/tools/talent-ai");
     }
@@ -112,25 +130,23 @@ function MyRequisitionsPanel({
   const router = useRouter();
   const [focusRequisitionId, setFocusRequisitionId] = useState<string | null>(null);
   const [focusStage, setFocusStage] = useState<string | null>(null);
-  const name = me?.profile?.full_name || me?.profile?.email?.split("@")[0] || "there";
-  const roleLabels: string[] = [];
-  if (roleFlags.isAdmin) roleLabels.push("Platform admin");
-  else if (roleFlags.isOrgAdmin) roleLabels.push("Org admin");
-  for (const r of me?.roles || []) {
-    if (!roleLabels.includes(r)) roleLabels.push(r.replace(/_/g, " "));
-  }
-  if (roleLabels.length === 0) roleLabels.push("Team member");
+  const loaded = !!me;
+  const name = me?.profile?.full_name || me?.profile?.email?.split("@")[0] || "";
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-baseline gap-2 flex-wrap">
-        <div className="text-[18px] font-bold text-ink">
-          {greeting}, {name}
-        </div>
-        <span className="text-[12px] text-ink-muted capitalize">{roleLabels.join(" · ")}</span>
+      <div className="flex items-center gap-3">
+        <ProfileAvatar name={name} avatarUrl={me?.profile?.avatar_url ?? null} loaded={loaded} />
+        {loaded ? (
+          <div className="text-[18px] font-bold text-ink">
+            {greeting}, {name}
+          </div>
+        ) : (
+          <div className="h-[22px] w-[220px] rounded bg-page animate-pulse" />
+        )}
       </div>
 
       {roleFlags.canAssign && <TAHeadSnapshot onNavigate={onNavigate} />}
@@ -311,6 +327,7 @@ type TATrendRow = { month: string; avgDays: number | null; offers: number };
 type TARequesterRow = { name: string; requisitions: number };
 
 function TAHeadSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState<{ openRequisitions: number; activeCandidates: number; avgDaysToFirstOffer: number | null } | null>(null);
   const [departmentBreakdown, setDepartmentBreakdown] = useState<TADeptRow[]>([]);
   const [timeToHireTrend, setTimeToHireTrend] = useState<TATrendRow[]>([]);
@@ -323,9 +340,10 @@ function TAHeadSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
       setDepartmentBreakdown(d.departmentBreakdown || []);
       setTimeToHireTrend(d.timeToHireTrend || []);
       setTopRequesters(d.topRequesters || []);
-    });
+    }).finally(() => setLoading(false));
   }, []);
 
+  if (loading) return <SnapshotSkeleton />;
   if (!counts) return null;
 
   const maxDept = Math.max(1, ...departmentBreakdown.map((d) => d.count));
@@ -404,6 +422,7 @@ type ManagerReqRow = { id: string; title: string; department: string | null; sta
 type ManagerCandidateRow = { id: string; name: string; stage: string; requisitionTitle: string; requisitionId: string };
 
 function ManagerSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState<{ myTeam: number; myRequisitions: number; candidatesInInterview: number; pendingApprovalsFromMe: number } | null>(null);
   const [myTeam, setMyTeam] = useState<ManagerTeamRow[]>([]);
   const [myRequisitions, setMyRequisitions] = useState<ManagerReqRow[]>([]);
@@ -415,9 +434,10 @@ function ManagerSnapshot({ onNavigate }: { onNavigate: (t: Tab) => void }) {
       setMyTeam(d.myTeam || []);
       setMyRequisitions(d.myRequisitions || []);
       setCandidatesInInterview(d.candidatesInInterview || []);
-    });
+    }).finally(() => setLoading(false));
   }, []);
 
+  if (loading) return <SnapshotSkeleton />;
   if (!counts) return null;
   if (counts.myTeam === 0 && counts.myRequisitions === 0) return null; // not acting as a manager -- nothing to show
 
@@ -533,7 +553,7 @@ function RecruiterSnapshot({
     });
   }, []);
 
-  if (!loaded) return null;
+  if (!loaded) return <SnapshotSkeleton />;
   if (myRequisitions.length === 0) return null; // nothing assigned yet -- don't show an empty recruiting section
 
   return (
@@ -597,6 +617,27 @@ function RecruiterSnapshot({
           </tbody>
         </table>
       </HScroller>
+    </div>
+  );
+}
+
+// A stand-in for a snapshot card while its own fetch is in flight -- keeps
+// the layout stable (same rough shape/height as the real card) instead of
+// popping from nothing to fully-formed content, which is what made the
+// Talent.ai home tab feel like it was flashing through several different
+// pages before settling.
+function SnapshotSkeleton() {
+  return (
+    <div className="flex flex-col gap-3 border border-border rounded-lg p-4 bg-surface">
+      <div className="h-[13px] w-[160px] rounded bg-page animate-pulse" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="border border-border rounded-md p-3.5 flex flex-col gap-2">
+            <div className="h-[9px] w-[70%] rounded bg-page animate-pulse" />
+            <div className="h-[20px] w-[40%] rounded bg-page animate-pulse" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
