@@ -102,6 +102,118 @@ export async function scoreCandidateFit(resumeText: string, jdText: string): Pro
   return { score, note: typeof parsed.note === "string" ? parsed.note : "" };
 }
 
+export type EligibilityCriteria = {
+  role_title: string | null;
+  min_years_experience: number | null;
+  qualification: string | null;
+  must_have_skills: string[];
+  good_to_have_skills: string[];
+  other_notes: string | null;
+};
+
+// Recruiter-defined eligibility criteria, same shape as Smart Screen.ai's
+// proven Criteria type -- must-have vs. good-to-have skills, not just raw
+// JD text. Auto-pulled from the JD as a starting draft; the recruiter can
+// edit every field before it's saved (unlike Smart Screen.ai, where the
+// extraction is read-only).
+const STRUCTURE_ELIGIBILITY_PROMPT = `You structure a raw job description into recruiter-facing eligibility
+criteria for an ATS. Read the JD text (and role title, if given) and extract, as JSON only (no markdown
+fences, no prose):
+{
+  "role_title": string or null,
+  "min_years_experience": number or null,
+  "qualification": string or null (minimum required degree/certification, only if explicitly stated),
+  "must_have_skills": array of short strings (the non-negotiable skills/technologies/experience explicitly
+    required -- short phrases of 2-4 words, not full sentences),
+  "good_to_have_skills": array of short strings (skills mentioned as a plus/preferred, not required),
+  "other_notes": string or null (other non-negotiables like location, certification, work authorization,
+    if stated)
+}
+Never fabricate a requirement that isn't in the text -- use null/[] if not stated.`;
+
+export async function structureEligibilityCriteria(
+  jdText: string,
+  roleTitle?: string
+): Promise<EligibilityCriteria> {
+  const context = roleTitle ? `Role title: ${roleTitle}\n\n` : "";
+  const text = await callClaude(
+    `${STRUCTURE_ELIGIBILITY_PROMPT}\n\n${context}--- JD text ---\n${jdText}`,
+    700
+  );
+  const parsed = parseJsonResponse(text);
+  return {
+    role_title: typeof parsed.role_title === "string" ? parsed.role_title : null,
+    min_years_experience: typeof parsed.min_years_experience === "number" ? parsed.min_years_experience : null,
+    qualification: typeof parsed.qualification === "string" ? parsed.qualification : null,
+    must_have_skills: Array.isArray(parsed.must_have_skills) ? parsed.must_have_skills.filter((s: unknown) => typeof s === "string") : [],
+    good_to_have_skills: Array.isArray(parsed.good_to_have_skills) ? parsed.good_to_have_skills.filter((s: unknown) => typeof s === "string") : [],
+    other_notes: typeof parsed.other_notes === "string" ? parsed.other_notes : null,
+  };
+}
+
+export type CriteriaMatchScore = {
+  score: number;
+  note: string;
+  met_must_have_skills: string[];
+  missing_must_have_skills: string[];
+};
+
+// Criteria-aware match score -- deliberately distinct from scoreCandidateFit
+// above (plain JD text). When a requisition has eligibility_criteria set,
+// this replaces that call: must-have skills the recruiter explicitly
+// flagged carry more than half the weight (55/100), so the % genuinely
+// reflects "does this person have what I said I needed", not just general
+// JD similarity. A candidate missing a must-have is weighted down hard but
+// never hard-gated to 0 -- the recruiter still sees the candidate and why.
+const CRITERIA_SCORE_PROMPT = `You are scoring how well one candidate's resume matches a role's
+recruiter-defined eligibility criteria, for a candidate table in an ATS. This is NOT plain JD matching --
+must-have skills the recruiter explicitly flagged matter far more than general resume similarity to a JD.
+Score 0-100 from these weighted dimensions:
+- Must-have skills coverage -- for EACH must-have skill, judge by meaning/evidence in the resume (not
+  shared vocabulary) whether the candidate demonstrably has it: up to 55 total, split evenly across the
+  must-have skills given. Weight this dimension proportionally to how many must-haves are actually met --
+  a candidate missing some must-haves should score meaningfully lower here, but never let one miss alone
+  zero out the whole dimension if others are met.
+- Experience relevance -- years (vs min_years_experience if given) AND domain/seniority fit: up to 20
+- Qualification match (vs the stated qualification, if any): up to 10
+- Good-to-have skills present: up to 10
+- Career stability, judged relative to career stage: up to 5
+If a dimension has no information to judge (e.g. no must-have skills were given at all), exclude it and
+redistribute its weight proportionally across the rest so the total still scales to 100 -- never penalize
+missing data as a negative signal, and never invent experience the resume doesn't state.
+Respond as JSON only (no markdown fences, no prose):
+{
+  "score": number (0-100, integer),
+  "note": string (~15 words, the single biggest reason for the score -- a strength or a gap),
+  "met_must_have_skills": array of strings (must-have skills from the criteria the resume evidences),
+  "missing_must_have_skills": array of strings (must-have skills from the criteria with no evidence in the resume)
+}`;
+
+export async function scoreCandidateAgainstCriteria(
+  criteria: EligibilityCriteria,
+  resumeText: string
+): Promise<CriteriaMatchScore> {
+  const context = `Role: ${criteria.role_title || "not specified"}
+Minimum years of experience: ${criteria.min_years_experience ?? "not specified"}
+Required qualification: ${criteria.qualification || "not specified"}
+Must-have skills: ${(criteria.must_have_skills || []).join(", ") || "none specified"}
+Good-to-have skills: ${(criteria.good_to_have_skills || []).join(", ") || "none specified"}
+Other non-negotiables: ${criteria.other_notes || "none stated"}
+
+--- Candidate resume text ---
+${resumeText}`;
+
+  const text = await callClaude(`${CRITERIA_SCORE_PROMPT}\n\n${context}`, 500);
+  const parsed = parseJsonResponse(text);
+  const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+  return {
+    score,
+    note: typeof parsed.note === "string" ? parsed.note : "",
+    met_must_have_skills: Array.isArray(parsed.met_must_have_skills) ? parsed.met_must_have_skills.filter((s: unknown) => typeof s === "string") : [],
+    missing_must_have_skills: Array.isArray(parsed.missing_must_have_skills) ? parsed.missing_must_have_skills.filter((s: unknown) => typeof s === "string") : [],
+  };
+}
+
 export type PipelineSummary = {
   headline: string;
   stage_counts: Record<string, number>;

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
-import { summarizePipeline } from "@/lib/talentAI";
+import { summarizePipeline, structureEligibilityCriteria } from "@/lib/talentAI";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildApprovalChain, logAudit, notifyUser } from "@/lib/talentRoles";
 
@@ -170,6 +170,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if ("compMax" in body) {
     patch.comp_max = body.compMax === "" || body.compMax == null ? null : Number(body.compMax);
   }
+  // Eligibility criteria: recruiter-edited (or AI auto-pulled then edited)
+  // must-have/good-to-have skills etc. Stamped with who/when changed it so
+  // "why did this candidate's score change" is always answerable.
+  if ("eligibilityCriteria" in body) {
+    patch.eligibility_criteria = body.eligibilityCriteria;
+    patch.eligibility_criteria_updated_at = new Date().toISOString();
+    patch.eligibility_criteria_updated_by = user.id;
+  }
 
   const { data: requisition, error } = await supabase
     .from("talent_requisitions")
@@ -292,6 +300,33 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       action: wasDraft ? "submitted" : "resubmitted",
     });
     return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "structure_eligibility_criteria") {
+    const { data: requisition, error: reqError } = await supabase
+      .from("talent_requisitions")
+      .select("title, description, jd_source_text")
+      .eq("id", id)
+      .single();
+    if (reqError || !requisition) {
+      return NextResponse.json({ error: "Requisition not found." }, { status: 404 });
+    }
+    const jdText = (typeof body.jdText === "string" && body.jdText.trim()) || requisition.description || requisition.jd_source_text || "";
+    if (!jdText.trim()) {
+      return NextResponse.json(
+        { error: "This requisition has no job description text to pull criteria from. Enter it manually instead." },
+        { status: 400 }
+      );
+    }
+    try {
+      const criteria = await structureEligibilityCriteria(jdText, requisition.title);
+      return NextResponse.json({ criteria });
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Could not pull criteria from the JD." },
+        { status: 500 }
+      );
+    }
   }
 
   if (body.action !== "summarize") {

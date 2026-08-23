@@ -1,18 +1,28 @@
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
-import { scoreCandidateFit } from "@/lib/talentAI";
+import { scoreCandidateFit, scoreCandidateAgainstCriteria, type EligibilityCriteria } from "@/lib/talentAI";
+
+type SupabaseClient = Awaited<ReturnType<typeof requireFeatureAccess>>["supabase"];
 
 export const maxDuration = 60;
 
 const FEATURE_KEY = "Talent.ai";
+const SCORE_CONCURRENCY = 4;
 
-// Backfills/refreshes the AI match score for every candidate on this
-// requisition that has resume text but no score yet (or, with force=true,
-// every candidate with resume text). Scoped to one requisition per call so
-// it stays within the serverless time budget -- 30 candidates x ~1-2s per
-// AI call is comfortably inside 60s, a whole org's pipeline would not be.
+// Backfills/refreshes the AI match score for candidates on this requisition.
+// force=false (default): only candidates with resume text and no score yet.
+// force=true: every candidate with resume text -- used when eligibility
+// criteria is saved/changed, since every existing score was computed
+// against the old (or no) criteria and is now stale.
+//
+// Scored against structured eligibility_criteria when the requisition has
+// one set (must-have/good-to-have skills weighted heavily -- see
+// scoreCandidateAgainstCriteria), falling back to plain JD-text scoring
+// otherwise. Runs a small worker pool instead of one-at-a-time so a
+// requisition with dozens of candidates doesn't take a full serverless
+// request per candidate in series.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  let supabase;
+  let supabase: SupabaseClient;
   try {
     ({ supabase } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
@@ -24,16 +34,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { data: requisition, error: reqError } = await supabase
     .from("talent_requisitions")
-    .select("id, title, description, jd_source_text")
+    .select("id, title, description, jd_source_text, eligibility_criteria")
     .eq("id", id)
     .single();
   if (reqError || !requisition) {
     return NextResponse.json({ error: reqError?.message || "Requisition not found." }, { status: 404 });
   }
+
+  const criteria = requisition.eligibility_criteria as EligibilityCriteria | null;
+  const hasCriteria = !!criteria && ((criteria.must_have_skills?.length || 0) > 0 || (criteria.good_to_have_skills?.length || 0) > 0);
   const jdText = (requisition.description || requisition.jd_source_text || "").trim();
-  if (!jdText) {
+
+  if (!hasCriteria && !jdText) {
     return NextResponse.json(
-      { error: "This requisition has no job description text to score candidates against." },
+      { error: "This requisition has no eligibility criteria or job description to score candidates against." },
       { status: 400 }
     );
   }
@@ -49,26 +63,39 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: candError.message }, { status: 500 });
   }
 
+  const queue = (candidates || []).filter((c) => !!c.resume_text);
   let scored = 0;
   let failed = 0;
-  for (const c of candidates || []) {
-    if (!c.resume_text) continue;
-    try {
-      const result = await scoreCandidateFit(c.resume_text, jdText);
-      const { error: updateError } = await supabase
-        .from("talent_candidates")
-        .update({
-          match_score: result.score,
-          match_score_note: result.note || null,
-          match_score_computed_at: new Date().toISOString(),
-        })
-        .eq("id", c.id);
-      if (updateError) failed++;
-      else scored++;
-    } catch {
-      failed++;
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < queue.length) {
+      const c = queue[nextIndex++];
+      try {
+        const result = hasCriteria
+          ? await scoreCandidateAgainstCriteria(criteria as EligibilityCriteria, c.resume_text as string)
+          : await scoreCandidateFit(c.resume_text as string, jdText);
+        const { error: updateError } = await supabase
+          .from("talent_candidates")
+          .update({
+            match_score: result.score,
+            match_score_note: result.note || null,
+            match_score_computed_at: new Date().toISOString(),
+            met_must_have_skills: "met_must_have_skills" in result ? result.met_must_have_skills : null,
+            missing_must_have_skills: "missing_must_have_skills" in result ? result.missing_must_have_skills : null,
+          })
+          .eq("id", c.id);
+        if (updateError) failed++;
+        else scored++;
+      } catch {
+        failed++;
+      }
     }
   }
 
-  return NextResponse.json({ scored, failed, total: (candidates || []).length });
+  await Promise.all(
+    Array.from({ length: Math.min(SCORE_CONCURRENCY, queue.length) }, () => worker())
+  );
+
+  return NextResponse.json({ scored, failed, total: queue.length, scoredAgainst: hasCriteria ? "criteria" : "jd" });
 }

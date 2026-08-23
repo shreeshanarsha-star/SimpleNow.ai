@@ -3,6 +3,7 @@ import Icon from "@/components/Icon";
 import { createClient } from "@/lib/supabase/server";
 import RequisitionCandidatesView from "@/components/tools/RequisitionCandidatesView";
 import RequisitionRoleOverview from "@/components/tools/RequisitionRoleOverview";
+import EligibilityCriteriaView from "@/components/tools/EligibilityCriteriaView";
 
 const FEATURE_KEY = "Talent.ai";
 
@@ -19,6 +20,7 @@ export default async function RequisitionCandidatesPage({
   // always means "show me candidates in this stage" -- default to the
   // Role overview tab only when nothing else says otherwise.
   const showCandidates = view === "candidates" || !!stage;
+  const showEligibility = view === "eligibility";
   const supabase = await createClient();
   const {
     data: { user },
@@ -63,6 +65,8 @@ export default async function RequisitionCandidatesPage({
       {hasAccess ? (
         showCandidates ? (
           <RequisitionCandidatesView requisitionId={id} />
+        ) : showEligibility ? (
+          <EligibilityCriteriaView requisitionId={id} />
         ) : (
           <RequisitionRoleOverview requisitionId={id} />
         )

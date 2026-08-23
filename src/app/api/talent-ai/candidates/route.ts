@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
-import { parseResumeToCandidate, scoreCandidateFit } from "@/lib/talentAI";
+import { parseResumeToCandidate, scoreCandidateFit, scoreCandidateAgainstCriteria, type EligibilityCriteria } from "@/lib/talentAI";
 
 const FEATURE_KEY = "Talent.ai";
 
@@ -64,10 +64,12 @@ export async function POST(req: Request) {
   const resumeFileName: string | null = body.resumeFileName || null;
   let matchScore: number | null = null;
   let matchScoreNote: string | null = null;
+  let metMustHaveSkills: string[] | null = null;
+  let missingMustHaveSkills: string[] | null = null;
 
   const { data: requisitionRow } = await supabase
     .from("talent_requisitions")
-    .select("org_id, title, description")
+    .select("org_id, title, description, eligibility_criteria")
     .eq("id", requisitionId)
     .single();
   if (!requisitionRow) {
@@ -75,21 +77,33 @@ export async function POST(req: Request) {
   }
   const orgId = requisitionRow.org_id as string;
 
-  // The field-extraction parse and the JD match score are independent AI
+  // Eligibility criteria (must-have/good-to-have skills the recruiter set,
+  // or auto-pulled from the JD) takes priority over plain JD-text scoring
+  // when present -- it's a materially more accurate match % since it's
+  // graded against what the recruiter actually said they needed, not just
+  // general JD similarity.
+  const criteria = requisitionRow.eligibility_criteria as EligibilityCriteria | null;
+  const hasCriteria = !!criteria && ((criteria.must_have_skills?.length || 0) > 0 || (criteria.good_to_have_skills?.length || 0) > 0);
+
+  // The field-extraction parse and the match score are independent AI
   // calls (parse reads resumeText + role context, score reads resumeText +
-  // JD text -- neither depends on the other's output), so they run
-  // concurrently instead of one after another. Previously this route
+  // JD text/criteria -- neither depends on the other's output), so they
+  // run concurrently instead of one after another. Previously this route
   // awaited them in series, which doubled the AI wait on every single
   // candidate add and was the main reason bulk resume drops felt slow.
   const jdText = (requisitionRow.description || "").trim();
   const shouldParse = resumeText && (!name || body.autoParse);
-  const shouldScore = resumeText && jdText;
+  const shouldScore = resumeText && (hasCriteria || jdText);
 
   const [parseResult, scoreResult] = await Promise.allSettled([
     shouldParse
       ? parseResumeToCandidate(resumeText, `Role: ${requisitionRow.title}\n${requisitionRow.description || ""}`)
       : Promise.resolve(null),
-    shouldScore ? scoreCandidateFit(resumeText, jdText) : Promise.resolve(null),
+    shouldScore
+      ? hasCriteria
+        ? scoreCandidateAgainstCriteria(criteria as EligibilityCriteria, resumeText)
+        : scoreCandidateFit(resumeText, jdText)
+      : Promise.resolve(null),
   ]);
 
   if (parseResult.status === "fulfilled" && parseResult.value) {
@@ -110,6 +124,11 @@ export async function POST(req: Request) {
   if (scoreResult.status === "fulfilled" && scoreResult.value) {
     matchScore = scoreResult.value.score;
     matchScoreNote = scoreResult.value.note || null;
+    if (hasCriteria) {
+      const criteriaResult = scoreResult.value as Awaited<ReturnType<typeof scoreCandidateAgainstCriteria>>;
+      metMustHaveSkills = criteriaResult.met_must_have_skills;
+      missingMustHaveSkills = criteriaResult.missing_must_have_skills;
+    }
   }
   // Both are best-effort by design (a rejected promise here just means the
   // candidate is added unparsed/unscored, same as before) -- no catch
@@ -183,6 +202,8 @@ export async function POST(req: Request) {
       match_score: matchScore,
       match_score_note: matchScoreNote,
       match_score_computed_at: matchScore != null ? new Date().toISOString() : null,
+      met_must_have_skills: metMustHaveSkills,
+      missing_must_have_skills: missingMustHaveSkills,
     })
     .select()
     .single();

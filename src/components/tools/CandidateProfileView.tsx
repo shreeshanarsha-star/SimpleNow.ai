@@ -30,6 +30,10 @@ type Candidate = {
   person_id: string | null;
   rejection_reason: string | null;
   stage_entered_at: string | null;
+  match_score: number | null;
+  match_score_note: string | null;
+  met_must_have_skills: string[] | null;
+  missing_must_have_skills: string[] | null;
   talent_notes: Note[];
   talent_scorecards: Scorecard[];
   talent_requisitions: { id: string; req_no: string; title: string; location: string | null } | null;
@@ -270,6 +274,54 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
             setRejectModalOpen(false);
           }}
         />
+      )}
+
+      {candidate.match_score != null && (
+        <div className="border border-border rounded-lg p-4 bg-surface flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Eligibility match</div>
+            <span
+              className={`font-bold rounded-sm px-2 py-0.5 text-[12px] tabular-nums ${
+                candidate.match_score >= 70
+                  ? "bg-good-wash text-good"
+                  : candidate.match_score >= 40
+                  ? "bg-warning-wash text-warning"
+                  : "bg-critical-wash text-critical"
+              }`}
+            >
+              {candidate.match_score}%
+            </span>
+          </div>
+          {candidate.match_score_note && <p className="text-[12.5px] text-ink-2 m-0">{candidate.match_score_note}</p>}
+          {(candidate.met_must_have_skills?.length || candidate.missing_must_have_skills?.length) ? (
+            <div className="flex flex-wrap gap-3 mt-1">
+              {candidate.met_must_have_skills && candidate.met_must_have_skills.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-good">Meets</div>
+                  <div className="flex flex-wrap gap-1">
+                    {candidate.met_must_have_skills.map((s) => (
+                      <span key={s} className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-good-wash text-good-text">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {candidate.missing_must_have_skills && candidate.missing_must_have_skills.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-critical">Missing</div>
+                  <div className="flex flex-wrap gap-1">
+                    {candidate.missing_must_have_skills.map((s) => (
+                      <span key={s} className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-critical-wash text-critical">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
       )}
 
       <div className="border border-border rounded-lg p-4 bg-surface">

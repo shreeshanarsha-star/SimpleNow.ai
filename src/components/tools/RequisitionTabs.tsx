@@ -7,10 +7,11 @@ export default function RequisitionTabs({
   active,
 }: {
   requisitionId: string;
-  active: "role" | "candidates";
+  active: "role" | "eligibility" | "candidates";
 }) {
-  const tabs: { key: "role" | "candidates"; label: string; href: string }[] = [
+  const tabs: { key: "role" | "eligibility" | "candidates"; label: string; href: string }[] = [
     { key: "role", label: "Role overview", href: `/tools/talent-ai/requisitions/${requisitionId}` },
+    { key: "eligibility", label: "Eligibility", href: `/tools/talent-ai/requisitions/${requisitionId}?view=eligibility` },
     { key: "candidates", label: "Candidates", href: `/tools/talent-ai/requisitions/${requisitionId}?view=candidates` },
   ];
 

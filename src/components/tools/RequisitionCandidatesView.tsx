@@ -29,6 +29,7 @@ type Candidate = {
   resume_text: string | null;
   match_score: number | null;
   match_score_note: string | null;
+  missing_must_have_skills: string[] | null;
   rejection_reason: string | null;
   stage_entered_at: string | null;
   linked_offer: { id: string; status: string } | null;
@@ -681,17 +682,28 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
                 </td>
                 <td className="px-2 py-2">
                   {c.match_score != null ? (
-                    <span
-                      title={c.match_score_note || undefined}
-                      className={`inline-flex items-center gap-1 font-bold rounded-sm px-1.5 py-0.5 text-[11px] tabular-nums ${
-                        c.match_score >= 70
-                          ? "bg-good-wash text-good"
-                          : c.match_score >= 40
-                          ? "bg-warning-wash text-warning"
-                          : "bg-critical-wash text-critical"
-                      }`}
-                    >
-                      {c.match_score}%
+                    <span className="inline-flex items-center gap-1 flex-wrap">
+                      <span
+                        title={c.match_score_note || undefined}
+                        className={`inline-flex items-center gap-1 font-bold rounded-sm px-1.5 py-0.5 text-[11px] tabular-nums ${
+                          c.match_score >= 70
+                            ? "bg-good-wash text-good"
+                            : c.match_score >= 40
+                            ? "bg-warning-wash text-warning"
+                            : "bg-critical-wash text-critical"
+                        }`}
+                      >
+                        {c.match_score}%
+                      </span>
+                      {c.missing_must_have_skills && c.missing_must_have_skills.length > 0 && (
+                        <span
+                          title={`Missing must-have: ${c.missing_must_have_skills.join(", ")}`}
+                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-critical"
+                        >
+                          <Icon name="x" className="w-2.5 h-2.5" />
+                          {c.missing_must_have_skills.length}
+                        </span>
+                      )}
                     </span>
                   ) : c.resume_text ? (
                     <span className="text-ink-muted text-[11px]">Not scored</span>
