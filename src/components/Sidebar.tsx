@@ -59,7 +59,12 @@ export default function Sidebar({
       const user = data.user;
       setEmail(user?.email ?? null);
       if (!user) {
-        setVisibleDeptIds(new Set());
+        // Guests can browse the full catalog -- every department/tool is
+        // visible so they can see what's on offer; actually *using* a live
+        // tool is what requires signing in (middleware redirects /tools/**
+        // to /login). Only signed-in users get license-filtered down to
+        // what their org actually has.
+        setVisibleDeptIds(new Set(DEPARTMENTS.map((d) => d.id)));
         return;
       }
       const { data: profile } = await supabase

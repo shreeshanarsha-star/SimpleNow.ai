@@ -38,8 +38,10 @@ export default async function DepartmentPage({
     } = await supabase.auth.getUser();
 
     if (!user) {
-      visibleTools = [];
-      gateMessage = "Sign in to see the tools your organization has access to.";
+      // Guests browse the full, unfiltered tool list for this department --
+      // same "see everything, sign in to use it" rule as Sidebar. Clicking
+      // into a live tool hits middleware's /tools/** auth redirect, so
+      // nothing here needs to gate the browsing view itself.
     } else {
       const { data: profile } = await supabase
         .from("profiles")
