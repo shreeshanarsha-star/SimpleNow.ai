@@ -7,7 +7,6 @@ import { DEPARTMENTS, PERSONAL_TOOLS } from "@/lib/departments";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
 import LogoMark from "./LogoMark";
-import ThemeSwitcher from "./ThemeSwitcher";
 
 export default function Sidebar({
   open = false,
@@ -162,16 +161,6 @@ export default function Sidebar({
           />
         ))}
       </nav>
-
-      {/* Theme picker -- sits just above the profile row so it's reachable
-          from every page (Sidebar is shared chrome via AppShell) without
-          taking the user to a separate settings screen. */}
-      <div className="px-4 pb-2 flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-          Theme
-        </span>
-        <ThemeSwitcher />
-      </div>
 
       {/* Bottom row -- deliberately left un-sticky/in-flow: nav above no
           longer scrolls (every item fits, no scrollbar), so this row

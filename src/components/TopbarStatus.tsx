@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Icon from "./Icon";
 import { VScroller } from "./Scroller";
+import ThemeSwitcher from "./ThemeSwitcher";
 
 // Bengaluru -- fallback location used only when the browser doesn't
 // share a real one (geolocation denied/unavailable). Askshree is
@@ -52,6 +53,7 @@ export default function TopbarStatus() {
   const [now, setNow] = useState<Date | null>(null);
   const [weather, setWeather] = useState<{ temp: number; code: number } | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Live clock -- updates every 30s, which is plenty for a "day/date/time"
@@ -181,6 +183,37 @@ export default function TopbarStatus() {
           <span className="text-[10.5px] text-ink-muted">{dateStr}</span>
         </div>
       )}
+
+      {/* Appearance -- a personalization preference, not a wayfinding
+          control, so it lives here in the persistent global header (same
+          pattern as GitHub/Linear/Vercel) rather than competing for space
+          with navigation and identity in the sidebar. */}
+      <div className="relative">
+        <button
+          type="button"
+          aria-label="Appearance"
+          onClick={() => setThemeOpen((v) => !v)}
+          className="w-8 h-8 rounded-full border border-border bg-surface flex items-center justify-center text-ink-2 hover:border-border-strong hover:text-ink transition-colors flex-shrink-0"
+        >
+          <Icon name="palette" className="w-[15px] h-[15px]" />
+        </button>
+        {themeOpen && (
+          <>
+            <button
+              type="button"
+              aria-label="Close appearance menu"
+              onClick={() => setThemeOpen(false)}
+              className="fixed inset-0 z-10 cursor-default"
+            />
+            <div className="absolute right-0 top-[calc(100%+8px)] w-44 bg-surface border border-border rounded-md shadow-soft-sm z-20 p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-2">
+                Appearance
+              </div>
+              <ThemeSwitcher />
+            </div>
+          </>
+        )}
+      </div>
 
       <div className="relative">
         <button
