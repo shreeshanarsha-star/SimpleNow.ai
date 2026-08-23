@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
 import { parseResumeToCandidate, scoreCandidateFit, scoreCandidateAgainstCriteria, type EligibilityCriteria } from "@/lib/talentAI";
+import { normalizeExternalUrl } from "@/lib/url";
 
 const FEATURE_KEY = "Talent.ai";
 
@@ -120,6 +121,7 @@ export async function POST(req: Request) {
     fitNote = parsed.fit_notes;
   }
   if (!name) name = "Unnamed candidate";
+  linkedinUrl = normalizeExternalUrl(linkedinUrl);
 
   if (scoreResult.status === "fulfilled" && scoreResult.value) {
     matchScore = scoreResult.value.score;

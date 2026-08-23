@@ -8,6 +8,7 @@ import { rejectionReasonLabel } from "@/lib/talentRejectionReasons";
 import RejectionReasonModal from "@/components/tools/RejectionReasonModal";
 import CandidateTabs from "@/components/tools/CandidateTabs";
 import { daysSince, isStale } from "@/lib/talentSla";
+import { normalizeExternalUrl } from "@/lib/url";
 
 type Note = { id: string; body: string; created_at: string };
 type Scorecard = { id: string; rating: number | null; recommendation: string | null; feedback: string | null; created_at: string };
@@ -366,7 +367,7 @@ export default function CandidateProfileView({ candidateId }: { candidateId: str
               label="LinkedIn"
               value={
                 candidate.linkedin_url ? (
-                  <a href={candidate.linkedin_url} target="_blank" rel="noreferrer" className="text-brand font-semibold hover:underline">
+                  <a href={normalizeExternalUrl(candidate.linkedin_url) || undefined} target="_blank" rel="noreferrer" className="text-brand font-semibold hover:underline">
                     View profile
                   </a>
                 ) : null

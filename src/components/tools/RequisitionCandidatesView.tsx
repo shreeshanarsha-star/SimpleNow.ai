@@ -10,6 +10,7 @@ import { rejectionReasonLabel } from "@/lib/talentRejectionReasons";
 import RejectionReasonModal from "@/components/tools/RejectionReasonModal";
 import RequisitionTabs from "@/components/tools/RequisitionTabs";
 import { daysSince, isStale } from "@/lib/talentSla";
+import { normalizeExternalUrl } from "@/lib/url";
 
 type Candidate = {
   id: string;
@@ -720,7 +721,7 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
                 <td className="px-2 py-2">{c.notice_period || "—"}</td>
                 <td className="px-2 py-2">
                   {c.linkedin_url ? (
-                    <a href={c.linkedin_url} target="_blank" rel="noreferrer" className="text-brand font-semibold hover:underline">
+                    <a href={normalizeExternalUrl(c.linkedin_url) || undefined} target="_blank" rel="noreferrer" className="text-brand font-semibold hover:underline">
                       Profile
                     </a>
                   ) : (

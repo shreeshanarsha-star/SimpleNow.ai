@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizeExternalUrl } from "@/lib/url";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -115,6 +116,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     "linkedin_url",
   ]) {
     if (key in body) patch[key] = body[key];
+  }
+  if ("linkedin_url" in body) {
+    patch.linkedin_url = normalizeExternalUrl(body.linkedin_url);
   }
   if ("rating" in body) patch.rating = body.rating === null ? null : Number(body.rating);
   if ("tags" in body) patch.tags = body.tags;
