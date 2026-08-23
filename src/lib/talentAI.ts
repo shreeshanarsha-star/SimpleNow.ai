@@ -124,11 +124,20 @@ fences, no prose):
   "min_years_experience": number or null,
   "qualification": string or null (minimum required degree/certification, only if explicitly stated),
   "must_have_skills": array of short strings (the non-negotiable skills/technologies/experience explicitly
-    required -- short phrases of 2-4 words, not full sentences),
+    required),
   "good_to_have_skills": array of short strings (skills mentioned as a plus/preferred, not required),
   "other_notes": string or null (other non-negotiables like location, certification, work authorization,
     if stated)
 }
+For must_have_skills and good_to_have_skills, rewrite each requirement into the canonical, atomic industry
+term a resume would actually use -- NOT a copy of the JD's sentence fragment. Concretely:
+- Convert narrative phrasing into the underlying competency/tool name. "Own key account relationships and
+  drive renewal outcomes" -> ["account management", "renewals" / "contract renewals"], not
+  ["key account relationships", "renewal outcomes"] verbatim.
+- Split compound requirements into separate single-concept skills ("5+ years in B2B SaaS sales with
+  Salesforce" -> "B2B SaaS sales" + "Salesforce", not one long string).
+- Keep each skill to 1-3 words wherever possible, using terminology a candidate's resume would plausibly
+  contain (a tool, technique, domain, or role-type), not JD narrative language.
 Never fabricate a requirement that isn't in the text -- use null/[] if not stated.`;
 
 export async function structureEligibilityCriteria(
@@ -168,25 +177,42 @@ export type CriteriaMatchScore = {
 const CRITERIA_SCORE_PROMPT = `You are scoring how well one candidate's resume matches a role's
 recruiter-defined eligibility criteria, for a candidate table in an ATS. This is NOT plain JD matching --
 must-have skills the recruiter explicitly flagged matter far more than general resume similarity to a JD.
+
+Before scoring, silently work through each must-have skill ONE AT A TIME and decide met or missing. For
+each one, ask: "does the resume show this underlying competency, tool, or responsibility -- under ANY name,
+synonym, related tool, or equivalent phrasing -- even if the exact words differ?" Judge by substance, not
+vocabulary match. Examples of what counts as met:
+- Must-have "account management" is met by resume evidence of "key account relationships", "client
+  relationship management", "enterprise accounts", or similar -- these are the same underlying skill in
+  different words.
+- Must-have "Salesforce" is met by "SFDC" or "Salesforce CRM".
+- Must-have "renewals" is met by "contract renewals", "retention", "renewal targets", or "book of business
+  growth" if the resume shows the candidate drove repeat/continued business.
+- Must-have "Python" is NOT met by "scripting experience" alone with no language named, and is NOT met by
+  "R" or "SQL" -- different tools are different skills, don't over-credit adjacency.
+Only mark a must-have missing when the resume genuinely gives no evidence of that competency under any
+reasonable equivalent phrasing -- not just because the literal words aren't present.
+
 Score 0-100 from these weighted dimensions:
-- Must-have skills coverage -- for EACH must-have skill, judge by meaning/evidence in the resume (not
-  shared vocabulary) whether the candidate demonstrably has it: up to 55 total, split evenly across the
+- Must-have skills coverage -- per the per-skill judgment above: up to 55 total, split evenly across the
   must-have skills given. Weight this dimension proportionally to how many must-haves are actually met --
   a candidate missing some must-haves should score meaningfully lower here, but never let one miss alone
   zero out the whole dimension if others are met.
 - Experience relevance -- years (vs min_years_experience if given) AND domain/seniority fit: up to 20
 - Qualification match (vs the stated qualification, if any): up to 10
-- Good-to-have skills present: up to 10
+- Good-to-have skills present (same synonym-aware judgment as must-haves): up to 10
 - Career stability, judged relative to career stage: up to 5
 If a dimension has no information to judge (e.g. no must-have skills were given at all), exclude it and
 redistribute its weight proportionally across the rest so the total still scales to 100 -- never penalize
 missing data as a negative signal, and never invent experience the resume doesn't state.
-Respond as JSON only (no markdown fences, no prose):
+Respond as JSON only (no markdown fences, no prose, no reasoning text -- just the final JSON):
 {
   "score": number (0-100, integer),
   "note": string (~15 words, the single biggest reason for the score -- a strength or a gap),
-  "met_must_have_skills": array of strings (must-have skills from the criteria the resume evidences),
-  "missing_must_have_skills": array of strings (must-have skills from the criteria with no evidence in the resume)
+  "met_must_have_skills": array of strings (must-have skills from the criteria the resume evidences, by
+    their original name from the criteria list -- even when matched via a synonym in the resume),
+  "missing_must_have_skills": array of strings (must-have skills from the criteria with genuinely no
+    evidence, direct or equivalent, in the resume)
 }`;
 
 export async function scoreCandidateAgainstCriteria(
@@ -203,7 +229,7 @@ Other non-negotiables: ${criteria.other_notes || "none stated"}
 --- Candidate resume text ---
 ${resumeText}`;
 
-  const text = await callClaude(`${CRITERIA_SCORE_PROMPT}\n\n${context}`, 500);
+  const text = await callClaude(`${CRITERIA_SCORE_PROMPT}\n\n${context}`, 700);
   const parsed = parseJsonResponse(text);
   const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
   return {
