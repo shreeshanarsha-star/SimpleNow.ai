@@ -29,6 +29,10 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const text = typeof body.text === "string" ? body.text.trim() : "";
   if (!text) return NextResponse.json({ error: "Todo text is required." }, { status: 400 });
+  // due_date is optional -- a plain YYYY-MM-DD string from <input type="date">.
+  // Validate loosely rather than trusting the client blindly.
+  const dueDate =
+    typeof body.due_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.due_date) ? body.due_date : null;
 
   const { data: existing } = await supabase
     .from("personal_todos")
@@ -41,7 +45,7 @@ export async function POST(req: Request) {
 
   const { data: todo, error } = await supabase
     .from("personal_todos")
-    .insert({ user_id: user.id, text, position: nextPosition })
+    .insert({ user_id: user.id, text, position: nextPosition, due_date: dueDate })
     .select()
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
