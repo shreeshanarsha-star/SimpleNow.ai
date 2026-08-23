@@ -96,12 +96,18 @@ export default function TalentAiBoard({
   focusStage,
   onStageFocusHandled,
   hideListWhenIdle,
+  autoOpenNewRequisition,
+  onAutoOpenNewRequisitionHandled,
 }: {
   focusRequisitionId?: string | null;
   onFocusHandled?: () => void;
   focusStage?: string | null;
   onStageFocusHandled?: () => void;
   hideListWhenIdle?: boolean;
+  // Lets Ask Shree's open_feature tool ("create a requisition") land here
+  // with the New Requisition form already open, not just on the list page.
+  autoOpenNewRequisition?: boolean;
+  onAutoOpenNewRequisitionHandled?: () => void;
 } = {}) {
   const router = useRouter();
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
@@ -122,6 +128,13 @@ export default function TalentAiBoard({
   useEffect(() => {
     loadRequisitions();
   }, []);
+
+  useEffect(() => {
+    if (!autoOpenNewRequisition) return;
+    setShowNewReq(true);
+    onAutoOpenNewRequisitionHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenNewRequisition]);
 
   useEffect(() => {
     if (!focusRequisitionId) return;

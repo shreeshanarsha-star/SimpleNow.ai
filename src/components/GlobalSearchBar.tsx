@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
 import { ALL_ITEMS } from "@/lib/departments";
 
-type ResultType = "text" | "search" | "weather" | "currency" | "calc" | "clarify";
+type ResultType = "text" | "search" | "weather" | "currency" | "calc" | "clarify" | "navigate" | "candidates";
 
 type FeedTurn = {
   id: string;
@@ -142,6 +142,13 @@ export default function GlobalSearchBar() {
           resultData: data.resultData,
         },
       ]);
+
+      // A clear "go here" / "do this" intent that the user actually has
+      // access to -- let them see the confirmation for a beat, then take
+      // them there, same as the existing exact-name fast path already does.
+      if (data.resultType === "navigate" && data.resultData?.hasAccess && data.resultData?.href) {
+        setTimeout(() => router.push(data.resultData.href), 700);
+      }
     } catch (err) {
       setFeed((f) => [
         ...f,
@@ -324,6 +331,57 @@ function FeedCard({ turn }: { turn: FeedTurn }) {
           {String(data.amount)} {String(data.from)} = {String(data.converted)} {String(data.to)}
         </div>
         <div className="text-[11.5px] text-ink-muted mt-0.5">Rate: 1 {String(data.from)} = {String(data.rate)} {String(data.to)}</div>
+      </div>
+    );
+  }
+
+  if (turn.resultType === "candidates" && data && data.requisitionFound && Array.isArray(data.candidates)) {
+    const candidates = data.candidates as Array<{
+      name: string;
+      matchScore: number | null;
+      matchNote?: string | null;
+      stage?: string | null;
+      company?: string | null;
+      location?: string | null;
+      experienceYears?: number | null;
+      link: string;
+    }>;
+    const requisition = data.requisition as { reqNo?: string; title?: string } | undefined;
+    return (
+      <div className="self-start w-full bg-surface border border-border rounded-md p-3.5 shadow-soft-sm flex flex-col gap-2.5">
+        <p className="m-0 text-[13px] text-ink">{turn.content}</p>
+        {requisition && (requisition.reqNo || requisition.title) && (
+          <div className="text-[11.5px] text-ink-muted">
+            {requisition.reqNo} {requisition.title}
+          </div>
+        )}
+        {candidates.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {candidates.map((c, i) => (
+              <a
+                key={i}
+                href={c.link}
+                className="block border border-border rounded-sm px-2.5 py-2 hover:border-border-strong transition-colors"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[12.5px] font-semibold text-brand truncate">
+                    {i + 1}. {c.name}
+                  </div>
+                  {c.matchScore != null && (
+                    <div className="shrink-0 text-[11px] font-semibold text-brand bg-brand-wash rounded-full px-2 py-0.5">
+                      {Math.round(c.matchScore)}% match
+                    </div>
+                  )}
+                </div>
+                <div className="text-[11.5px] text-ink-muted line-clamp-2">
+                  {[c.company, c.location, c.experienceYears != null ? `${c.experienceYears} yrs` : null]
+                    .filter(Boolean)
+                    .join(" -- ")}
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     );
   }

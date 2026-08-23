@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluateExpression } from "./calc";
+import { DEPARTMENTS, PERSONAL_TOOLS } from "@/lib/departments";
 
 export type ActionRiskTier = "read" | "write_reversible" | "write_commitment" | "financial";
 
@@ -342,6 +343,209 @@ const getMemory: ActionSpec = {
   },
 };
 
+// --- open_feature -------------------------------------------------------
+// Lets the agent actually TAKE the user to a real feature/page in the app
+// -- "create a requisition", "open job postings", "take me to my candidate
+// search" -- instead of just talking about it. Built from the same
+// DEPARTMENTS/PERSONAL_TOOLS source of truth the rest of the site uses for
+// nav, so a tool only shows up here once it's genuinely live, plus a small
+// hand-curated list of specific in-app actions (like opening the new-
+// requisition form) that don't have their own top-level nav entry.
+type AppDestination = {
+  key: string;
+  label: string;
+  href: string;
+  // Matches a tool name in departments.ts exactly (same convention as
+  // requireFeatureAccess) -- null means any signed-in user can go there.
+  featureKey: string | null;
+  hint: string;
+};
+
+function buildAppDestinations(): AppDestination[] {
+  const destinations: AppDestination[] = [];
+
+  for (const dept of DEPARTMENTS) {
+    for (const tool of dept.tools) {
+      if (tool.s !== "live" || !tool.href) continue;
+      destinations.push({
+        key: `tool:${tool.n}`,
+        label: tool.n,
+        href: tool.href,
+        featureKey: tool.n,
+        hint: `Open ${tool.n} (${dept.name}).`,
+      });
+    }
+  }
+
+  for (const tool of PERSONAL_TOOLS.tools) {
+    if (tool.s !== "live" || !tool.href) continue;
+    destinations.push({
+      key: `tool:${tool.n}`,
+      label: tool.n,
+      href: tool.href,
+      featureKey: null,
+      hint: `Open the ${tool.n} personal tool.`,
+    });
+  }
+
+  destinations.push({
+    key: "team-chat",
+    label: "Team Chat",
+    href: "/chat",
+    featureKey: null,
+    hint: "Open Team Chat.",
+  });
+
+  // Hand-curated sub-actions -- specific things a user can DO inside a
+  // tool, not just the tool's landing page. Each href encodes enough of a
+  // query param for the destination page to pick up and act on (see
+  // TalentAiBoard's autoOpenNewRequisition prop).
+  destinations.push({
+    key: "action:talent-ai-new-requisition",
+    label: "Talent.ai — new requisition",
+    href: "/tools/talent-ai?action=new-requisition",
+    featureKey: "Talent.ai",
+    hint: "Create a new requisition / open a new job requisition / start a new role opening.",
+  });
+
+  return destinations;
+}
+
+const APP_DESTINATIONS = buildAppDestinations();
+
+async function checkFeatureAccess(
+  supabase: SupabaseClient<any>,
+  userId: string,
+  featureKey: string | null
+): Promise<boolean> {
+  if (!featureKey) return true;
+  const { data: profile } = await supabase.from("profiles").select("is_admin, org_id").eq("id", userId).single();
+  if (profile?.is_admin) return true;
+  if (!profile?.org_id) return false;
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("plan, status")
+    .eq("id", profile.org_id)
+    .maybeSingle();
+  if (org?.status !== "approved") return false;
+  if (org.plan === "bulk") return true;
+  const { data: grant } = await supabase
+    .from("feature_access")
+    .select("id")
+    .eq("org_id", profile.org_id)
+    .eq("feature_key", featureKey)
+    .maybeSingle();
+  return !!grant;
+}
+
+const openFeature: ActionSpec = {
+  name: "open_feature",
+  description:
+    "Navigate the user to a real page or action inside Askshree. Only call this when the user clearly wants to GO somewhere or DO something in the app (e.g. \"create a requisition\", \"open job postings\", \"take me to my candidates\") -- never for general questions. Pick the single best-matching key from this list; if nothing genuinely matches, do NOT call this tool -- tell the user honestly that it isn't available. Available destinations:\n" +
+    APP_DESTINATIONS.map((d) => `- ${d.key}: ${d.hint}`).join("\n"),
+  parameters: {
+    type: "object",
+    properties: {
+      key: { type: "string", enum: APP_DESTINATIONS.map((d) => d.key), description: "The destination key that best matches what the user wants." },
+    },
+    required: ["key"],
+  },
+  riskTier: "read",
+  async run(args, ctx) {
+    const key = typeof args?.key === "string" ? args.key : "";
+    const dest = APP_DESTINATIONS.find((d) => d.key === key);
+    if (!dest) return { ok: false, error: `Unknown destination "${key}".` };
+    const hasAccess = await checkFeatureAccess(ctx.supabase, ctx.userId, dest.featureKey);
+    return {
+      ok: true,
+      data: { key: dest.key, label: dest.label, href: dest.href, hasAccess, featureKey: dest.featureKey },
+    };
+  },
+};
+
+// --- find_top_candidates -------------------------------------------------
+// Answers "who is the best candidate for R-2208261" for real, against the
+// actual Talent.ai pipeline -- not a web search. Reuses the same
+// requisition-number-or-title lookup a recruiter would do by eye, and the
+// match_score Talent.ai already computes per candidate. Gated by the same
+// license check as open_feature, then reads through the caller's own RLS-
+// scoped client (talent_requisitions_talent_read / talent_candidates_talent_read
+// already enforce org scoping -- same pattern GET /api/talent-ai/requisitions uses).
+const findTopCandidates: ActionSpec = {
+  name: "find_top_candidates",
+  description:
+    'Find and rank the best-matching candidates for a specific Talent.ai job requisition, by requisition number (e.g. "R-2208261") or role title/keywords, returning each with their AI match score and a link to their profile. Use this for things like "who is the best candidate for R-2208261" or "top candidates for the Sales Manager role" -- this is a real database lookup, not a web search.',
+  parameters: {
+    type: "object",
+    properties: {
+      requisitionQuery: { type: "string", description: "The requisition number or role title/keywords the user mentioned." },
+    },
+    required: ["requisitionQuery"],
+  },
+  riskTier: "read",
+  async run(args, ctx) {
+    const hasAccess = await checkFeatureAccess(ctx.supabase, ctx.userId, "Talent.ai");
+    if (!hasAccess) return { ok: true, data: { hasAccess: false } };
+
+    const q = typeof args?.requisitionQuery === "string" ? args.requisitionQuery.trim() : "";
+    if (!q) return { ok: false, error: "No requisition specified." };
+
+    const { data: reqMatches, error: reqError } = await ctx.supabase
+      .from("talent_requisitions")
+      .select("id, req_no, title")
+      .or(`req_no.ilike.%${q}%,title.ilike.%${q}%`)
+      .limit(5);
+    if (reqError) return { ok: false, error: reqError.message };
+    if (!reqMatches || !reqMatches.length) {
+      return { ok: true, data: { hasAccess: true, requisitionFound: false, query: q } };
+    }
+
+    const exact = reqMatches.find((r) => (r.req_no || "").toLowerCase() === q.toLowerCase());
+    const requisition = exact || reqMatches[0];
+
+    const { data: allCandidates, error: candError } = await ctx.supabase
+      .from("talent_candidates")
+      .select("id, name, stage, match_score, match_score_note, current_company, current_location, experience_years")
+      .eq("requisition_id", requisition.id)
+      .order("match_score", { ascending: false, nullsFirst: false })
+      .limit(8);
+    if (candError) return { ok: false, error: candError.message };
+
+    // Prefer candidates still actually in play; only fall back to
+    // including rejected ones if that's genuinely all there is, so we
+    // never recommend a rejected candidate as "most suitable" when a
+    // live one exists.
+    const active = (allCandidates || []).filter((c) => c.stage !== "rejected");
+    const pool = active.length ? active : allCandidates || [];
+
+    return {
+      ok: true,
+      data: {
+        hasAccess: true,
+        requisitionFound: true,
+        requisition: {
+          reqNo: requisition.req_no,
+          title: requisition.title,
+          otherPossibleMatches:
+            reqMatches.length > 1
+              ? reqMatches.filter((r) => r.id !== requisition.id).map((r) => `${r.req_no} ${r.title}`)
+              : [],
+        },
+        candidates: pool.slice(0, 5).map((c) => ({
+          name: c.name,
+          matchScore: c.match_score,
+          matchNote: c.match_score_note,
+          stage: c.stage,
+          company: c.current_company,
+          location: c.current_location,
+          experienceYears: c.experience_years,
+          link: `/tools/talent-ai/candidates/${c.id}`,
+        })),
+      },
+    };
+  },
+};
+
 export const ACTION_REGISTRY: ActionSpec[] = [
   searchWeb,
   getWeather,
@@ -350,6 +554,8 @@ export const ACTION_REGISTRY: ActionSpec[] = [
   currentDatetime,
   saveMemory,
   getMemory,
+  openFeature,
+  findTopCandidates,
 ];
 
 export function getAction(name: string): ActionSpec | undefined {

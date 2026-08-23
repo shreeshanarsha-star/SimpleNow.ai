@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, Fragment } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import TalentAiBoard from "@/components/tools/TalentAiBoard";
 import { HScroller, VScroller } from "@/components/Scroller";
@@ -12,12 +12,26 @@ type ActionItem = { id: string; kind: string; title: string; detail: string; lin
 type Tab = "home" | "funnel" | "approvals" | "assign" | "recruiter" | "projects" | "jobs" | "admin";
 
 export default function TalentWorkspace() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [me, setMe] = useState<Me | null>(null);
   const [tab, setTab] = useState<Tab>("home");
+  const [autoOpenNewRequisition, setAutoOpenNewRequisition] = useState(false);
 
   useEffect(() => {
     fetch("/api/talent-ai/me").then((r) => r.json()).then((d) => setMe(d));
   }, [tab]);
+
+  // Ask Shree's open_feature tool lands here with ?action=new-requisition
+  // -- pick it up once, then strip it so a refresh/back-nav doesn't
+  // reopen the form every time.
+  useEffect(() => {
+    if (searchParams.get("action") === "new-requisition") {
+      setAutoOpenNewRequisition(true);
+      router.replace("/tools/talent-ai");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const roles = me?.roles || [];
   const isAdmin = !!me?.isAdmin;
@@ -55,7 +69,15 @@ export default function TalentWorkspace() {
         ))}
       </HScroller>
 
-      {tab === "home" && <MyRequisitionsPanel me={me} roleFlags={{ canApprove, canAssign, canRecruit, isAdmin, isOrgAdmin }} onNavigate={setTab} />}
+      {tab === "home" && (
+        <MyRequisitionsPanel
+          me={me}
+          roleFlags={{ canApprove, canAssign, canRecruit, isAdmin, isOrgAdmin }}
+          onNavigate={setTab}
+          autoOpenNewRequisition={autoOpenNewRequisition}
+          onAutoOpenNewRequisitionHandled={() => setAutoOpenNewRequisition(false)}
+        />
+      )}
       {tab === "funnel" && <FunnelPanel />}
       {tab === "approvals" && <ApprovalsPanel />}
       {tab === "assign" && <AssignPanel />}
@@ -78,10 +100,14 @@ function MyRequisitionsPanel({
   me,
   roleFlags,
   onNavigate,
+  autoOpenNewRequisition,
+  onAutoOpenNewRequisitionHandled,
 }: {
   me: Me | null;
   roleFlags: { canApprove: boolean; canAssign: boolean; canRecruit: boolean; isAdmin: boolean; isOrgAdmin: boolean };
   onNavigate: (t: Tab) => void;
+  autoOpenNewRequisition?: boolean;
+  onAutoOpenNewRequisitionHandled?: () => void;
 }) {
   const router = useRouter();
   const [focusRequisitionId, setFocusRequisitionId] = useState<string | null>(null);
@@ -122,6 +148,8 @@ function MyRequisitionsPanel({
         focusStage={focusStage}
         onStageFocusHandled={() => setFocusStage(null)}
         hideListWhenIdle={roleFlags.canRecruit}
+        autoOpenNewRequisition={autoOpenNewRequisition}
+        onAutoOpenNewRequisitionHandled={onAutoOpenNewRequisitionHandled}
       />
     </div>
   );

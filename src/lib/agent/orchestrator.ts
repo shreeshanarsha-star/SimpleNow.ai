@@ -5,7 +5,7 @@ import { callAgentModel, type AgentMessage } from "./model";
 export type QueryResult = {
   conversationId: string;
   reply: string;
-  resultType: "text" | "search" | "weather" | "currency" | "calc" | "clarify";
+  resultType: "text" | "search" | "weather" | "currency" | "calc" | "clarify" | "navigate" | "candidates";
   resultData: Record<string, unknown> | null;
   toolsUsed: string[];
 };
@@ -30,6 +30,10 @@ function toolResultTypeFor(toolName: string | null): QueryResult["resultType"] {
       return "currency";
     case "calculate":
       return "calc";
+    case "open_feature":
+      return "navigate";
+    case "find_top_candidates":
+      return "candidates";
     default:
       return "text";
   }
@@ -46,6 +50,14 @@ function buildResultsFromToolData(toolName: string, data: Record<string, unknown
       label: r.title,
       detail: r.snippet,
       link: r.link,
+    }));
+  }
+  if (toolName === "find_top_candidates" && Array.isArray(data.candidates)) {
+    return (data.candidates as Array<{ name: string; matchScore: number | null; company: string | null; link: string }>).map((c, i) => ({
+      index: i + 1,
+      label: c.name,
+      detail: [c.matchScore != null ? `${c.matchScore}% match` : null, c.company].filter(Boolean).join(" -- "),
+      link: c.link,
     }));
   }
   return undefined;
@@ -71,6 +83,9 @@ Rules:
 - The user may refer back with "it", "that one", "the second one", "which one's better" -- resolve these using "Recent results" below.
 - Keep replies short and conversational (2-4 sentences) unless the user asked for something inherently longer (a JD, a summary, interview questions) -- then be complete.
 - Only call save_memory for something the user clearly wants remembered long-term (a preference, their city, etc.), not incidental details.
+- If the user wants to GO somewhere or DO something inside Askshree (e.g. "create a requisition", "open job postings", "take me to my candidates"), call open_feature -- don't just describe how to get there.
+- If the user asks who the best/most suitable candidate is for a requisition (by number or role title), call find_top_candidates -- this is a real database lookup against Talent.ai's own match scores, don't guess or use search_web for it.
+- If either open_feature or find_top_candidates reports hasAccess: false, tell the user plainly they don't have access to Talent.ai yet and to ask their org admin -- do not say you opened or looked something up, and do not proceed as if you did. If find_top_candidates reports requisitionFound: false, say you couldn't find a requisition matching that, and mention otherPossibleMatches if any were close.
 - Never fabricate that an external action succeeded.
 
 Known about this user:
