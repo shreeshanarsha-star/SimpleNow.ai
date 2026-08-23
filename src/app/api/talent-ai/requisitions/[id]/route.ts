@@ -36,8 +36,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   type ApprovalStepRow = { approver_user_id: string | null; decided_by: string | null };
   type AssignmentRow = { recruiter_id: string | null };
   if (requisition) {
-    const approvalSteps = (requisition.talent_approval_steps || []) as ApprovalStepRow[];
-    const assignment = (requisition.talent_requisition_assignment || []) as AssignmentRow[];
+    const rawApprovalSteps = requisition.talent_approval_steps;
+    const approvalSteps: ApprovalStepRow[] = Array.isArray(rawApprovalSteps) ? rawApprovalSteps : rawApprovalSteps ? [rawApprovalSteps] : [];
+    // talent_requisition_assignment has a unique constraint on requisition_id
+    // (one assignment per req), so Supabase embeds it as a single object (or
+    // null) rather than an array -- unlike the genuinely to-many relations
+    // above. Normalize both shapes so the loop below never chokes on a
+    // non-iterable object.
+    const rawAssignment = requisition.talent_requisition_assignment;
+    const assignment: AssignmentRow[] = Array.isArray(rawAssignment) ? rawAssignment : rawAssignment ? [rawAssignment] : [];
     const personIds = new Set<string>();
     for (const step of approvalSteps) {
       if (step.approver_user_id) personIds.add(step.approver_user_id);
