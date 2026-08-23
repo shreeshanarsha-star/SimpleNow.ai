@@ -188,6 +188,13 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
   // fire 100 concurrent parse+create requests and get rate-limited or time
   // out; each file's success/failure is tracked independently so one bad
   // resume (corrupt PDF, unsupported format) doesn't lose the other 99.
+  // How many resumes to process at once. Each one is a couple of parse-
+  // resume + AI-parse + AI-score requests; fully sequential (concurrency
+  // 1) made a 100-file drop feel like it was hanging. A small worker pool
+  // gets near-linear speedup for a big batch without firing 100 requests
+  // at once and risking rate limits or timeouts.
+  const UPLOAD_CONCURRENCY = 4;
+
   async function handleResumeFiles(fileList: FileList | File[] | null) {
     const files = fileList ? Array.from(fileList) : [];
     if (files.length === 0) return;
@@ -197,15 +204,25 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
     setUploadProgress({ done: 0, total: files.length });
 
     const failures: { name: string; message: string }[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      try {
-        await addOneResume(file);
-      } catch (err) {
-        failures.push({ name: file.name, message: err instanceof Error ? err.message : "Could not add candidate." });
+    let doneCount = 0;
+    let nextIndex = 0;
+
+    async function worker() {
+      while (nextIndex < files.length) {
+        const i = nextIndex++;
+        const file = files[i];
+        try {
+          await addOneResume(file);
+        } catch (err) {
+          failures.push({ name: file.name, message: err instanceof Error ? err.message : "Could not add candidate." });
+        }
+        doneCount++;
+        setUploadProgress({ done: doneCount, total: files.length });
       }
-      setUploadProgress({ done: i + 1, total: files.length });
     }
+    await Promise.all(
+      Array.from({ length: Math.min(UPLOAD_CONCURRENCY, files.length) }, () => worker())
+    );
 
     await load();
     setUploading(false);

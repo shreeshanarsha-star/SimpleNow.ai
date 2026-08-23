@@ -75,41 +75,45 @@ export async function POST(req: Request) {
   }
   const orgId = requisitionRow.org_id as string;
 
-  if (resumeText && (!name || body.autoParse)) {
-    try {
-      const requisitionContext = `Role: ${requisitionRow.title}\n${requisitionRow.description || ""}`;
+  // The field-extraction parse and the JD match score are independent AI
+  // calls (parse reads resumeText + role context, score reads resumeText +
+  // JD text -- neither depends on the other's output), so they run
+  // concurrently instead of one after another. Previously this route
+  // awaited them in series, which doubled the AI wait on every single
+  // candidate add and was the main reason bulk resume drops felt slow.
+  const jdText = (requisitionRow.description || "").trim();
+  const shouldParse = resumeText && (!name || body.autoParse);
+  const shouldScore = resumeText && jdText;
 
-      const parsed = await parseResumeToCandidate(resumeText, requisitionContext);
-      name = name || parsed.name || "Unnamed candidate";
-      email = email || parsed.email;
-      phone = phone || parsed.phone;
-      currentCompany = currentCompany || parsed.current_company;
-      currentLocation = currentLocation || parsed.location;
-      qualification = qualification || parsed.qualification;
-      linkedinUrl = linkedinUrl || parsed.linkedin_url;
-      if (experienceYears == null) experienceYears = parsed.years_experience;
-      if (parsed.key_skills?.length) summaryTags = Array.from(new Set([...summaryTags, ...parsed.key_skills]));
-      fitNote = parsed.fit_notes;
-    } catch {
-      // AI parse is best-effort -- fall through to whatever the form supplied.
-      name = name || "Unnamed candidate";
-    }
+  const [parseResult, scoreResult] = await Promise.allSettled([
+    shouldParse
+      ? parseResumeToCandidate(resumeText, `Role: ${requisitionRow.title}\n${requisitionRow.description || ""}`)
+      : Promise.resolve(null),
+    shouldScore ? scoreCandidateFit(resumeText, jdText) : Promise.resolve(null),
+  ]);
+
+  if (parseResult.status === "fulfilled" && parseResult.value) {
+    const parsed = parseResult.value;
+    name = name || parsed.name || "Unnamed candidate";
+    email = email || parsed.email;
+    phone = phone || parsed.phone;
+    currentCompany = currentCompany || parsed.current_company;
+    currentLocation = currentLocation || parsed.location;
+    qualification = qualification || parsed.qualification;
+    linkedinUrl = linkedinUrl || parsed.linkedin_url;
+    if (experienceYears == null) experienceYears = parsed.years_experience;
+    if (parsed.key_skills?.length) summaryTags = Array.from(new Set([...summaryTags, ...parsed.key_skills]));
+    fitNote = parsed.fit_notes;
   }
   if (!name) name = "Unnamed candidate";
 
-  // Match score against the JD -- same best-effort spirit as the parse
-  // above (a candidate is still added if this fails or the requisition has
-  // no description to score against; the table just shows "not scored").
-  const jdText = (requisitionRow.description || "").trim();
-  if (resumeText && jdText) {
-    try {
-      const match = await scoreCandidateFit(resumeText, jdText);
-      matchScore = match.score;
-      matchScoreNote = match.note || null;
-    } catch {
-      // best-effort
-    }
+  if (scoreResult.status === "fulfilled" && scoreResult.value) {
+    matchScore = scoreResult.value.score;
+    matchScoreNote = scoreResult.value.note || null;
   }
+  // Both are best-effort by design (a rejected promise here just means the
+  // candidate is added unparsed/unscored, same as before) -- no catch
+  // needed since Promise.allSettled never rejects.
 
   // Look up-or-create the person's identity record, scoped to this org and
   // deduped by email (when we have one) so the same person applying to
