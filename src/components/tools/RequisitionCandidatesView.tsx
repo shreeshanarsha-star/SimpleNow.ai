@@ -344,26 +344,32 @@ export default function RequisitionCandidatesView({ requisitionId }: { requisiti
           <h1 className="m-0 text-[19px] font-bold">{reqLabel(requisition)}</h1>
           <div className="text-[12px] text-ink-muted mt-0.5">{requisition.department || "No department"}</div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button
             onClick={exportCsv}
-            className="text-[11.5px] font-semibold px-3 py-1.5 border border-border rounded-md hover:border-brand"
+            title="Export CSV"
+            aria-label="Export CSV"
+            className="p-2.5 border border-border rounded-md hover:border-brand hover:text-brand text-ink-2"
           >
-            Export CSV
+            <Icon name="grid" className="w-4 h-4" />
           </button>
           <button
             onClick={exportExcel}
             disabled={exporting === "xlsx"}
-            className="text-[11.5px] font-semibold px-3 py-1.5 border border-border rounded-md hover:border-brand disabled:opacity-50"
+            title="Export Excel"
+            aria-label="Export Excel"
+            className="p-2.5 border border-border rounded-md hover:border-brand hover:text-brand text-ink-2 disabled:opacity-50"
           >
-            {exporting === "xlsx" ? "Exporting…" : "Export Excel"}
+            <Icon name="chart" className={`w-4 h-4 ${exporting === "xlsx" ? "animate-pulse" : ""}`} />
           </button>
           <button
             onClick={exportPdf}
             disabled={exporting === "pdf"}
-            className="text-[11.5px] font-semibold px-3 py-1.5 border border-border rounded-md hover:border-brand disabled:opacity-50"
+            title="Export PDF"
+            aria-label="Export PDF"
+            className="p-2.5 border border-border rounded-md hover:border-brand hover:text-brand text-ink-2 disabled:opacity-50"
           >
-            {exporting === "pdf" ? "Exporting…" : "Export PDF"}
+            <Icon name="book" className={`w-4 h-4 ${exporting === "pdf" ? "animate-pulse" : ""}`} />
           </button>
         </div>
       </div>
