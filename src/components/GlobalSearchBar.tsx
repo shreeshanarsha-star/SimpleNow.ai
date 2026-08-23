@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
+import { VScroller } from "./Scroller";
 import { ALL_ITEMS } from "@/lib/departments";
 
 type ResultType = "text" | "search" | "weather" | "currency" | "calc" | "clarify" | "navigate" | "candidates";
@@ -210,16 +211,34 @@ export default function GlobalSearchBar() {
     <div className="px-[26px] pb-8 pt-2">
       <div className="w-full max-w-[680px] mx-auto relative">
         {feed.length > 0 && (
-          <div className="absolute bottom-[calc(100%+10px)] left-0 right-0 max-h-[360px] overflow-y-auto flex flex-col gap-2 pb-1">
-            {feed.map((turn) => (
-              <FeedCard key={turn.id} turn={turn} />
-            ))}
+          <VScroller
+            className="absolute bottom-[calc(100%+10px)] left-0 right-0 max-h-[360px]"
+            trackClassName="flex flex-col gap-2 pb-1"
+          >
             {busy && (
               <div className="self-start bg-surface border border-border rounded-md px-3.5 py-2 text-[12.5px] text-ink-muted shadow-soft-sm">
                 Ask Shree is thinking…
               </div>
             )}
-          </div>
+            {/* Newest exchange first -- reading the most recent answer
+                shouldn't require scrolling past the whole history first.
+                Group into [user, assistant] pairs (how they're always
+                appended) and reverse pair order, not per-message order,
+                so each question still reads directly above its own
+                answer -- only which exchange comes first flips. */}
+            {(() => {
+              const pairs: FeedTurn[][] = [];
+              for (let i = 0; i < feed.length; i += 2) {
+                pairs.push(feed.slice(i, i + 2));
+              }
+              return pairs
+                .slice()
+                .reverse()
+                .map((pair) =>
+                  pair.map((turn) => <FeedCard key={turn.id} turn={turn} />)
+                );
+            })()}
+          </VScroller>
         )}
         {notFoundMsg && feed.length === 0 && (
           <p className="absolute bottom-[calc(100%+8px)] left-0 right-0 text-center text-[12px] text-ink-muted">

@@ -41,13 +41,24 @@ export default function Sidebar({
   // an org yet, so the nav item itself should mirror that instead of
   // showing to everyone and letting /chat's middleware redirect sort it out.
   const [hasOrg, setHasOrg] = useState(false);
+  // Which departments this signed-in user is actually licensed to see --
+  // null while we don't know yet (signed out, or still loading) means
+  // "don't filter" so the sidebar doesn't flash-hide everything before
+  // the license check resolves. Mirrors requireFeatureAccess()'s exact
+  // rule (admin bypass -> bulk plan grants every live tool -> otherwise
+  // an explicit feature_access row per tool) so what the sidebar shows
+  // never promises access a click would then be denied for.
+  const [visibleDeptIds, setVisibleDeptIds] = useState<Set<string> | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
       const user = data.user;
       setEmail(user?.email ?? null);
-      if (!user) return;
+      if (!user) {
+        setVisibleDeptIds(new Set());
+        return;
+      }
       const { data: profile } = await supabase
         .from("profiles")
         .select("is_admin, org_role, org_id")
@@ -56,8 +67,41 @@ export default function Sidebar({
       if (profile?.is_admin) setSettingsHref("/admin");
       else if (profile?.org_role === "org_admin") setSettingsHref("/org/settings");
       setHasOrg(!!profile?.org_id);
+
+      if (profile?.is_admin) {
+        setVisibleDeptIds(new Set(DEPARTMENTS.map((d) => d.id)));
+        return;
+      }
+      if (!profile?.org_id) {
+        setVisibleDeptIds(new Set());
+        return;
+      }
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("plan, status")
+        .eq("id", profile.org_id)
+        .maybeSingle();
+      if (org?.status !== "approved") {
+        setVisibleDeptIds(new Set());
+        return;
+      }
+      if (org.plan === "bulk") {
+        setVisibleDeptIds(new Set(DEPARTMENTS.map((d) => d.id)));
+        return;
+      }
+      const { data: grants } = await supabase
+        .from("feature_access")
+        .select("feature_key")
+        .eq("org_id", profile.org_id);
+      const grantedKeys = new Set((grants || []).map((g) => g.feature_key));
+      const deptIds = DEPARTMENTS.filter((d) =>
+        d.tools.some((t) => grantedKeys.has(t.n))
+      ).map((d) => d.id);
+      setVisibleDeptIds(new Set(deptIds));
     });
   }, []);
+
+  const visibleDepartments = visibleDeptIds === null ? [] : DEPARTMENTS.filter((d) => visibleDeptIds.has(d.id));
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -146,20 +190,24 @@ export default function Sidebar({
           />
         )}
 
-        <div className="text-[10px] font-semibold tracking-wider uppercase text-ink-muted px-2.5 pt-3 pb-1.5">
-          AI Systems — by department
-        </div>
-        {DEPARTMENTS.map((d) => (
-          <SbLink
-            key={d.id}
-            href={`/departments/${d.id}`}
-            icon={d.icon}
-            name={d.name}
-            active={isActive(`/departments/${d.id}`)}
-            dotStatus={d.status}
-            onNavigate={onClose}
-          />
-        ))}
+        {visibleDepartments.length > 0 && (
+          <>
+            <div className="text-[10px] font-semibold tracking-wider uppercase text-ink-muted px-2.5 pt-3 pb-1.5">
+              AI Systems — by department
+            </div>
+            {visibleDepartments.map((d) => (
+              <SbLink
+                key={d.id}
+                href={`/departments/${d.id}`}
+                icon={d.icon}
+                name={d.name}
+                active={isActive(`/departments/${d.id}`)}
+                dotStatus={d.status}
+                onNavigate={onClose}
+              />
+            ))}
+          </>
+        )}
       </nav>
 
       {/* Bottom row -- deliberately left un-sticky/in-flow: nav above no
