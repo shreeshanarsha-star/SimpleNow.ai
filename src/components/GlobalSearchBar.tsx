@@ -213,7 +213,7 @@ export default function GlobalSearchBar() {
         {feed.length > 0 && (
           <VScroller
             className="absolute bottom-[calc(100%+10px)] left-0 right-0 max-h-[360px]"
-            trackClassName="flex flex-col gap-2 pb-1"
+            trackClassName="max-h-[360px] flex flex-col gap-2 pb-1"
           >
             {busy && (
               <div className="self-start bg-surface border border-border rounded-md px-3.5 py-2 text-[12.5px] text-ink-muted shadow-soft-sm">
