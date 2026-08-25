@@ -133,6 +133,7 @@ export default function SmartSourceAiForm({
   const [pickedRequisition, setPickedRequisition] = useState("");
   const [pickedList, setPickedList] = useState("");
   const [newListName, setNewListName] = useState("");
+  const [sourcesLoaded, setSourcesLoaded] = useState(false);
   const [emailTo, setEmailTo] = useState("");
   const [busyAction, setBusyAction] = useState(false);
 
@@ -270,25 +271,26 @@ export default function SmartSourceAiForm({
   }
 
   async function loadProjectSources() {
-    try {
-      const [reqRes, listRes] = await Promise.all([
-        fetch("/api/talent-ai/requisitions"),
-        fetch("/api/talent-ai/lists"),
-      ]);
-      const reqData = await reqRes.json().catch(() => ({}));
-      const listData = await listRes.json().catch(() => ({}));
-      setRequisitions((reqData.requisitions || []).map((r: { id: string; title: string }) => ({ id: r.id, title: r.title })));
-      setLists((listData.lists || []).map((l: { id: string; name: string }) => ({ id: l.id, name: l.name })));
-    } catch {
-      // best-effort -- the popover will just show empty pickers
-    }
+    // Requisitions (ATS-linking, optional) and Smart Source projects
+    // (standalone, always available) are fetched independently -- an org
+    // without Talent.ai access will 403 on the first and that's fine, the
+    // project picker should still load normally.
+    const [reqResult, listResult] = await Promise.allSettled([
+      fetch("/api/talent-ai/requisitions").then((r) => (r.ok ? r.json() : { requisitions: [] })),
+      fetch("/api/smart-source/projects").then((r) => (r.ok ? r.json() : { projects: [] })),
+    ]);
+    const reqData = reqResult.status === "fulfilled" ? reqResult.value : { requisitions: [] };
+    const listData = listResult.status === "fulfilled" ? listResult.value : { projects: [] };
+    setRequisitions((reqData.requisitions || []).map((r: { id: string; title: string }) => ({ id: r.id, title: r.title })));
+    setLists((listData.projects || []).map((l: { id: string; name: string }) => ({ id: l.id, name: l.name })));
+    setSourcesLoaded(true);
   }
 
   function openAddToProject() {
     setShowExport(false);
     setShowEmail(false);
     setShowAddToProject((v) => !v);
-    if (!requisitions.length) loadProjectSources();
+    if (!sourcesLoaded) loadProjectSources();
   }
 
   async function submitAddToProject() {
@@ -297,8 +299,8 @@ export default function SmartSourceAiForm({
       setError("Select at least one candidate first.");
       return;
     }
-    if (!pickedRequisition) {
-      setError("Choose a requisition to file these candidates under.");
+    if (!pickedRequisition && !pickedList && !newListName.trim()) {
+      setError("Choose a requisition or a project to save these candidates to.");
       return;
     }
     setBusyAction(true);
@@ -309,6 +311,7 @@ export default function SmartSourceAiForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           candidates: picked.map((c) => ({
+            id: c.id,
             profile_url: c.profile_url,
             name: c.name,
             designation: c.designation,
@@ -319,7 +322,7 @@ export default function SmartSourceAiForm({
             match_score: c.match_score,
             internal_person_id: c.internal_person_id,
           })),
-          requisitionId: pickedRequisition,
+          requisitionId: pickedRequisition || undefined,
           listId: pickedList || undefined,
           newListName: !pickedList ? newListName.trim() : undefined,
         }),
@@ -327,10 +330,15 @@ export default function SmartSourceAiForm({
       const data = await res.json();
       if (!res.ok && res.status !== 207) throw new Error(data.error || "Could not add these candidates.");
       const failed = (data.results || []).filter((r: { ok: boolean }) => !r.ok).length;
+      const destination = pickedRequisition && (pickedList || newListName)
+        ? "the requisition and project"
+        : pickedRequisition
+        ? "the requisition"
+        : "the project";
       setNotice(
         failed
           ? `Added ${picked.length - failed} of ${picked.length} candidates (${failed} failed).`
-          : `Added ${picked.length} candidate${picked.length === 1 ? "" : "s"} to the requisition${pickedList || newListName ? " and project" : ""}.`
+          : `Added ${picked.length} candidate${picked.length === 1 ? "" : "s"} to ${destination}.`
       );
       setShowAddToProject(false);
       setPickedRequisition("");
@@ -727,16 +735,21 @@ export default function SmartSourceAiForm({
                     <div className="absolute right-0 top-[calc(100%+6px)] z-20 bg-surface border border-border rounded-md shadow-soft p-3 flex flex-col gap-2.5 w-[300px]">
                       <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Add to Project</span>
                       <label className="block">
-                        <span className="block text-[11.5px] font-bold mb-1">Requisition</span>
+                        <span className="block text-[11.5px] font-bold mb-1">Link to a requisition (optional)</span>
                         <select className="input" value={pickedRequisition} onChange={(e) => setPickedRequisition(e.target.value)}>
-                          <option value="">Choose a requisition…</option>
+                          <option value="">None</option>
                           {requisitions.map((r) => (
                             <option key={r.id} value={r.id}>{r.title}</option>
                           ))}
                         </select>
+                        {!requisitions.length && (
+                          <span className="block text-[10.5px] text-ink-muted mt-1">
+                            No requisitions available — you can still save these to a project below.
+                          </span>
+                        )}
                       </label>
                       <label className="block">
-                        <span className="block text-[11.5px] font-bold mb-1">Existing project (optional)</span>
+                        <span className="block text-[11.5px] font-bold mb-1">Existing project</span>
                         <select
                           className="input"
                           value={pickedList}
