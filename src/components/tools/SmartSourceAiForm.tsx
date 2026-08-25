@@ -437,14 +437,8 @@ export default function SmartSourceAiForm({
       <div className="flex items-start justify-between gap-3 mb-5">
         <p className="text-[13px] text-ink-2 max-w-2xl">
           Drop in a job description, describe who you need in your own words, or set skills manually.
-          The AI reads it, builds a search, and finds matching candidates from public LinkedIn profiles
-          — cross-checked against your own database.
+          The AI reads it, builds a search, and finds matching candidates.
         </p>
-        {isAdmin && (
-          <span className="shrink-0 text-[11px] font-medium text-ink-muted bg-page rounded-full px-3 py-1 border border-border">
-            {monthlySearchCount ?? 0} search{monthlySearchCount === 1 ? "" : "es"} this month (org)
-          </span>
-        )}
       </div>
 
       {error && (
