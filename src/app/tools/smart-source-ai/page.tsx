@@ -45,10 +45,27 @@ export default async function SmartSourceAiPage() {
     }
   }
 
+  // Admins get a lightweight visibility badge showing how many searches
+  // this org has run this calendar month -- there's no per-search credit
+  // system yet (SerpApi is billed on the org's own account), so this is
+  // informational usage tracking rather than a hard quota gate.
+  let monthlySearchCount: number | undefined;
+  if (hasAccess && profile?.is_admin && profile?.org_id) {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const { count } = await supabase
+      .from("smart_source_searches")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", profile.org_id)
+      .gte("created_at", startOfMonth.toISOString());
+    monthlySearchCount = count ?? 0;
+  }
+
   return (
     <AppShell title="Smart Source.ai">
       {hasAccess ? (
-        <SmartSourceAiForm />
+        <SmartSourceAiForm isAdmin={!!profile?.is_admin} monthlySearchCount={monthlySearchCount} />
       ) : (
         <AccessDenied reason='The admin hasn’t granted you access to "Smart Source.ai" yet.' />
       )}
