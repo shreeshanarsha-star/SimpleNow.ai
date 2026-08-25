@@ -36,6 +36,7 @@ type Candidate = {
 
 type Requisition = { id: string; title: string };
 type ProjectList = { id: string; name: string };
+type ProjectSummary = { id: string; name: string; created_at: string; candidateCount: number };
 
 const STATUS_STEPS = [
   "Reading the input",
@@ -136,6 +137,16 @@ export default function SmartSourceAiForm({
   const [sourcesLoaded, setSourcesLoaded] = useState(false);
   const [emailTo, setEmailTo] = useState("");
   const [busyAction, setBusyAction] = useState(false);
+
+  const [showProjectsPanel, setShowProjectsPanel] = useState(false);
+  const [projectsList, setProjectsList] = useState<ProjectSummary[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [activeProjectName, setActiveProjectName] = useState("");
+  const [activeProjectCandidates, setActiveProjectCandidates] = useState<Candidate[]>([]);
+  const [projectDetailLoading, setProjectDetailLoading] = useState(false);
+  const [projectExpanded, setProjectExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? window.localStorage.getItem(VIEW_STORAGE_KEY) : null;
@@ -293,6 +304,62 @@ export default function SmartSourceAiForm({
     if (!sourcesLoaded) loadProjectSources();
   }
 
+  async function openProjectsPanel() {
+    setShowProjectsPanel(true);
+    setActiveProjectId(null);
+    setActiveProjectName("");
+    setActiveProjectCandidates([]);
+    setProjectsError(null);
+    setProjectsLoading(true);
+    try {
+      const res = await fetch("/api/smart-source/projects");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not load your projects.");
+      setProjectsList(data.projects || []);
+    } catch (err) {
+      setProjectsError(err instanceof Error ? err.message : "Could not load your projects.");
+    } finally {
+      setProjectsLoading(false);
+    }
+  }
+
+  function closeProjectsPanel() {
+    setShowProjectsPanel(false);
+  }
+
+  async function openProjectDetail(id: string, name: string) {
+    setActiveProjectId(id);
+    setActiveProjectName(name);
+    setProjectExpanded(null);
+    setProjectsError(null);
+    setProjectDetailLoading(true);
+    try {
+      const res = await fetch(`/api/smart-source/projects/${id}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not load this project.");
+      setActiveProjectCandidates(data.candidates || []);
+    } catch (err) {
+      setProjectsError(err instanceof Error ? err.message : "Could not load this project.");
+    } finally {
+      setProjectDetailLoading(false);
+    }
+  }
+
+  async function removeFromActiveProject(candidateId: string) {
+    if (!activeProjectId) return;
+    setActiveProjectCandidates((prev) => prev.filter((c) => c.id !== candidateId));
+    setProjectsList((prev) =>
+      prev.map((p) => (p.id === activeProjectId ? { ...p, candidateCount: Math.max(0, p.candidateCount - 1) } : p))
+    );
+    try {
+      await fetch(`/api/smart-source/projects/${activeProjectId}?candidateId=${encodeURIComponent(candidateId)}`, {
+        method: "DELETE",
+      });
+    } catch {
+      // best-effort -- if this fails the candidate reappears on next open
+    }
+  }
+
   async function submitAddToProject() {
     const picked = selectedOrAllCandidates();
     if (!picked.length) {
@@ -447,6 +514,13 @@ export default function SmartSourceAiForm({
           Drop in a job description, describe who you need in your own words, or set skills manually.
           The AI reads it, builds a search, and finds matching candidates.
         </p>
+        <button
+          onClick={showProjectsPanel ? closeProjectsPanel : openProjectsPanel}
+          className="shrink-0 border border-border text-[12.5px] font-bold px-3 py-1.5 rounded-sm bg-surface inline-flex items-center gap-1.5"
+        >
+          <Icon name="grid" className="w-3.5 h-3.5" />
+          {showProjectsPanel ? "Back to search" : "My Projects"}
+        </button>
       </div>
 
       {error && (
@@ -455,8 +529,93 @@ export default function SmartSourceAiForm({
       {notice && (
         <div className="bg-good-wash text-good-text text-[12.5px] rounded-sm px-3 py-2 mb-4">{notice}</div>
       )}
+      {showProjectsPanel && projectsError && (
+        <div className="bg-critical-wash text-critical text-[12.5px] rounded-sm px-3 py-2 mb-4">{projectsError}</div>
+      )}
 
-      {step === "input" && (
+      {showProjectsPanel && (
+        <div className="flex flex-col gap-4">
+          {!activeProjectId ? (
+            projectsLoading ? (
+              <div className="text-[13px] text-ink-muted py-10 text-center">Loading your projects…</div>
+            ) : projectsList.length === 0 ? (
+              <div className="text-[13px] text-ink-muted py-10 text-center">
+                No saved projects yet. Save candidates from a search using &ldquo;Add to Project&rdquo;.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {projectsList.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => openProjectDetail(p.id, p.name)}
+                    className="text-left border border-border rounded-md bg-surface p-3.5 shadow-soft-sm hover:border-brand transition-colors"
+                  >
+                    <div className="font-bold text-ink text-[13.5px] mb-1">{p.name}</div>
+                    <div className="text-[12px] text-ink-muted">
+                      {p.candidateCount} candidate{p.candidateCount === 1 ? "" : "s"}
+                    </div>
+                    <div className="text-[11px] text-ink-muted mt-1">
+                      Saved {new Date(p.created_at).toLocaleDateString()}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => setActiveProjectId(null)}
+                  className="text-[12.5px] font-bold text-ink-muted inline-flex items-center gap-1"
+                >
+                  <Icon name="chevronLeft" className="w-3.5 h-3.5" /> All projects
+                </button>
+                <div className="text-[13px] font-bold">{activeProjectName}</div>
+              </div>
+              {projectDetailLoading ? (
+                <div className="text-[13px] text-ink-muted py-10 text-center">Loading candidates…</div>
+              ) : activeProjectCandidates.length === 0 ? (
+                <div className="text-[13px] text-ink-muted py-10 text-center">No candidates in this project yet.</div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {activeProjectCandidates.map((c) => (
+                    <div key={c.id} className="border border-border rounded-md bg-surface p-3 shadow-soft-sm flex flex-col gap-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-bold text-ink text-[13.5px]">{c.name || "—"}</div>
+                          <div className="text-ink-muted text-[12px]">{c.designation || "—"}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${scoreClass(c.match_score)}`}>
+                            {c.match_score ?? "—"}
+                          </span>
+                          <button
+                            onClick={() => removeFromActiveProject(c.id)}
+                            className="text-[11px] font-bold text-critical"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-[12.5px] text-ink-2">{[c.company, c.location].filter(Boolean).join(" • ") || "—"}</div>
+                      <div className="pt-1 border-t border-border">
+                        <LinksRow c={c} expanded={projectExpanded} setExpanded={setProjectExpanded} />
+                      </div>
+                      {projectExpanded === c.id && (
+                        <div className="pt-2 border-t border-border">
+                          <EvaluationPanel c={c} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!showProjectsPanel && step === "input" && (
         <div className="flex flex-col gap-4">
           <div className="inline-flex bg-page rounded-sm p-1 self-start">
             {([
@@ -600,7 +759,7 @@ export default function SmartSourceAiForm({
         </div>
       )}
 
-      {step === "running" && (
+      {!showProjectsPanel && step === "running" && (
         <div className="flex flex-col items-center justify-center text-center gap-3 py-14">
           <div className="w-8 h-8 rounded-full border-2 border-border border-t-brand animate-spin" />
           <div className="text-[13px] font-bold">{STATUS_STEPS[statusIdx]}…</div>
@@ -616,7 +775,7 @@ export default function SmartSourceAiForm({
         </div>
       )}
 
-      {step === "results" && (
+      {!showProjectsPanel && step === "results" && (
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 flex-wrap">

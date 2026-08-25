@@ -18,10 +18,20 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("smart_source_projects")
-    .select("id, name")
+    .select("id, name, created_at, smart_source_project_members(count)")
     .eq("org_id", orgId)
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ projects: data || [] });
+
+  const projects = (data || []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    created_at: p.created_at,
+    candidateCount: Array.isArray(p.smart_source_project_members)
+      ? p.smart_source_project_members[0]?.count ?? 0
+      : 0,
+  }));
+
+  return NextResponse.json({ projects });
 }
