@@ -99,6 +99,11 @@ export default function SmartSourceAiForm({
 }) {
   const [mode, setMode] = useState<Mode>("jd");
   const [jdText, setJdText] = useState("");
+  const [jdInputMode, setJdInputMode] = useState<"file" | "paste">("file");
+  const [jdFile, setJdFile] = useState<File | null>(null);
+  const [jdDragOver, setJdDragOver] = useState(false);
+  const [jdExtracting, setJdExtracting] = useState(false);
+  const [jdExtractError, setJdExtractError] = useState<string | null>(null);
   const [describeText, setDescribeText] = useState("");
   const [manualRole, setManualRole] = useState("");
   const [manualCompany, setManualCompany] = useState("");
@@ -145,6 +150,33 @@ export default function SmartSourceAiForm({
       if (statusTimer.current) clearInterval(statusTimer.current);
     };
   }, []);
+
+  const JD_ACCEPTED_EXT = [".pdf", ".docx", ".txt"];
+
+  async function extractJdFile(file: File | undefined | null) {
+    if (!file) return;
+    const ok = JD_ACCEPTED_EXT.some((ext) => file.name.toLowerCase().endsWith(ext));
+    if (!ok) {
+      setJdExtractError("That file type isn't supported — use a PDF, DOCX, or TXT.");
+      return;
+    }
+    setJdExtractError(null);
+    setJdFile(file);
+    setJdExtracting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/smart-source/extract-jd-text", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't read that file.");
+      setJdText(data.text || "");
+    } catch (err) {
+      setJdExtractError(err instanceof Error ? err.message : "Couldn't read that file.");
+      setJdFile(null);
+    } finally {
+      setJdExtracting(false);
+    }
+  }
 
   async function handleSearch() {
     setError(null);
@@ -215,6 +247,8 @@ export default function SmartSourceAiForm({
     setNotice(null);
     setExpanded(null);
     setSelected(new Set());
+    setJdFile(null);
+    setJdExtractError(null);
   }
 
   function toggleSelected(id: string) {
@@ -424,7 +458,7 @@ export default function SmartSourceAiForm({
         <div className="flex flex-col gap-4">
           <div className="inline-flex bg-page rounded-sm p-1 self-start">
             {([
-              { key: "jd", label: "Paste a JD" },
+              { key: "jd", label: "Upload a JD" },
               { key: "describe", label: "Describe what you need" },
               { key: "manual", label: "Manual skills" },
             ] as { key: Mode; label: string }[]).map((t) => (
@@ -441,14 +475,83 @@ export default function SmartSourceAiForm({
           </div>
 
           {mode === "jd" && (
-            <Field label="Job description">
-              <textarea
-                className="input min-h-[220px]"
-                placeholder="Paste the full JD text here…"
-                value={jdText}
-                onChange={(e) => setJdText(e.target.value)}
-              />
-            </Field>
+            <div className="flex flex-col gap-3">
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setJdDragOver(true);
+                }}
+                onDragLeave={() => setJdDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setJdDragOver(false);
+                  extractJdFile(e.dataTransfer.files?.[0]);
+                }}
+                className={`border-2 border-dashed rounded-md p-4 flex flex-col gap-3 transition-colors ${
+                  jdDragOver ? "border-brand bg-brand-wash" : "border-border bg-page"
+                }`}
+              >
+                <div>
+                  <div className="text-[13px] font-bold">Attach a job description</div>
+                  <div className="text-[11.5px] text-ink-muted mt-0.5">
+                    Drag a JD file in, or paste the text — we&apos;ll pull out the role, skills, and location.
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-[12px]">
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" checked={jdInputMode === "file"} onChange={() => setJdInputMode("file")} /> Upload file
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input type="radio" checked={jdInputMode === "paste"} onChange={() => setJdInputMode("paste")} /> Paste text
+                  </label>
+                </div>
+                {jdInputMode === "file" ? (
+                  <div className="flex flex-col items-center justify-center gap-2 border border-border rounded-sm bg-surface py-6 px-4 text-center">
+                    <Icon name="upload" className="w-5 h-5 text-ink-muted" />
+                    {jdExtracting ? (
+                      <div className="text-[12.5px] font-bold">Reading {jdFile?.name}…</div>
+                    ) : jdFile ? (
+                      <div className="text-[12.5px] font-bold">{jdFile.name}</div>
+                    ) : (
+                      <>
+                        <div className="text-[12.5px]">
+                          <span className="font-bold text-brand">Drag &amp; drop</span> a JD file here
+                        </div>
+                        <div className="text-[11px] text-ink-muted">or</div>
+                      </>
+                    )}
+                    <label className="border border-border text-[12px] font-bold px-3 py-1.5 rounded-sm bg-page cursor-pointer">
+                      {jdFile ? "Choose a different file" : "Browse files"}
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.txt"
+                        onChange={(e) => extractJdFile(e.target.files?.[0] || null)}
+                        className="hidden"
+                      />
+                    </label>
+                    <div className="text-[10.5px] text-ink-muted">PDF, DOCX, or TXT</div>
+                  </div>
+                ) : (
+                  <textarea
+                    className="input min-h-[160px]"
+                    placeholder="Paste the full JD text here…"
+                    value={jdText}
+                    onChange={(e) => setJdText(e.target.value)}
+                  />
+                )}
+                {jdExtractError && <div className="text-[12px] text-critical">{jdExtractError}</div>}
+              </div>
+
+              {jdInputMode === "file" && jdText && !jdExtracting && (
+                <Field label="Extracted text (edit if needed)">
+                  <textarea
+                    className="input min-h-[140px]"
+                    value={jdText}
+                    onChange={(e) => setJdText(e.target.value)}
+                  />
+                </Field>
+              )}
+            </div>
           )}
 
           {mode === "describe" && (
@@ -486,10 +589,11 @@ export default function SmartSourceAiForm({
 
           <button
             onClick={handleSearch}
-            className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm self-start shadow-soft-sm inline-flex items-center gap-1.5"
+            disabled={jdExtracting}
+            className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm self-start shadow-soft-sm inline-flex items-center gap-1.5 disabled:opacity-50"
           >
             <Icon name="search" className="w-4 h-4" />
-            Source candidates
+            {jdExtracting ? "Reading file…" : "Source candidates"}
           </button>
         </div>
       )}
@@ -772,7 +876,7 @@ function LinksRow({ c, expanded, setExpanded }: { c: Candidate; expanded: string
 
 function EvaluationPanel({ c, cols }: { c: Candidate; cols?: number }) {
   return (
-    <div className={`grid ${cols === 1 ? "grid-cols-1" : "grid-cols-3"} gap-4`}>
+    <div className={`grid grid-cols-${cols || 3} gap-4`}>
       <div>
         <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1">Summary</div>
         <p className="text-ink-2 leading-relaxed">{c.evaluation_summary || "No evaluation available."}</p>
