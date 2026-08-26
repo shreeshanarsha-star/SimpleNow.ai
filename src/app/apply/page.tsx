@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import ApplyForm from "@/components/tools/ApplyForm";
+import ApplyAIForm from "@/components/tools/ApplyAIForm";
 import Icon from "@/components/Icon";
 import Link from "next/link";
 import LogoMark from "@/components/LogoMark";
@@ -16,7 +16,7 @@ export default async function ApplyPage() {
   const supabase = await createClient();
   const { data: jobs } = await supabase
     .from("job_postings")
-    .select("id, title, location, employment_type, description, ai_polished_description")
+    .select("id, title, company, location, employment_type, description, ai_polished_description, must_have_skills, good_to_have_skills")
     .eq("status", "published")
     .order("created_at", { ascending: false });
 
@@ -41,8 +41,8 @@ export default async function ApplyPage() {
       <main className="max-w-[1000px] mx-auto px-6 py-10">
         <h1 className="text-[26px] font-bold m-0">Apply.ai</h1>
         <p className="text-[13.5px] text-ink-muted mt-1.5 max-w-xl">
-          Browse open roles and apply directly — no account needed. Your
-          application goes straight to the hiring team.
+          Upload your CV once — AI matches it against open roles and applies
+          on your behalf, or you can pick specific ones. No account needed.
         </p>
 
         {openRoles.length === 0 ? (
@@ -51,7 +51,7 @@ export default async function ApplyPage() {
             No open roles right now. Check back soon.
           </div>
         ) : (
-          <ApplyForm jobs={openRoles} />
+          <ApplyAIForm jobs={openRoles} />
         )}
       </main>
     </div>

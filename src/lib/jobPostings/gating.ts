@@ -61,3 +61,89 @@ export async function checkAndRecordPostingUsage(
 
   return { allowed: true, status };
 }
+
+// Generic per-IP free-use gate for the public Apply.ai flow. Ported from
+// the old askshree-app repo's lib/gating.js (shared site-wide there;
+// scoped to Apply.ai here). 4 free uses, then a 7-day grace window
+// (still usable, just on notice), then locked until the candidate signs
+// in. Deliberately separate from checkAndRecordPostingUsage above --
+// posting and applying are different actions with different limits.
+const FREE_USES = 4;
+const GRACE_DAYS = 7;
+
+export type ApplyUsageResult = {
+  allowed: boolean;
+  status: "authenticated" | "whitelisted" | "free" | "grace" | "locked";
+  message?: string;
+  graceEndsAt?: string;
+};
+
+export async function checkAndRecordApplyUsage(
+  ip: string,
+  userId: string | null = null
+): Promise<ApplyUsageResult> {
+  if (userId) return { allowed: true, status: "authenticated" };
+
+  const admin = createAdminClient();
+  const { data: row } = await admin.from("apply_usage").select("*").eq("ip_address", ip).maybeSingle();
+  const now = new Date();
+
+  if (!row) {
+    await admin.from("apply_usage").insert({
+      ip_address: ip,
+      use_count: 1,
+      status: "free",
+      last_used_at: now.toISOString(),
+    });
+    return { allowed: true, status: "free" };
+  }
+
+  if (row.status === "whitelisted") return { allowed: true, status: "whitelisted" };
+
+  if (row.status === "locked") {
+    return {
+      allowed: false,
+      status: "locked",
+      message: "Your free trial has ended. Sign in to keep using Apply.ai.",
+    };
+  }
+
+  if (row.status === "grace") {
+    const graceEnds = new Date(row.grace_started_at as string);
+    graceEnds.setDate(graceEnds.getDate() + GRACE_DAYS);
+    if (now > graceEnds) {
+      await admin.from("apply_usage").update({ status: "locked" }).eq("ip_address", ip);
+      return {
+        allowed: false,
+        status: "locked",
+        message: "Your 7-day grace period has ended. Sign in to continue.",
+      };
+    }
+    await admin
+      .from("apply_usage")
+      .update({ use_count: (row.use_count as number) + 1, last_used_at: now.toISOString() })
+      .eq("ip_address", ip);
+    return { allowed: true, status: "grace", graceEndsAt: graceEnds.toISOString() };
+  }
+
+  // status === "free"
+  const newCount = (row.use_count as number) + 1;
+  if (newCount >= FREE_USES) {
+    await admin
+      .from("apply_usage")
+      .update({
+        use_count: newCount,
+        status: "grace",
+        grace_started_at: now.toISOString(),
+        last_used_at: now.toISOString(),
+      })
+      .eq("ip_address", ip);
+    return { allowed: true, status: "grace" };
+  }
+
+  await admin
+    .from("apply_usage")
+    .update({ use_count: newCount, last_used_at: now.toISOString() })
+    .eq("ip_address", ip);
+  return { allowed: true, status: "free" };
+}

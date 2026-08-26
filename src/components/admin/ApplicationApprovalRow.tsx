@@ -13,6 +13,13 @@ type Application = {
   rejection_reason: string | null;
   created_at: string;
   job_postings?: { title: string } | null;
+  match_score?: number | null;
+  matched_skills?: string[] | null;
+  missing_skills?: string[] | null;
+  ai_evidence?: string | null;
+  ai_cover_note?: string | null;
+  applied_via?: string | null;
+  shortlisted?: boolean | null;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -92,6 +99,16 @@ export default function ApplicationApprovalRow({
             </span>
           )}
         </span>
+        {application.match_score != null && (
+          <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-page text-ink-muted border border-border">
+            {application.match_score}% match
+          </span>
+        )}
+        {application.shortlisted && (
+          <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-brand-wash text-brand">
+            AI-vetted
+          </span>
+        )}
         <span
           className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full ${STATUS_CLASS[application.status] || "bg-page text-ink-muted"}`}
         >
@@ -109,6 +126,37 @@ export default function ApplicationApprovalRow({
             <p className="text-[12.5px] text-ink-2 whitespace-pre-wrap mb-3">
               {application.cover_note}
             </p>
+          )}
+
+          {(application.matched_skills?.length || application.ai_evidence || application.ai_cover_note) && (
+            <div className="bg-page border border-border rounded-md px-3 py-2.5 mb-3">
+              {application.matched_skills && application.matched_skills.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {application.matched_skills.map((s) => (
+                    <span
+                      key={s}
+                      className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-good-wash text-good-text"
+                    >
+                      {s}
+                    </span>
+                  ))}
+                  {application.missing_skills?.map((s) => (
+                    <span
+                      key={s}
+                      className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-critical-wash text-critical"
+                    >
+                      missing: {s}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {application.ai_evidence && (
+                <p className="text-[12px] text-ink-2 mb-1.5">{application.ai_evidence}</p>
+              )}
+              {application.ai_cover_note && (
+                <p className="text-[12px] text-ink-muted italic">&ldquo;{application.ai_cover_note}&rdquo;</p>
+              )}
+            </div>
           )}
 
           <button
