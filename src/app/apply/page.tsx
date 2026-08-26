@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import ApplyAIForm from "@/components/tools/ApplyAIForm";
-import Icon from "@/components/Icon";
 import Link from "next/link";
 import LogoMark from "@/components/LogoMark";
 
@@ -45,14 +44,10 @@ export default async function ApplyPage() {
           on your behalf, or you can pick specific ones. No account needed.
         </p>
 
-        {openRoles.length === 0 ? (
-          <div className="border border-dashed border-border rounded-md px-4 py-8 text-center text-[13px] text-ink-muted mt-8 max-w-xl">
-            <Icon name="briefcase" className="w-6 h-6 mx-auto mb-2 text-ink-muted" />
-            No open roles right now. Check back soon.
-          </div>
-        ) : (
-          <ApplyAIForm jobs={openRoles} />
-        )}
+        {/* CV upload always shows -- joining the matching pool is useful even
+            when there are zero open roles right now; ApplyAIForm's own
+            "Search manually" tab handles the empty-listings case inline. */}
+        <ApplyAIForm jobs={openRoles} />
       </main>
     </div>
   );

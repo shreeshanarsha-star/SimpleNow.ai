@@ -19,6 +19,29 @@ export type PostingUsageResult = {
   message?: string;
 };
 
+// Read-only peek at posting-usage status, used to block an already-locked
+// IP from even running the free AI analysis step (so analyzing can stay
+// free / not count against the quota for everyone else -- only the
+// actual "post" action increments the counter).
+export async function peekPostingUsage(
+  ip: string,
+  userId: string | null = null
+): Promise<PostingUsageResult> {
+  if (userId) return { allowed: true, status: "authenticated" };
+  const admin = createAdminClient();
+  const { data: row } = await admin.from("job_posting_usage").select("*").eq("ip_address", ip).maybeSingle();
+  if (!row) return { allowed: true, status: "free" };
+  if (row.status === "whitelisted") return { allowed: true, status: "whitelisted" };
+  if (row.status === "locked") {
+    return {
+      allowed: false,
+      status: "locked",
+      message: "You've used your 3 free job postings. Sign in to keep posting.",
+    };
+  }
+  return { allowed: true, status: row.status as "free" };
+}
+
 export async function checkAndRecordPostingUsage(
   ip: string,
   userId: string | null = null
