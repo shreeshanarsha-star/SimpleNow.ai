@@ -3,6 +3,7 @@
 import { useEffect, useState, Fragment } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import Icon from "@/components/Icon";
 import TalentAiBoard from "@/components/tools/TalentAiBoard";
 import { HScroller, VScroller } from "@/components/Scroller";
 import ProfileAvatar from "@/components/ProfileAvatar";
@@ -995,14 +996,35 @@ function RecruiterToolsPanel() {
         <div className="h-px bg-border flex-1" />
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runSearch()} className="input flex-1 min-w-[180px]" placeholder="Name, skill, email…" />
-        <label className="flex items-center gap-1.5 text-[12px] flex-shrink-0">
-          <input type="checkbox" checked={external} onChange={(e) => setExternal(e.target.checked)} /> Also search LinkedIn
-        </label>
-        <button onClick={runSearch} disabled={searching} className="bg-brand text-white text-[12.5px] font-bold px-3 py-2 rounded-sm shadow-soft-sm disabled:opacity-50 flex-shrink-0">
-          {searching ? "Searching…" : "Search"}
-        </button>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 rounded-full border border-border bg-surface shadow-soft-sm pl-4 pr-2 py-2 sm:py-1.5 transition-shadow focus-within:border-brand focus-within:shadow-[0_0_0_3px_var(--brand-wash)]">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <Icon name="search" className="w-4 h-4 text-ink-muted flex-shrink-0" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && runSearch()}
+            className="flex-1 min-w-0 bg-transparent border-none outline-none text-[13.5px] py-1.5"
+            placeholder="Name, skill, email…"
+          />
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0 pl-1 sm:pl-2 sm:border-l sm:border-border">
+          <label className="flex items-center gap-1.5 text-[11.5px] font-medium text-ink-2 px-2.5 py-1.5 rounded-full border border-border bg-page cursor-pointer select-none whitespace-nowrap hover:border-brand transition-colors">
+            <input
+              type="checkbox"
+              checked={external}
+              onChange={(e) => setExternal(e.target.checked)}
+              className="w-3.5 h-3.5 accent-brand"
+            />
+            Also search LinkedIn
+          </label>
+          <button
+            onClick={runSearch}
+            disabled={searching}
+            className="bg-brand text-white text-[12.5px] font-bold px-4 py-2 rounded-full shadow-soft-sm disabled:opacity-50 flex-shrink-0 hover:brightness-105 active:brightness-95 transition"
+          >
+            {searching ? "Searching…" : "Search"}
+          </button>
+        </div>
       </div>
       {!searching && !jdBusy && ranAnySearch && results.length === 0 && externalResults.length === 0 && (
         <p className="text-[12px] text-ink-muted mt-3">No matches in the candidate database.</p>
