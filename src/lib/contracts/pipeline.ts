@@ -36,13 +36,22 @@ async function sendToSigner(envelopeId: string, documentName: string, senderName
   const signUrl = `${getAppBaseUrl()}/sign/${recipient.token}`;
   const expiresAt = new Date(Date.now() + SIGN_LINK_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  await sendSigningRequestEmail({
+  const result = await sendSigningRequestEmail({
     to: recipient.email,
     recipientName: recipient.name,
     senderName,
     documentName,
     signUrl,
   });
+
+  // Only mark "sent" (and unlock the sign link) if the email actually went
+  // out. Previously this ran unconditionally, so a Resend failure (e.g.
+  // RESEND_API_KEY missing/misconfigured) would still flip the recipient
+  // to "Sent" in the UI while nothing was delivered -- a silent lie.
+  if (!result.ok) {
+    await logEvent(envelopeId, "send_failed", recipient.id, { error: result.error ?? "Unknown email error" });
+    throw new Error(`Couldn't email the signing link to ${recipient.email}: ${result.error ?? "unknown error"}`);
+  }
 
   await admin
     .from("contracts_recipients")
@@ -226,8 +235,16 @@ export async function advanceAfterSignature(params: {
 
   for (const cc of ccRecipients || []) {
     const viewUrl = `${getAppBaseUrl()}/sign/${cc.token}`;
-    await sendCopyRecipientEmail({ to: cc.email, recipientName: cc.name, senderName, documentName: envelope.name, viewUrl });
-    await admin.from("contracts_recipients").update({ status: "copy_sent" }).eq("id", cc.id);
-    await logEvent(params.envelopeId, "copy_sent", cc.id);
+    const result = await sendCopyRecipientEmail({ to: cc.email, recipientName: cc.name, senderName, documentName: envelope.name, viewUrl });
+    if (result.ok) {
+      await admin.from("contracts_recipients").update({ status: "copy_sent" }).eq("id", cc.id);
+      await logEvent(params.envelopeId, "copy_sent", cc.id);
+    } else {
+      // Document is already completed by this point -- don't let a failed
+      // copy email block completion. Leave status as-is and log the real
+      // error so the owner can see it (and use Resend) instead of the UI
+      // silently claiming the copy was sent.
+      await logEvent(params.envelopeId, "copy_send_failed", cc.id, { error: result.error ?? "Unknown email error" });
+    }
   }
 }

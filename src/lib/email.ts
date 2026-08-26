@@ -12,6 +12,7 @@ export async function sendEmail(params: {
   to: string;
   subject: string;
   html: string;
+  from?: string; // override the default Talent.ai-branded sender (e.g. for other tools)
 }): Promise<SendEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -27,7 +28,7 @@ export async function sendEmail(params: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: FROM_ADDRESS,
+        from: params.from || FROM_ADDRESS,
         to: [params.to],
         subject: params.subject,
         html: params.html,

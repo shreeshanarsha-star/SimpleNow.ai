@@ -1,7 +1,13 @@
 // Contracts & eSign email copy. Uses the existing Resend wrapper
 // (lib/email.ts) -- degrades to a logged no-op if RESEND_API_KEY isn't
 // set, same as every other tool on the site. No new email provider.
+//
+// Uses its own sender identity (not the shared Talent.ai default) so
+// recipients see who a signing request is actually from. Override with
+// CONTRACTS_EMAIL_FROM once a verified sending domain is set up in Resend.
 import { sendEmail } from "@/lib/email";
+
+const CONTRACTS_FROM_ADDRESS = process.env.CONTRACTS_EMAIL_FROM || "Askshree Contracts <onboarding@resend.dev>";
 
 function shell(bodyHtml: string): string {
   return `<div style="font-family:Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a;">
@@ -26,7 +32,7 @@ export async function sendSigningRequestEmail(params: {
       <a href="${params.signUrl}" style="background:#2a78d6;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:11px 20px;border-radius:6px;display:inline-block;">Review &amp; Sign</a>
     </p>
   `);
-  return sendEmail({ to: params.to, subject: `Signature required: ${params.documentName}`, html });
+  return sendEmail({ to: params.to, subject: `Signature required: ${params.documentName}`, html, from: CONTRACTS_FROM_ADDRESS });
 }
 
 export async function sendCopyRecipientEmail(params: {
@@ -44,7 +50,7 @@ export async function sendCopyRecipientEmail(params: {
       <a href="${params.viewUrl}" style="background:#2a78d6;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:11px 20px;border-radius:6px;display:inline-block;">View &amp; Download</a>
     </p>
   `);
-  return sendEmail({ to: params.to, subject: `Completed: ${params.documentName}`, html });
+  return sendEmail({ to: params.to, subject: `Completed: ${params.documentName}`, html, from: CONTRACTS_FROM_ADDRESS });
 }
 
 function escapeHtml(value: string): string {
