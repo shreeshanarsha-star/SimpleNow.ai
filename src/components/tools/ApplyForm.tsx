@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "@/components/Icon";
 
@@ -26,6 +26,19 @@ export default function ApplyForm({ jobs }: { jobs: Job[] }) {
   const [step, setStep] = useState<Step>("browse");
   const [openId, setOpenId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+
+  // Deep-link support: /apply?job=<id> (used by /jobs/[id]'s "Apply now"
+  // button) jumps straight to the application form for that role.
+  useEffect(() => {
+    const jobId = new URLSearchParams(window.location.search).get("job");
+    if (!jobId) return;
+    const match = jobs.find((j) => j.id === jobId);
+    if (match) {
+      setSelectedJob(match);
+      setStep("form");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

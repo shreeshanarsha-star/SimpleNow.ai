@@ -13,6 +13,16 @@ type Posting = {
   status: string;
   rejection_reason: string | null;
   created_at: string;
+  source?: string | null;
+  company?: string | null;
+  ctc_budget?: string | null;
+  qualification?: string | null;
+  min_years_experience?: number | null;
+  industry?: string | null;
+  must_have_skills?: string[] | null;
+  good_to_have_skills?: string[] | null;
+  poster_email?: string | null;
+  email_verified?: boolean | null;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -30,6 +40,14 @@ const STATUS_CLASS: Record<string, string> = {
   published: "bg-brand-wash text-brand",
   draft: "bg-page text-ink-muted",
 };
+
+function MetaTag({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-page text-ink-muted border border-border">
+      {children}
+    </span>
+  );
+}
 
 export default function JobPostingApprovalRow({
   posting,
@@ -68,7 +86,17 @@ export default function JobPostingApprovalRow({
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-3 px-4 py-3 text-left"
       >
-        <span className="text-[13.5px] font-medium flex-1">{posting.title}</span>
+        <span className="text-[13.5px] font-medium flex-1">
+          {posting.title}
+          {posting.company && (
+            <span className="text-ink-muted font-normal"> — {posting.company}</span>
+          )}
+        </span>
+        {posting.source === "public" && (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-page text-ink-muted border border-border">
+            Public board
+          </span>
+        )}
         {posting.location && (
           <span className="text-[11.5px] text-ink-muted">{posting.location}</span>
         )}
@@ -87,6 +115,31 @@ export default function JobPostingApprovalRow({
           <p className="text-[12.5px] text-ink-2 whitespace-pre-wrap mb-3">
             {posting.ai_polished_description || posting.description}
           </p>
+
+          {((posting.must_have_skills?.length ?? 0) > 0 ||
+            posting.qualification ||
+            posting.ctc_budget ||
+            posting.industry ||
+            posting.min_years_experience != null) && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {posting.industry && <MetaTag>{posting.industry}</MetaTag>}
+              {posting.min_years_experience != null && (
+                <MetaTag>{posting.min_years_experience}+ yrs</MetaTag>
+              )}
+              {posting.qualification && <MetaTag>{posting.qualification}</MetaTag>}
+              {posting.ctc_budget && <MetaTag>{posting.ctc_budget}</MetaTag>}
+              {posting.must_have_skills?.map((s) => (
+                <MetaTag key={s}>{s}</MetaTag>
+              ))}
+            </div>
+          )}
+
+          {posting.poster_email && (
+            <p className="text-[11.5px] text-ink-muted mb-3">
+              Poster: {posting.poster_email}
+              {posting.email_verified ? " (verified)" : " (unverified)"}
+            </p>
+          )}
 
           {posting.rejection_reason && (
             <p className="text-[12.5px] text-critical mb-3">
