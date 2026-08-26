@@ -13,6 +13,15 @@ export interface Tool {
   s: ToolStatus;
   group?: string; // sub-group within a department (e.g. "Talent Acquisition")
   href?: string; // route, once built
+  // Bundled, non-purchasable platform feature (like Team Chat) that every
+  // approved org gets automatically -- no feature_access grant required
+  // (mirrors requireOrgMember() in lib/supabase/requireAdmin.ts). Every
+  // place that filters a department's tool list down to what an org is
+  // licensed for (Sidebar.tsx, departments/[id]/page.tsx, the admin
+  // grant-checklist in admin/organizations/page.tsx, and the AI agent's
+  // destination index in lib/agent/actions.ts) must treat a bundled tool
+  // as always-visible/always-reachable instead of grant-gated.
+  bundled?: boolean;
 }
 
 export interface Department {
@@ -113,9 +122,10 @@ export const DEPARTMENTS: Department[] = [
     id: "it",
     name: "IT & Data",
     icon: "database",
-    status: "soon",
+    status: "live",
     desc: "Internal systems, data pipelines, and access management.",
     tools: [
+      { n: "Team Chat", s: "live", href: "/chat", bundled: true },
       { n: "Helpdesk.ai", s: "soon" },
       { n: "Data Pipeline.ai", s: "soon" },
       { n: "Access.ai", s: "soon" },

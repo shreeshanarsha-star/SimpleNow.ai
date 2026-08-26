@@ -73,7 +73,10 @@ export default async function DepartmentPage({
             .select("feature_key")
             .eq("org_id", profile.org_id);
           const grantedKeys = new Set((grants || []).map((g) => g.feature_key));
-          visibleTools = d.tools.filter((t) => grantedKeys.has(t.n));
+          // Bundled tools (e.g. Team Chat) need no feature_access grant --
+          // every approved org gets them automatically, same rule as
+          // Sidebar.tsx and requireOrgMember().
+          visibleTools = d.tools.filter((t) => t.bundled || grantedKeys.has(t.n));
           filteredByLicense = true;
           if (visibleTools.length === 0) {
             gateMessage =

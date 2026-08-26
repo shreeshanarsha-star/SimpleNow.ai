@@ -7,7 +7,13 @@ import SignOutButton from "@/components/admin/SignOutButton";
 
 export const dynamic = "force-dynamic";
 
-const LIVE_FEATURES = DEPARTMENTS.flatMap((d) => d.tools).filter((t) => t.s === "live");
+// Bundled tools (e.g. Team Chat) are free for every approved org and
+// never need a feature_access grant, so they're excluded from the
+// per-org grant checklist below -- granting/revoking them would be a
+// no-op that only confuses the admin.
+const LIVE_FEATURES = DEPARTMENTS.flatMap((d) => d.tools).filter(
+  (t) => t.s === "live" && !t.bundled
+);
 
 export default async function AdminOrganizationsPage() {
   const supabase = await createClient();

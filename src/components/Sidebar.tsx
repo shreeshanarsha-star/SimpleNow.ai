@@ -39,11 +39,6 @@ export default function Sidebar({
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [settingsHref, setSettingsHref] = useState<string | null>(null);
-  // Team Chat is org-scoped (RLS-enforced, one chat per org) -- it has no
-  // meaning for a signed-out visitor or a signed-in user who isn't part of
-  // an org yet, so the nav item itself should mirror that instead of
-  // showing to everyone and letting /chat's middleware redirect sort it out.
-  const [hasOrg, setHasOrg] = useState(false);
   // Which departments this signed-in user is actually licensed to see --
   // null while we don't know yet (signed out, or still loading) means
   // "don't filter" so the sidebar doesn't flash-hide everything before
@@ -74,7 +69,6 @@ export default function Sidebar({
         .maybeSingle();
       if (profile?.is_admin) setSettingsHref("/admin");
       else if (profile?.org_role === "org_admin") setSettingsHref("/org/settings");
-      setHasOrg(!!profile?.org_id);
       setFullName(profile?.full_name ?? null);
       setAvatarUrl(profile?.avatar_url ?? null);
 
@@ -105,7 +99,7 @@ export default function Sidebar({
         .eq("org_id", profile.org_id);
       const grantedKeys = new Set((grants || []).map((g) => g.feature_key));
       const deptIds = DEPARTMENTS.filter((d) =>
-        d.tools.some((t) => grantedKeys.has(t.n))
+        d.tools.some((t) => t.bundled || grantedKeys.has(t.n))
       ).map((d) => d.id);
       setVisibleDeptIds(new Set(deptIds));
     });
@@ -188,17 +182,6 @@ export default function Sidebar({
           active={isActive(`/departments/${PERSONAL_TOOLS.id}`)}
           onNavigate={onClose}
         />
-        {hasOrg && (
-          <SbLink
-            href="/chat"
-            icon="chat"
-            name="Team Chat"
-            active={isActive("/chat")}
-            dotStatus="live"
-            onNavigate={onClose}
-          />
-        )}
-
         {visibleDepartments.length > 0 && (
           <>
             <div className="text-[10px] font-semibold tracking-wider uppercase text-ink-muted px-2.5 pt-3 pb-1.5">

@@ -367,6 +367,11 @@ function buildAppDestinations(): AppDestination[] {
   for (const dept of DEPARTMENTS) {
     for (const tool of dept.tools) {
       if (tool.s !== "live" || !tool.href) continue;
+      // Bundled tools (e.g. Team Chat) need no feature_access grant, so
+      // they can't use featureKey: tool.n here -- that would incorrectly
+      // gate them behind a grant that will never exist. They already have
+      // their own hand-curated, featureKey: null destination below.
+      if (tool.bundled) continue;
       destinations.push({
         key: `tool:${tool.n}`,
         label: tool.n,
