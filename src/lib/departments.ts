@@ -197,6 +197,7 @@ export const PERSONAL_TOOLS: Department = {
     { n: "Clock", s: "live", href: "/tools/widgets-ai?tool=clock" },
     { n: "Timer / Stopwatch", s: "live", href: "/tools/widgets-ai?tool=timer" },
     { n: "Unit Converter", s: "live", href: "/tools/widgets-ai?tool=converter" },
+    { n: "Contracts & eSign", s: "live", href: "/tools/contracts-esign" },
   ],
 };
 

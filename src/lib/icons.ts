@@ -51,6 +51,8 @@ export const ICONS: Record<string, string> = {
   cloud: "M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z",
   cloudRain: "M16 13v8 M8 13v8 M12 15v8 M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25",
   cloudLightning: "M19 16.9A5 5 0 0 0 18 7h-1.26a8 8 0 1 0-11.62 9 M13 11l-4 6h6l-4 6",
+  penSignature:
+    "M4 20h4l10.5-10.5a2.12 2.12 0 0 0-3-3L5 17v3z M13.5 6.5l3 3 M3 21c2.5-2.5 3.5 1.5 6-1 M14 21c1.5-1.5 2.5.5 4-1 M20 21h1",
 };
 
 export function iconPaths(name: string): string[] {
