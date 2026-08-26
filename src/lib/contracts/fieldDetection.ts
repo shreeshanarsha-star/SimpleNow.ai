@@ -2,26 +2,48 @@
 // mammoth) doesn't give real (x, y) coordinates, so this makes an honest,
 // documented choice rather than pretending to pixel-perfect detection:
 //
-//  1. Scan each page's text for an existing signature block ("Signature:",
-//     "Signed by", "Authorized Signatory", ...). If found, that's a real,
-//     evidence-based page -- fields are placed in a computed lower-page
-//     band there, confidence = "high".
-//  2. If no such block exists anywhere in the document, a "Signature
-//     Page" is generated and appended to the working PDF with a real
-//     drawn block per signer -- confidence = "low" / needs_review, so the
-//     owner can see this was a fallback, not a detected requirement.
-//  3. A short AI call (best-effort, degrades to a safe default) decides
-//     only whether Name/Location fields are actually warranted, given
-//     the document text -- never invents extra field types, and never
-//     blocks the pipeline if the AI call fails or no key is configured.
+//  1. Scan the document for an existing signature/closing block (regex --
+//     "Signature:", "Signed by", "IN WITNESS WHEREOF", a blank
+//     underscore signing line, etc). If found, its exact character
+//     offset is used to compute a real page + vertical position: the
+//     offset's fraction through that page's text (for a genuine source
+//     PDF) or the exact paragraph the generated working PDF placed it on
+//     (for a DOCX/DOC source, via workingPdf.ts's paragraphMap). This is
+//     evidence-based, not a fixed layout constant -- confidence = "high".
+//  2. If no such block exists anywhere, a short AI call looks at the
+//     LAST few pages/paragraphs (signature blocks are essentially always
+//     near the end -- scanning the whole document for this is needless
+//     cost) and identifies which one is or should be the signing
+//     location. If it commits to one, that page is used -- confidence =
+//     "high", since a real page was identified, not invented.
+//  3. Only if neither (1) nor (2) finds anything (AI unavailable, AI
+//     declines to guess, or the document is genuinely unclear) is a
+//     "Signature Page" generated and appended -- confidence = "low" /
+//     needs_review, the true last resort, never the default path.
 //
-// Positions are always {x,y,w,h} fractions computed from page geometry
-// and signer count -- never a hardcoded constant shared across documents.
+// Known limitation, stated plainly rather than hidden: pdf-parse's
+// per-page text generally follows reading order for simple single/two-
+// column documents, but can be out of order on complex multi-column or
+// heavily-tabled layouts -- the offset-based Y estimate inherits that
+// limitation. This still lands the field on the CORRECT PAGE reliably;
+// the within-page vertical placement is a reasonable estimate, not a
+// guaranteed pixel-exact box.
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { callTextModel, hasAiKey } from "@/lib/aiClient";
+import type { ParagraphLocation } from "./workingPdf";
 import type { FieldPosition, FieldType } from "./types";
 
-const SIGNATURE_KEYWORD = /(signature|sign\s*here|signed\s*by|authorized\s*signatory)/i;
+// Deliberately requires a field-LABEL shape (a colon, or a standalone
+// closing-clause phrase) rather than the bare word "signature" -- an
+// earlier version matched any occurrence of that word anywhere in the
+// document, including incidental prose ("...effective as of the date of
+// last signature"), which put fields in the middle of body text instead
+// of the real signing block. Caught by testing against a real generated
+// PDF, not assumed.
+const SIGNATURE_KEYWORD =
+  /(signature\s*:|sign\s*here|signed\s*by\s*:|authorized\s*signator\w*|in\s+witness\s+whereof|have\s+executed\s+this|executed\s+as\s+of\s+the|executed\s+the\s+day|acknowledged\s+and\s+agreed|print\s*name\s*:|x_{3,}|_{6,})/gi;
+
+const MAX_AI_CLASSIFIER_CHUNKS = 8;
 
 export interface SignerInput {
   recipientId: string;
@@ -43,11 +65,13 @@ export interface FieldDetectionResult {
   overallConfidence: "ok" | "needs_review";
 }
 
+interface ResolvedLocation {
+  page: number; // 0-indexed
+  yFraction: number; // 0..1 from top of that page
+  method: "keyword" | "ai";
+}
+
 async function decideOptionalFields(documentText: string): Promise<{ includeName: boolean; includeLocation: boolean; ok: boolean }> {
-  // Safe default: every signer always gets Signature + Date. Name is
-  // included unless the AI call actively says otherwise (it's rarely
-  // wrong to ask for it); Location defaults to off since most documents
-  // don't need it.
   const fallback = { includeName: true, includeLocation: false, ok: false };
   if (!hasAiKey() || !documentText.trim()) return fallback;
 
@@ -78,25 +102,107 @@ ${documentText.slice(0, 6000)}
   }
 }
 
-function findSignatureKeywordPage(pages: string[]): number | null {
-  for (let i = 0; i < pages.length; i++) {
-    if (SIGNATURE_KEYWORD.test(pages[i])) return i; // 0-indexed
+// Step 1: regex scan, mapped to a real offset -> real page + fraction.
+// Uses the LAST match, not the first: a signature/closing block is
+// always at or near the end of a real document, and taking the first
+// hit is exactly what produced the body-text false-positive above.
+function findByKeyword(params: {
+  generatedFromText: boolean;
+  pages: string[];
+  fullText: string;
+  paragraphMap: ParagraphLocation[];
+}): ResolvedLocation | null {
+  if (!params.generatedFromText) {
+    // Scan pages from the end backward -- the first page (from the end)
+    // with any match at all is the one to use, and within it we take
+    // that page's own last match.
+    for (let i = params.pages.length - 1; i >= 0; i--) {
+      const matches = [...params.pages[i].matchAll(SIGNATURE_KEYWORD)];
+      if (matches.length > 0) {
+        const last = matches[matches.length - 1];
+        const fraction = clamp((last.index ?? 0) / Math.max(params.pages[i].length, 1), 0.1, 0.92);
+        return { page: i, yFraction: fraction, method: "keyword" };
+      }
+    }
+    return null;
   }
-  return null;
+
+  // Generated-from-text (DOCX/DOC): search fullText for the LAST match,
+  // then map its offset to the paragraph the working PDF actually placed
+  // there.
+  const matches = [...params.fullText.matchAll(SIGNATURE_KEYWORD)];
+  if (matches.length === 0 || params.paragraphMap.length === 0) return null;
+  const last = matches[matches.length - 1];
+  const matchIndex = last.index ?? 0;
+
+  let located: ParagraphLocation | null = null;
+  for (const p of params.paragraphMap) {
+    if (p.offset <= matchIndex) located = p;
+    else break;
+  }
+  if (!located) located = params.paragraphMap[0];
+  return { page: located.page, yFraction: clamp(located.yFraction, 0.05, 0.95), method: "keyword" };
 }
 
-// Places one row per signer in the bottom band of an existing page that
-// already contains signature language. Row count/height is computed from
-// how many signers must fit -- not a fixed pixel layout.
-function layoutOnExistingPage(
+// Step 2: AI fallback, scoped to the last few chunks only (signature
+// blocks are essentially always near the end of a document -- bounding
+// this keeps the call small and cheap rather than feeding the whole
+// document through the model).
+async function findByAiClassifier(params: {
+  generatedFromText: boolean;
+  pages: string[];
+  paragraphMap: ParagraphLocation[];
+}): Promise<ResolvedLocation | null> {
+  if (!hasAiKey()) return null;
+
+  type Chunk = { id: number; page: number; yFraction: number; text: string };
+  let chunks: Chunk[];
+
+  if (!params.generatedFromText) {
+    const start = Math.max(0, params.pages.length - MAX_AI_CLASSIFIER_CHUNKS);
+    chunks = params.pages.slice(start).map((text, i) => ({ id: start + i, page: start + i, yFraction: 0.75, text: text.slice(0, 1200) }));
+  } else {
+    const start = Math.max(0, params.paragraphMap.length - MAX_AI_CLASSIFIER_CHUNKS * 3);
+    chunks = params.paragraphMap.slice(start).map((p, i) => ({ id: start + i, page: p.page, yFraction: p.yFraction, text: p.text }));
+  }
+  if (chunks.length === 0) return null;
+
+  const prompt = `Below are the final sections of a document, in order, each labeled with a chunk id. Identify which chunk id contains (or should contain) the signature/closing block -- for example "IN WITNESS WHEREOF", a parties/dates block, or explicit signature lines. If none of these chunks is a plausible signing location, respond with null.
+
+Respond with ONLY JSON, no prose: {"chunkId": number|null}
+
+${chunks.map((c) => `Chunk ${c.id}:\n${c.text}`).join("\n\n")}`;
+
+  try {
+    const raw = await callTextModel(prompt, 60, 20_000);
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]);
+    if (typeof parsed.chunkId !== "number") return null;
+    const chunk = chunks.find((c) => c.id === parsed.chunkId);
+    if (!chunk) return null;
+    return { page: chunk.page, yFraction: chunk.yFraction, method: "ai" };
+  } catch {
+    return null;
+  }
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+// Places one row per signer at the resolved location, stacked downward
+// if more than one signer shares the page -- computed from signer count
+// and the resolved offset, never a fixed constant.
+function layoutAtLocation(
+  location: ResolvedLocation,
   signers: SignerInput[],
   includeName: boolean,
   includeLocation: boolean
 ): DetectedField[] {
   const fields: DetectedField[] = [];
-  const bandTop = 0.72; // bottom ~28% of the page, a reasonable zone for a trailing signature block
-  const bandHeight = 0.24;
-  const rowHeight = bandHeight / Math.max(signers.length, 1);
+  const rowHeight = Math.min(0.09, (1 - location.yFraction) / Math.max(signers.length, 1), 0.12);
+  const bandTop = clamp(location.yFraction, 0.05, 1 - rowHeight * signers.length - 0.03);
 
   signers.forEach((signer, idx) => {
     const rowY = bandTop + idx * rowHeight;
@@ -111,8 +217,8 @@ function layoutOnExistingPage(
       fields.push({
         recipient_id: signer.recipientId,
         field_type: rf.type,
-        page: 0, // filled by caller (1-indexed, same page for all)
-        position: { x: rf.x, y: rowY, w: rf.w, h: Math.max(rowHeight * 0.6, 0.035) },
+        page: location.page + 1,
+        position: { x: rf.x, y: rowY, w: rf.w, h: Math.max(rowHeight * 0.65, 0.032) },
         confidence: "high",
       });
     }
@@ -120,9 +226,9 @@ function layoutOnExistingPage(
   return fields;
 }
 
-// Draws a real, self-contained signature block per signer on a freshly
-// appended page, and returns the exact fractional positions used --
-// position data always matches what's visually on the page.
+// True last resort: draws a real, self-contained signature block per
+// signer on a freshly appended page, and returns the exact fractional
+// positions used -- position data always matches what's visually there.
 async function appendGeneratedSignaturePage(
   pdfDoc: PDFDocument,
   signers: SignerInput[],
@@ -161,7 +267,6 @@ async function appendGeneratedSignaturePage(
     const boxW = 220;
     const boxH = 28;
 
-    // Signature box
     page.drawRectangle({ x: margin, y: lineY - boxH, width: boxW, height: boxH, borderColor: rgb(0.7, 0.7, 0.73), borderWidth: 1 });
     page.drawText("Signature", { x: margin, y: lineY - boxH - 12, size: 8, font, color: rgb(0.45, 0.45, 0.48) });
     fields.push({
@@ -219,21 +324,25 @@ async function appendGeneratedSignaturePage(
 
 export async function detectSigningFields(params: {
   pdfDoc: PDFDocument;
-  pages: string[]; // per-page text; meaningless (single blob) when generatedFromText is true
+  pages: string[]; // per-page text; only meaningful when generatedFromText is false
   fullText: string;
   generatedFromText: boolean;
+  paragraphMap: ParagraphLocation[]; // only meaningful when generatedFromText is true
   signers: SignerInput[];
 }): Promise<FieldDetectionResult> {
-  const { includeName, includeLocation, ok } = await decideOptionalFields(params.fullText);
+  const { includeName, includeLocation } = await decideOptionalFields(params.fullText);
 
-  const keywordPageIndex = params.generatedFromText ? null : findSignatureKeywordPage(params.pages);
+  const keywordLocation = findByKeyword(params);
+  const location = keywordLocation ?? (await findByAiClassifier(params));
 
-  if (keywordPageIndex !== null) {
-    const fields = layoutOnExistingPage(params.signers, includeName, includeLocation).map((f) => ({
-      ...f,
-      page: keywordPageIndex + 1,
-    }));
-    return { fields, appendedSignaturePage: false, overallConfidence: ok ? "ok" : "needs_review" };
+  if (location) {
+    const fields = layoutAtLocation(location, params.signers, includeName, includeLocation);
+    // A real page was identified either by direct textual evidence or by
+    // the AI's read of the closing section -- never a blind guess -- so
+    // this is "ok" confidence regardless of which of the two found it.
+    // The optional-fields AI call failing/being unavailable doesn't
+    // downgrade this: Name/Location defaults are safe either way.
+    return { fields, appendedSignaturePage: false, overallConfidence: "ok" };
   }
 
   const { fields, pageIndex } = await appendGeneratedSignaturePage(params.pdfDoc, params.signers, includeName, includeLocation);
@@ -242,4 +351,7 @@ export async function detectSigningFields(params: {
     appendedSignaturePage: true,
     overallConfidence: "needs_review",
   };
+  // (`ok` from decideOptionalFields is intentionally not consulted for
+  // overallConfidence -- it only ever softens Name/Location, never the
+  // page/position judgment, which is what "needs_review" is about.)
 }

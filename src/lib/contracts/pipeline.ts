@@ -78,7 +78,7 @@ export async function processEnvelope(envelopeId: string): Promise<void> {
 
   const extracted = await extractDocumentText(originalBytes, envelope.original_file_name, envelope.original_mime_type);
 
-  const { pdfDoc, generatedFromText } = await loadOrBuildWorkingPdf({
+  const { pdfDoc, generatedFromText, paragraphMap } = await loadOrBuildWorkingPdf({
     originalBytes,
     sourceKind: extracted.sourceKind,
     fullText: extracted.fullText,
@@ -96,6 +96,7 @@ export async function processEnvelope(envelopeId: string): Promise<void> {
     pages: extracted.pages,
     fullText: extracted.fullText,
     generatedFromText,
+    paragraphMap,
     signers: signerInputs,
   });
 
