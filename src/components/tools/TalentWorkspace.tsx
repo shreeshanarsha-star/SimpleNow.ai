@@ -882,6 +882,7 @@ type SearchCandidate = {
   talent_requisitions?: { req_no?: string; title: string; location?: string | null } | null;
   _resumeSnippet?: string | null;
   _otherApplicationsCount?: number;
+  _matchedKeywords?: string[];
 };
 type CandidateList = { id: string; name: string; description: string | null; talent_candidate_list_members?: { candidate_id: string }[] };
 type QTemplate = { id: string; title: string; questions: { id: string; text: string; type: string }[] };
@@ -893,23 +894,107 @@ function RecruiterToolsPanel() {
   const [results, setResults] = useState<SearchCandidate[]>([]);
   const [externalResults, setExternalResults] = useState<{ title: string; link: string; snippet: string }[]>([]);
   const [searching, setSearching] = useState(false);
+  const [ranAnySearch, setRanAnySearch] = useState(false);
+
+  const [jdDragOver, setJdDragOver] = useState(false);
+  const [jdBusy, setJdBusy] = useState(false);
+  const [jdError, setJdError] = useState<string | null>(null);
+  const [jdFileName, setJdFileName] = useState<string | null>(null);
+  const [jdKeywords, setJdKeywords] = useState<string[]>([]);
 
   async function runSearch() {
     if (!q.trim()) return;
     setSearching(true);
+    setJdError(null);
+    setJdKeywords([]);
+    setJdFileName(null);
     try {
       const res = await fetch(`/api/talent-ai/candidates/search?q=${encodeURIComponent(q)}&external=${external}`);
       const data = await res.json();
       setResults(data.candidates || []);
       setExternalResults(data.external || []);
+      setRanAnySearch(true);
     } finally {
       setSearching(false);
     }
   }
 
+  async function runJdSearch(file: File) {
+    setJdBusy(true);
+    setJdError(null);
+    setExternalResults([]);
+    setQ("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/talent-ai/candidates/search-by-jd", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't search from that JD.");
+      setResults(data.candidates || []);
+      setJdKeywords(data.keywords || []);
+      setJdFileName(data.fileName || file.name);
+      setRanAnySearch(true);
+    } catch (err) {
+      setJdError(err instanceof Error ? err.message : "Couldn't search from that JD.");
+    } finally {
+      setJdBusy(false);
+    }
+  }
+
+  function handleJdDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setJdDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) runJdSearch(file);
+  }
+
   return (
     <div>
       <h3 className="m-0 text-[15px] font-bold mb-2">Search the candidate database</h3>
+
+      <div
+        onDragOver={(e) => { e.preventDefault(); setJdDragOver(true); }}
+        onDragLeave={() => setJdDragOver(false)}
+        onDrop={handleJdDrop}
+        onClick={() => document.getElementById("talent-jd-search-input")?.click()}
+        className={`border border-dashed rounded-md px-4 py-4 text-center cursor-pointer transition-colors ${jdDragOver ? "border-brand bg-brand-wash" : "border-border bg-page"}`}
+      >
+        <input
+          id="talent-jd-search-input"
+          type="file"
+          accept=".pdf,.doc,.docx,.txt"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) runJdSearch(f); e.target.value = ""; }}
+        />
+        <div className="text-[12.5px] font-bold text-ink-2">
+          {jdBusy ? "Reading JD and matching candidates…" : "Drop a JD here, or click to upload"}
+        </div>
+        <div className="text-[11px] text-ink-muted mt-0.5">
+          AI pulls out the role&apos;s key requirements and searches the database automatically — PDF, Word, or text
+        </div>
+      </div>
+
+      {jdError && <p className="text-[12px] text-critical mt-2">{jdError}</p>}
+
+      {jdKeywords.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mt-3">
+          <span className="text-[11px] text-ink-muted">
+            {jdFileName ? `From ${jdFileName}:` : "Matched on:"}
+          </span>
+          {jdKeywords.map((k) => (
+            <span key={k} className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-page text-ink-muted border border-border">
+              {k}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 my-3">
+        <div className="h-px bg-border flex-1" />
+        <span className="text-[10.5px] text-ink-muted font-bold uppercase tracking-wider">or search manually</span>
+        <div className="h-px bg-border flex-1" />
+      </div>
+
       <div className="flex gap-2 flex-wrap">
         <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runSearch()} className="input flex-1 min-w-[180px]" placeholder="Name, skill, email…" />
         <label className="flex items-center gap-1.5 text-[12px] flex-shrink-0">
@@ -919,7 +1004,7 @@ function RecruiterToolsPanel() {
           {searching ? "Searching…" : "Search"}
         </button>
       </div>
-      {searching === false && q && results.length === 0 && externalResults.length === 0 && (
+      {!searching && !jdBusy && ranAnySearch && results.length === 0 && externalResults.length === 0 && (
         <p className="text-[12px] text-ink-muted mt-3">No matches in the candidate database.</p>
       )}
       {results.length > 0 && (
@@ -943,6 +1028,15 @@ function RecruiterToolsPanel() {
                   {c.current_location ? ` · ${c.current_location}` : ""}
                   {c.experience_years != null ? ` · ${c.experience_years} yrs` : ""}
                 </div>
+                {!!c._matchedKeywords?.length && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {c._matchedKeywords.map((k) => (
+                      <span key={k} className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-good-wash text-good-text">
+                        {k}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {c._resumeSnippet && (
                   <div className="text-[11px] text-ink-2 mt-1 italic">…{c._resumeSnippet}…</div>
                 )}
