@@ -11,6 +11,45 @@ const PAGE_WIDTH = 612; // US Letter, points
 const PAGE_HEIGHT = 792;
 const MARGIN = 56;
 
+// pdf-lib's standard fonts (Helvetica etc.) use WinAnsi (cp1252) encoding,
+// which only covers a specific character set. Real-world DOCX/DOC text
+// routinely contains characters outside it -- Word bullet lists exported
+// via Symbol/Wingdings fonts land as Private Use Area glyphs like U+F0B7,
+// plus smart quotes, en/em dashes, ellipses, etc. Left unsanitized, any of
+// these crashes drawText with "WinAnsi cannot encode ...". This maps the
+// common cases to a safe equivalent and falls back to "?" for anything
+// else outside WinAnsi's range, so a single odd character never fails an
+// entire document.
+const WINANSI_SUBSTITUTIONS: Record<string, string> = {
+  "\u2018": "'", "\u2019": "'", "\u201A": ",", "\u201B": "'",
+  "\u201C": '"', "\u201D": '"', "\u201E": '"',
+  "\u2013": "-", "\u2014": "-", "\u2212": "-",
+  "\u2026": "...", "\u00A0": " ",
+  "\u2022": "-", "\u25CF": "-", "\u25AA": "-", "\u25E6": "-",
+  "\uF0B7": "-", "\uF0A7": "-", "\uF0D8": "-", "\uF0FC": "v",
+  "\uF0E0": "->", "\uF0AE": "->",
+};
+
+export function sanitizeForPdfText(text: string): string {
+  let out = "";
+  for (const ch of text) {
+    const mapped = WINANSI_SUBSTITUTIONS[ch];
+    if (mapped !== undefined) {
+      out += mapped;
+      continue;
+    }
+    const code = ch.codePointAt(0) ?? 0;
+    // WinAnsi reliably covers ASCII 0x20-0x7E and Latin-1 0xA0-0xFF; the
+    // 0x80-0x9F block (smart punctuation etc.) is handled by the map above.
+    if ((code >= 0x20 && code <= 0x7e) || (code >= 0xa0 && code <= 0xff) || ch === "\n" || ch === "\t") {
+      out += ch;
+    } else {
+      out += "?";
+    }
+  }
+  return out;
+}
+
 // One entry per non-blank source paragraph in a generated (DOCX/DOC)
 // working PDF: exactly where that paragraph landed once wrapped and
 // paginated. This is what lets field detection point at the real
@@ -42,13 +81,14 @@ export async function loadOrBuildWorkingPdf(params: {
   const lineHeight = 14;
   const maxLineWidth = PAGE_WIDTH - MARGIN * 2;
 
-  const text = params.fullText || "(No readable text was found in the uploaded file.)";
+  const text = sanitizeForPdfText(params.fullText || "(No readable text was found in the uploaded file.)");
   const paragraphs = text.split(/\r?\n/);
   const paragraphMap: ParagraphLocation[] = [];
   let runningOffset = 0;
 
+  const safeDocumentName = sanitizeForPdfText(params.documentName);
   let page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  drawHeader(page, boldFont, params.documentName);
+  drawHeader(page, boldFont, safeDocumentName);
   let cursorY = PAGE_HEIGHT - MARGIN - 30;
 
   for (const paragraph of paragraphs) {
@@ -59,7 +99,7 @@ export async function loadOrBuildWorkingPdf(params: {
     for (const line of lines) {
       if (cursorY < MARGIN) {
         page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-        drawHeader(page, boldFont, params.documentName);
+        drawHeader(page, boldFont, safeDocumentName);
         cursorY = PAGE_HEIGHT - MARGIN - 30;
       }
       if (firstLineOfParagraph && !isBlank) {

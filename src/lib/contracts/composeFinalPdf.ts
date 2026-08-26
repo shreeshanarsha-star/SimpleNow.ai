@@ -4,6 +4,7 @@
 // original upload) are never mutated -- this always operates on a fresh
 // copy and writes out a new final.pdf.
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { sanitizeForPdfText } from "./workingPdf";
 import type { FieldPosition } from "./types";
 
 export interface ComposableField {
@@ -64,7 +65,8 @@ export async function composeFinalPdf(params: {
     // Typed signature, or a plain text field (date/name/location).
     const font = field.field_type === "signature" ? scriptFont : regularFont;
     const fontSize = Math.min(boxH * 0.55, 16);
-    const text = field.value.length > 60 ? field.value.slice(0, 57) + "..." : field.value;
+    const safeValue = sanitizeForPdfText(field.value);
+    const text = safeValue.length > 60 ? safeValue.slice(0, 57) + "..." : safeValue;
     page.drawText(text, {
       x: boxX + 4,
       y: boxBottomY + Math.max((boxH - fontSize) / 2, 2),

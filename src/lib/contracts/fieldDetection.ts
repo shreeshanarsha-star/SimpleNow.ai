@@ -29,6 +29,7 @@
 // the within-page vertical placement is a reasonable estimate, not a
 // guaranteed pixel-exact box.
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { sanitizeForPdfText } from "./workingPdf";
 import { callTextModel, hasAiKey } from "@/lib/aiClient";
 import type { ParagraphLocation } from "./workingPdf";
 import type { FieldPosition, FieldType } from "./types";
@@ -255,7 +256,7 @@ async function appendGeneratedSignaturePage(
   let cursorY = height - margin - 56;
 
   for (const signer of signers) {
-    page.drawText(`Signer ${signer.signingOrder}: ${signer.name}`, {
+    page.drawText(`Signer ${signer.signingOrder}: ${sanitizeForPdfText(signer.name)}`, {
       x: margin,
       y: cursorY,
       size: 11,
