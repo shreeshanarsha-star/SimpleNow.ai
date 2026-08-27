@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Icon from "@/components/Icon";
+import { useRegisterToolHome } from "@/components/ToolHomeContext";
 
 type Component = { label: string; annual: string };
 type Step = "draft" | "polishing" | "review" | "submitting" | "done";
@@ -11,6 +12,10 @@ type Step = "draft" | "polishing" | "review" | "submitting" | "done";
 export default function OfferAiForm() {
   const searchParams = useSearchParams();
   const [step, setStep] = useState<Step>("draft");
+
+  // Topbar's clickable "Offer.ai" title (ToolHomeContext) restarts the
+  // wizard from the draft step.
+  useRegisterToolHome(useCallback(() => setStep("draft"), []));
   const [candidateName, setCandidateName] = useState("");
   const [candidateEmail, setCandidateEmail] = useState("");
   const [roleTitle, setRoleTitle] = useState("");

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, Fragment } from "react";
+import { useCallback, useEffect, useState, Fragment } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import Icon from "@/components/Icon";
 import TalentAiBoard from "@/components/tools/TalentAiBoard";
+import { useRegisterToolHome } from "@/components/ToolHomeContext";
 import { HScroller, VScroller } from "@/components/Scroller";
 import ProfileAvatar from "@/components/ProfileAvatar";
 import { FUNNEL_STAGES, STAGE_ORDER as STAGES_ORDER } from "@/lib/talentStages";
@@ -39,6 +40,10 @@ export default function TalentWorkspace() {
     window.addEventListener("askshree:same-page-nav", onSamePageNav);
     return () => window.removeEventListener("askshree:same-page-nav", onSamePageNav);
   }, []);
+
+  // Topbar's clickable "Talent.ai" title (see ToolHomeContext) reuses the
+  // exact same reset as the same-page-nav case above.
+  useRegisterToolHome(useCallback(() => setTab("home"), []));
 
   // Ask Shree's open_feature tool lands here with ?action=new-requisition
   // -- pick it up once, then strip it so a refresh/back-nav doesn't

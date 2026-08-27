@@ -1,7 +1,8 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Icon from "@/components/Icon";
+import { useRegisterToolHome } from "@/components/ToolHomeContext";
 
 type Mode = "jd" | "describe" | "manual";
 type Step = "input" | "running" | "results";
@@ -147,6 +148,10 @@ export default function SmartSourceAiForm({
   const [activeProjectCandidates, setActiveProjectCandidates] = useState<Candidate[]>([]);
   const [projectDetailLoading, setProjectDetailLoading] = useState(false);
   const [projectExpanded, setProjectExpanded] = useState<string | null>(null);
+
+  // Topbar's clickable "Smart Source.ai" title (ToolHomeContext) closes the
+  // My Projects panel, returning to the search view underneath it.
+  useRegisterToolHome(useCallback(() => setShowProjectsPanel(false), []));
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? window.localStorage.getItem(VIEW_STORAGE_KEY) : null;

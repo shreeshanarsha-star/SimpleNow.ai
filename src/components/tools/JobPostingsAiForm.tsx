@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import Icon from "@/components/Icon";
 import JobPostingDraftEditor, { type EditableJobPostingDraft } from "./JobPostingDraftEditor";
+import { useRegisterToolHome } from "@/components/ToolHomeContext";
 
 type Step = "upload" | "analyzing" | "review" | "submitting" | "done";
 
@@ -38,6 +39,10 @@ function toEditableDraft(raw: Record<string, unknown>): EditableJobPostingDraft 
 
 export default function JobPostingsAiForm() {
   const [step, setStep] = useState<Step>("upload");
+
+  // Topbar's clickable "Job Postings.ai" title (ToolHomeContext) restarts
+  // the wizard from the upload step.
+  useRegisterToolHome(useCallback(() => setStep("upload"), []));
   const [dragOver, setDragOver] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);

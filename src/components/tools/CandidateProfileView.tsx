@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRegisterToolHome } from "@/components/ToolHomeContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { STAGES, stageLabel } from "@/lib/talentStages";
@@ -60,6 +61,10 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default function CandidateProfileView({ candidateId }: { candidateId: string }) {
   const router = useRouter();
+
+  // Topbar's clickable "Talent.ai" title (ToolHomeContext) returns here
+  // to the tool's own home tab, from wherever this drill-down view sits.
+  useRegisterToolHome(useCallback(() => router.push("/tools/talent-ai"), [router]));
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [otherApplications, setOtherApplications] = useState<OtherApplication[]>([]);
   const [linkedOffer, setLinkedOffer] = useState<LinkedOffer>(null);

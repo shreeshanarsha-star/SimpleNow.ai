@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRegisterToolHome } from "@/components/ToolHomeContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { VScroller } from "@/components/Scroller";
@@ -43,6 +44,10 @@ const SOURCE_LABEL: Record<string, string> = {
 
 export default function CandidateDetailsView({ candidateId }: { candidateId: string }) {
   const router = useRouter();
+
+  // Topbar's clickable "Talent.ai" title (ToolHomeContext) returns here
+  // to the tool's own home tab, from wherever this drill-down view sits.
+  useRegisterToolHome(useCallback(() => router.push("/tools/talent-ai"), [router]));
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [resumeFileUrl, setResumeFileUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

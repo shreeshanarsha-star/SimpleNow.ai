@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Icon from "@/components/Icon";
+import { useRegisterToolHome } from "@/components/ToolHomeContext";
 
 type Criteria = {
   role_title: string;
@@ -47,6 +48,10 @@ export default function SmartScreenAiForm() {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Topbar's clickable "Smart Screen.ai" title (ToolHomeContext) restarts
+  // the wizard from the JD step.
+  useRegisterToolHome(useCallback(() => setStep("jd"), []));
 
   async function handleStructure() {
     setError(null);

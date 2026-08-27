@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRegisterToolHome } from "@/components/ToolHomeContext";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/Icon";
 import RequisitionTabs from "@/components/tools/RequisitionTabs";
@@ -121,6 +122,10 @@ function SectionCard({ title, action, children }: { title: string; action?: Reac
 
 export default function RequisitionRoleOverview({ requisitionId }: { requisitionId: string }) {
   const router = useRouter();
+
+  // Topbar's clickable "Talent.ai" title (ToolHomeContext) returns here
+  // to the tool's own home tab, from wherever this drill-down view sits.
+  useRegisterToolHome(useCallback(() => router.push("/tools/talent-ai"), [router]));
   const [requisition, setRequisition] = useState<Requisition | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

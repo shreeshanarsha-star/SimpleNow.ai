@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "@/components/Icon";
+import { useRegisterToolHome } from "@/components/ToolHomeContext";
 
 type Role = "signer" | "cc";
 
@@ -75,6 +76,10 @@ export default function ContractsEsignApp() {
   const [envelopes, setEnvelopes] = useState<EnvelopeRow[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Topbar's clickable "Contracts & eSign" title (ToolHomeContext) returns
+  // to the document list from the new/processing/detail flow.
+  useRegisterToolHome(useCallback(() => setView("list"), []));
 
   const loadList = useCallback(async () => {
     setListError(null);

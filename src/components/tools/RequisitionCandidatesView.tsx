@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRegisterToolHome } from "@/components/ToolHomeContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Icon from "@/components/Icon";
@@ -58,6 +59,10 @@ function fmtCtc(n: number | null) {
 
 export default function RequisitionCandidatesView({ requisitionId }: { requisitionId: string }) {
   const router = useRouter();
+
+  // Topbar's clickable "Talent.ai" title (ToolHomeContext) returns here
+  // to the tool's own home tab, from wherever this drill-down view sits.
+  useRegisterToolHome(useCallback(() => router.push("/tools/talent-ai"), [router]));
   const searchParams = useSearchParams();
   const initialStage = searchParams.get("stage") || "all";
 
