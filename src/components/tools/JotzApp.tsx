@@ -196,8 +196,11 @@ export default function JotzApp() {
     handleFiles(e.dataTransfer.files);
   }
 
-  async function getFileUrl(id: string): Promise<{ url: string; fileName: string | null } | null> {
-    const res = await fetch(`/api/jotz/items/${id}/file`);
+  async function getFileUrl(
+    id: string,
+    opts: { download?: boolean } = {}
+  ): Promise<{ url: string; fileName: string | null } | null> {
+    const res = await fetch(`/api/jotz/items/${id}/file${opts.download ? "?download=1" : ""}`);
     const data = await res.json();
     if (!res.ok) {
       alert(data.error || "Could not open that file.");
@@ -207,12 +210,14 @@ export default function JotzApp() {
   }
 
   async function handleView(id: string) {
+    // No download=1 here -- the signed URL stays "inline" so images/PDFs
+    // open and render directly in the new tab instead of downloading.
     const r = await getFileUrl(id);
     if (r) window.open(r.url, "_blank", "noopener,noreferrer");
   }
 
   async function handleDownload(id: string) {
-    const r = await getFileUrl(id);
+    const r = await getFileUrl(id, { download: true });
     if (!r) return;
     const a = document.createElement("a");
     a.href = r.url;
