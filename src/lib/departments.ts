@@ -147,9 +147,13 @@ export const DEPARTMENTS: Department[] = [
     id: "legal",
     name: "Legal & Compliance",
     icon: "scale",
-    status: "soon",
+    status: "live",
     desc: "Contract review, policy drafting, and compliance checks.",
     tools: [
+      // Bundled, same as Team Chat under IT & Data -- Contracts & eSign is a
+      // Personal Tool (requireUser() only, no feature_access grant needed),
+      // so it must stay visible/reachable here regardless of org license.
+      { n: "Contracts & eSign", s: "live", href: "/tools/contracts-esign", bundled: true },
       { n: "Contract Review.ai", s: "soon" },
       { n: "Policy.ai", s: "soon" },
       { n: "Compliance Check.ai", s: "soon" },
@@ -208,7 +212,6 @@ export const PERSONAL_TOOLS: Department = {
     { n: "Clock", s: "live", href: "/tools/widgets-ai?tool=clock" },
     { n: "Timer / Stopwatch", s: "live", href: "/tools/widgets-ai?tool=timer" },
     { n: "Unit Converter", s: "live", href: "/tools/widgets-ai?tool=converter" },
-    { n: "Contracts & eSign", s: "live", href: "/tools/contracts-esign" },
     { n: "Jotz", s: "live", href: "/tools/jotz" },
     { n: "Shortlist.ai", s: "live", href: "/tools/shortlist-ai" },
   ],
