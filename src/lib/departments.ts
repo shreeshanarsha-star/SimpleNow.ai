@@ -210,6 +210,7 @@ export const PERSONAL_TOOLS: Department = {
     { n: "Unit Converter", s: "live", href: "/tools/widgets-ai?tool=converter" },
     { n: "Contracts & eSign", s: "live", href: "/tools/contracts-esign" },
     { n: "Jotz", s: "live", href: "/tools/jotz" },
+    { n: "Shortlist.ai", s: "live", href: "/tools/shortlist-ai" },
   ],
 };
 
