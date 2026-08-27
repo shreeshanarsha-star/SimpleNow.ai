@@ -51,3 +51,33 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   return NextResponse.json({ match });
 }
+
+// Removes a candidate from one Job's match list without touching the
+// candidate record itself -- the "remove from this job only" action
+// (spec: candidate stays in the library, can still match other jobs).
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  let supabase, user;
+  try {
+    ({ supabase, user } = await requireUser());
+  } catch (res) {
+    return res as Response;
+  }
+  const { id } = await params;
+
+  const { data: existing } = await supabase.from("shortlist_job_matches").select("id, candidate_id, job_id").eq("id", id).maybeSingle();
+  if (!existing) return NextResponse.json({ error: "Match not found." }, { status: 404 });
+
+  const { error } = await supabase.from("shortlist_job_matches").delete().eq("id", id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const admin = createAdminClient();
+  await admin.from("shortlist_activity_log").insert({
+    user_id: user.id,
+    entity_type: "candidate",
+    entity_id: existing.candidate_id,
+    action: "removed_from_job",
+    detail: { job_id: existing.job_id },
+  });
+
+  return NextResponse.json({ ok: true });
+}

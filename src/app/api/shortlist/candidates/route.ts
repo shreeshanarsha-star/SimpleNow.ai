@@ -46,6 +46,19 @@ export async function GET(request: Request) {
 
   let rows = candidates || [];
 
+  // "Unmatched" -- candidates with zero rows in shortlist_job_matches.
+  // The single-page UI shows these in a small section of their own so a
+  // CV dropped before any matching Job exists is never invisible.
+  if (url.searchParams.get("unmatched") === "1" && rows.length) {
+    const ids = rows.map((c) => c.id);
+    const { data: matchedRows } = await supabase
+      .from("shortlist_job_matches")
+      .select("candidate_id")
+      .in("candidate_id", ids);
+    const matchedIds = new Set((matchedRows || []).map((m) => m.candidate_id));
+    rows = rows.filter((c) => !matchedIds.has(c.id));
+  }
+
   // Skills keyword match + notice-period-below filter run client-side
   // here since they need array/text parsing SQL can't cleanly express
   // via the query-string filters above -- fine at Personal Tool scale.

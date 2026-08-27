@@ -99,8 +99,6 @@ type UploadResult = {
   possibleDuplicate?: { id: string; name: string | null } | null;
 };
 
-type View = "dashboard" | "jobs" | "job_detail" | "candidates";
-
 const STATUS_LABEL: Record<MatchStatus, string> = {
   new: "New",
   reviewed: "Reviewed",
@@ -167,39 +165,36 @@ const EXPORT_COLUMNS: { key: string; label: string; get: (m: Match) => unknown }
   { key: "current_comp", label: "Current Compensation", get: (m) => m.candidate?.current_compensation },
   { key: "expected_comp", label: "Expected Compensation", get: (m) => m.candidate?.expected_compensation },
   { key: "notice_period", label: "Notice Period", get: (m) => m.candidate?.notice_period },
+  { key: "evaluation", label: "Evaluation", get: (m) => m.evaluation },
   { key: "status", label: "Status", get: (m) => STATUS_LABEL[m.status] },
   { key: "phone", label: "Phone", get: (m) => m.candidate?.phone },
   { key: "email", label: "Email", get: (m) => m.candidate?.email },
   { key: "linkedin", label: "LinkedIn", get: (m) => m.candidate?.linkedin_url },
+  { key: "added", label: "Date Added", get: (m) => fmtDate(m.candidate?.created_at || null) },
 ];
 
 // ---------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------
 export default function ShortlistApp() {
-  const [view, setView] = useState<View>("dashboard");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Dashboard
-  const [dashLoading, setDashLoading] = useState(true);
-  const [dash, setDash] = useState<{
-    totalJobs: number;
-    openJobs: number;
-    totalCandidates: number;
-    shortlisted: number;
-    awaitingReview: number;
-    recentCandidates: Candidate[];
-    topMatches: Match[];
-  } | null>(null);
-
-  // Jobs list
+  // Jobs list (the home view -- shown whenever no job is open)
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [jobsLoading, setJobsLoading] = useState(false);
+  const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsQuery, setJobsQuery] = useState("");
   const [jobsStatusFilter, setJobsStatusFilter] = useState<"all" | JobStatus>("all");
 
-  // Job detail
+  // Candidates not yet matched to any job -- shown at the bottom of the
+  // home view so an uploaded CV is never invisible just because no
+  // matching Job exists yet.
+  const [unmatched, setUnmatched] = useState<Candidate[]>([]);
+  const [unmatchedLoading, setUnmatchedLoading] = useState(false);
+  const [unmatchedQuery, setUnmatchedQuery] = useState("");
+
+  // Job detail (open when activeJob is set -- replaces the home view,
+  // this is a single-page app so there's no separate route/tab for it)
   const [activeJob, setActiveJob] = useState<Job | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [matchesLoading, setMatchesLoading] = useState(false);
@@ -209,16 +204,6 @@ export default function ShortlistApp() {
   const [matchSort, setMatchSort] = useState("score_desc");
   const [selectedMatchIds, setSelectedMatchIds] = useState<Set<string>>(new Set());
   const [reevaluating, setReevaluating] = useState(false);
-
-  // Global candidates
-  const [allCandidates, setAllCandidates] = useState<Candidate[]>([]);
-  const [candidatesLoading, setCandidatesLoading] = useState(false);
-  const [candQuery, setCandQuery] = useState("");
-  const [candLocation, setCandLocation] = useState("");
-  const [candSkill, setCandSkill] = useState("");
-  const [candMinExp, setCandMinExp] = useState("");
-  const [candMaxExp, setCandMaxExp] = useState("");
-  const [candNoticeMax, setCandNoticeMax] = useState("");
 
   // Candidate profile modal
   const [profileId, setProfileId] = useState<string | null>(null);
@@ -238,20 +223,6 @@ export default function ShortlistApp() {
   const [shareEmail, setShareEmail] = useState("");
   const [shareBusy, setShareBusy] = useState(false);
 
-  const loadDashboard = useCallback(async () => {
-    setDashLoading(true);
-    try {
-      const res = await fetch("/api/shortlist/dashboard");
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not load dashboard.");
-      setDash(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load dashboard.");
-    } finally {
-      setDashLoading(false);
-    }
-  }, []);
-
   const loadJobs = useCallback(async () => {
     setJobsLoading(true);
     try {
@@ -268,6 +239,23 @@ export default function ShortlistApp() {
       setJobsLoading(false);
     }
   }, [jobsQuery, jobsStatusFilter]);
+
+  const loadUnmatched = useCallback(async () => {
+    setUnmatchedLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("unmatched", "1");
+      if (unmatchedQuery.trim()) params.set("q", unmatchedQuery.trim());
+      const res = await fetch(`/api/shortlist/candidates?${params}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not load candidates.");
+      setUnmatched(data.candidates || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load candidates.");
+    } finally {
+      setUnmatchedLoading(false);
+    }
+  }, [unmatchedQuery]);
 
   const loadMatches = useCallback(async (jobId: string) => {
     setMatchesLoading(true);
@@ -288,36 +276,17 @@ export default function ShortlistApp() {
     }
   }, [matchQuery, matchStatusFilter, matchMinScore, matchSort]);
 
-  const loadAllCandidates = useCallback(async () => {
-    setCandidatesLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (candQuery.trim()) params.set("q", candQuery.trim());
-      if (candLocation.trim()) params.set("location", candLocation.trim());
-      if (candSkill.trim()) params.set("skill", candSkill.trim());
-      if (candMinExp) params.set("minExp", candMinExp);
-      if (candMaxExp) params.set("maxExp", candMaxExp);
-      if (candNoticeMax) params.set("noticeMax", candNoticeMax);
-      const res = await fetch(`/api/shortlist/candidates?${params}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not load candidates.");
-      setAllCandidates(data.candidates || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load candidates.");
-    } finally {
-      setCandidatesLoading(false);
-    }
-  }, [candQuery, candLocation, candSkill, candMinExp, candMaxExp, candNoticeMax]);
+  useEffect(() => {
+    if (!activeJob) loadJobs();
+  }, [activeJob, loadJobs]);
 
   useEffect(() => {
-    if (view === "dashboard") loadDashboard();
-    if (view === "jobs") loadJobs();
-    if (view === "candidates") loadAllCandidates();
-  }, [view, loadDashboard, loadJobs, loadAllCandidates]);
+    if (!activeJob) loadUnmatched();
+  }, [activeJob, loadUnmatched]);
 
   useEffect(() => {
-    if (view === "job_detail" && activeJob) loadMatches(activeJob.id);
-  }, [view, activeJob, loadMatches]);
+    if (activeJob) loadMatches(activeJob.id);
+  }, [activeJob, loadMatches]);
 
   function openJob(job: Job) {
     setActiveJob(job);
@@ -325,7 +294,58 @@ export default function ShortlistApp() {
     setMatchQuery("");
     setMatchStatusFilter("all");
     setMatchMinScore("");
-    setView("job_detail");
+  }
+  function backToJobs() {
+    setActiveJob(null);
+  }
+
+  // -------------------------------------------------------------------
+  // Delete / remove
+  // -------------------------------------------------------------------
+  async function deleteJob(job: Job) {
+    if (!confirm(`Delete "${job.title || "this job"}"? Candidates stay in your library -- only the job and its match records are removed.`)) return;
+    try {
+      const res = await fetch(`/api/shortlist/jobs/${job.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not delete job.");
+      setNotice(`Deleted "${job.title || "job"}".`);
+      setJobs((prev) => prev.filter((j) => j.id !== job.id));
+      if (activeJob?.id === job.id) setActiveJob(null);
+      loadUnmatched();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete job.");
+    }
+  }
+
+  async function unmatchCandidate(match: Match) {
+    if (!confirm(`Remove ${match.candidate?.name || "this candidate"} from this job? They'll stay in your candidate library and can still match other jobs.`)) return;
+    try {
+      const res = await fetch(`/api/shortlist/matches/${match.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not remove candidate.");
+      setMatches((prev) => prev.filter((m) => m.id !== match.id));
+      setSelectedMatchIds((prev) => {
+        const next = new Set(prev);
+        next.delete(match.id);
+        return next;
+      });
+      setNotice(`Removed ${match.candidate?.name || "candidate"} from this job.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove candidate.");
+    }
+  }
+
+  async function deleteUnmatchedCandidate(candidate: Candidate) {
+    if (!confirm(`Permanently delete ${candidate.name || "this candidate"} and their CV? This can't be undone.`)) return;
+    try {
+      const res = await fetch(`/api/shortlist/candidates/${candidate.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not delete candidate.");
+      setUnmatched((prev) => prev.filter((c) => c.id !== candidate.id));
+      setNotice(`Deleted ${candidate.name || "candidate"}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete candidate.");
+    }
   }
 
   // -------------------------------------------------------------------
@@ -365,10 +385,12 @@ export default function ShortlistApp() {
         `${candsCreated + candsReused ? `${candsCreated + candsReused} candidate(s) (${candsReused} reused).` : ""}`
     );
     // Refresh whatever's currently on screen.
-    if (view === "dashboard") loadDashboard();
-    if (view === "jobs") loadJobs();
-    if (view === "candidates") loadAllCandidates();
-    if (view === "job_detail" && activeJob) loadMatches(activeJob.id);
+    if (activeJob) {
+      loadMatches(activeJob.id);
+    } else {
+      loadJobs();
+      loadUnmatched();
+    }
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -517,8 +539,8 @@ export default function ShortlistApp() {
       setNotice(action === "merge" ? "Candidates merged." : action === "keep_separate" ? "Kept as separate candidates." : "Dismissed.");
       if (action === "merge") closeProfile();
       else if (profileData) setProfileData({ ...profileData, candidate: data.candidate });
-      if (view === "candidates") loadAllCandidates();
-      if (view === "job_detail" && activeJob) loadMatches(activeJob.id);
+      if (!activeJob) loadUnmatched();
+      if (activeJob) loadMatches(activeJob.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not resolve duplicate.");
     }
@@ -557,14 +579,20 @@ export default function ShortlistApp() {
     y += 8;
     doc.setFontSize(9);
     for (const r of rows) {
-      if (y > 280) {
+      if (y > 270) {
         doc.addPage();
         y = 14;
       }
       const c = r.candidate;
-      const line = `${c?.name || "—"}  |  ${r.overall_score ?? "—"}/100 ${scoreLabel(r.overall_score)}  |  ${c?.current_company || "—"}  |  ${c?.location || "—"}  |  Notice: ${c?.notice_period || "—"}`;
-      doc.text(line, 14, y, { maxWidth: 180 });
-      y += 7;
+      const line1 = `${c?.name || "—"}  |  ${r.overall_score ?? "—"}/100 ${scoreLabel(r.overall_score)}  |  ${c?.current_company || "—"}  |  ${c?.location || "—"}`;
+      const line2 = `Qualification: ${c?.qualification || "—"}  |  Comp: ${c?.current_compensation || "—"} -> ${c?.expected_compensation || "—"}  |  Notice: ${c?.notice_period || "—"}`;
+      const line3 = `${c?.phone || "—"}  |  ${c?.email || "—"}  |  ${c?.linkedin_url || "No LinkedIn"}`;
+      doc.text(line1, 14, y, { maxWidth: 180 });
+      y += 6;
+      doc.text(line2, 14, y, { maxWidth: 180 });
+      y += 6;
+      doc.text(line3, 14, y, { maxWidth: 180 });
+      y += 8;
     }
     doc.save("shortlist-candidates.pdf");
     setShowExport(false);
@@ -720,36 +748,10 @@ export default function ShortlistApp() {
         </div>
       )}
 
-      <div className="flex items-center gap-1.5 border-b border-border pb-1">
-        {(
-          [
-            { key: "dashboard", label: "Dashboard", icon: "grid" },
-            { key: "jobs", label: "Jobs", icon: "briefcase" },
-            { key: "candidates", label: "Candidates", icon: "users" },
-          ] as const
-        ).map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setView(t.key)}
-            className={`text-[12.5px] font-bold px-3 py-2 rounded-t-md flex items-center gap-1.5 ${
-              view === t.key || (t.key === "jobs" && view === "job_detail")
-                ? "text-brand border-b-2 border-brand"
-                : "text-ink-muted hover:text-ink"
-            }`}
-          >
-            <Icon name={t.icon} className="w-3.5 h-3.5" />
-            {t.label}
-          </button>
-        ))}
-      </div>
-
       {uploadProgressBar}
       {uploadSummaryPanel}
 
-      {view === "dashboard" && renderDashboard()}
-      {view === "jobs" && renderJobsList()}
-      {view === "job_detail" && activeJob && renderJobDetail()}
-      {view === "candidates" && renderCandidatesLibrary()}
+      {activeJob ? renderJobDetail() : renderHome()}
 
       {profileId && renderProfileModal()}
       {showExport && renderExportModal()}
@@ -758,91 +760,13 @@ export default function ShortlistApp() {
   );
 
   // -------------------------------------------------------------------
-  // Section renderers
+  // Home: dropzone -> jobs listed one by one -> unmatched candidates
   // -------------------------------------------------------------------
-  function renderDashboard() {
-    if (dashLoading) return <div className="text-[13px] text-ink-muted">Loading…</div>;
-    if (!dash) return null;
-    const empty = dash.totalJobs === 0;
-    return (
-      <div className="flex flex-col gap-5">
-        {dropZone}
-        {empty ? (
-          <div className="border border-dashed border-border rounded-lg px-6 py-10 text-center text-[13px] text-ink-muted">
-            Drop a JD here to create your first Job.
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {[
-                { label: "Total Jobs", value: dash.totalJobs },
-                { label: "Open Jobs", value: dash.openJobs },
-                { label: "Total Candidates", value: dash.totalCandidates },
-                { label: "Shortlisted", value: dash.shortlisted },
-                { label: "Awaiting Review", value: dash.awaitingReview },
-              ].map((s) => (
-                <div key={s.label} className="border border-border rounded-lg bg-surface px-4 py-3.5">
-                  <div className="text-[22px] font-bold text-ink">{s.value}</div>
-                  <div className="text-[11.5px] text-ink-muted mt-0.5">{s.label}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="border border-border rounded-lg bg-surface p-4">
-                <div className="text-[13px] font-bold text-ink mb-2.5">Recently added</div>
-                {dash.recentCandidates.length === 0 ? (
-                  <div className="text-[12px] text-ink-muted">No candidates yet.</div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {dash.recentCandidates.map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => openProfile(c.id)}
-                        className="text-left flex items-center justify-between gap-2 text-[12.5px] hover:bg-page rounded-sm px-1.5 py-1 -mx-1.5"
-                      >
-                        <span className="text-ink font-semibold truncate">{c.name || "Unnamed"}</span>
-                        <span className="text-ink-muted flex-shrink-0">{c.current_company || c.location || ""}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="border border-border rounded-lg bg-surface p-4">
-                <div className="text-[13px] font-bold text-ink mb-2.5">Top matches</div>
-                {dash.topMatches.length === 0 ? (
-                  <div className="text-[12px] text-ink-muted">No matches yet.</div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {dash.topMatches.map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => m.candidate && openProfile(m.candidate.id, m)}
-                        className="text-left flex items-center justify-between gap-2 text-[12.5px] hover:bg-page rounded-sm px-1.5 py-1 -mx-1.5"
-                      >
-                        <span className="text-ink truncate">
-                          <span className="font-semibold">{m.candidate?.name || "Unnamed"}</span>
-                          <span className="text-ink-muted"> · {m.job?.title || "Untitled role"}</span>
-                        </span>
-                        <span className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full ${scoreClass(m.overall_score)}`}>
-                          {m.overall_score ?? "—"}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  function renderJobsList() {
+  function renderHome() {
     return (
       <div className="flex flex-col gap-4">
         {dropZone}
+
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={jobsQuery}
@@ -869,36 +793,87 @@ export default function ShortlistApp() {
             No jobs yet. Drop a JD above to create your first Job.
           </div>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="border border-border rounded-lg bg-surface divide-y divide-border">
             {jobs.map((job) => (
-              <button
-                key={job.id}
-                onClick={() => openJob(job)}
-                className="text-left border border-border rounded-lg bg-surface p-4 hover:border-border-strong hover:shadow-soft-sm transition-all flex flex-col gap-2"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="text-[14px] font-bold text-ink truncate">{job.title || "Untitled role"}</div>
-                  <span
-                    className={`shrink-0 text-[10.5px] font-bold px-2 py-0.5 rounded-full ${
-                      job.status === "open" ? "bg-good-wash text-good-text" : job.status === "on_hold" ? "bg-warning-wash text-ink" : "bg-page text-ink-muted"
-                    }`}
-                  >
-                    {job.status === "open" ? "Open" : job.status === "on_hold" ? "On Hold" : "Closed"}
-                  </span>
-                </div>
-                <div className="text-[12px] text-ink-muted">
-                  {[job.company, job.location].filter(Boolean).join(" · ") || "—"}
-                </div>
-                <div className="text-[11.5px] text-ink-muted">{job.experience_required || "Experience not specified"}</div>
-                <div className="flex items-center gap-3 text-[11.5px] text-ink-2 mt-1">
-                  <span>{job.candidate_count ?? 0} candidates</span>
-                  <span>{job.shortlisted_count ?? 0} shortlisted</span>
-                </div>
-                <div className="text-[10.5px] text-ink-muted mt-1">Added {fmtDate(job.created_at)}</div>
-              </button>
+              <div key={job.id} className="flex items-center gap-2 group hover:bg-page/60">
+                <button onClick={() => openJob(job)} className="flex-1 min-w-0 text-left flex items-center gap-3 px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[14px] font-bold text-ink truncate">{job.title || "Untitled role"}</span>
+                      <span
+                        className={`shrink-0 text-[10.5px] font-bold px-2 py-0.5 rounded-full ${
+                          job.status === "open" ? "bg-good-wash text-good-text" : job.status === "on_hold" ? "bg-warning-wash text-ink" : "bg-page text-ink-muted"
+                        }`}
+                      >
+                        {job.status === "open" ? "Open" : job.status === "on_hold" ? "On Hold" : "Closed"}
+                      </span>
+                    </div>
+                    <div className="text-[12px] text-ink-muted truncate">
+                      {[job.company, job.location, job.experience_required].filter(Boolean).join(" · ") || "—"}
+                    </div>
+                  </div>
+                  <div className="hidden sm:flex items-center gap-3 text-[11.5px] text-ink-2 flex-shrink-0">
+                    <span>{job.candidate_count ?? 0} candidates</span>
+                    <span>{job.shortlisted_count ?? 0} shortlisted</span>
+                    <span className="text-ink-muted">{fmtDate(job.created_at)}</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => deleteJob(job)}
+                  title="Delete job"
+                  className="opacity-0 group-hover:opacity-100 text-ink-muted hover:text-critical flex-shrink-0 px-3"
+                >
+                  <Icon name="trash" className="w-4 h-4" />
+                </button>
+              </div>
             ))}
           </div>
         )}
+
+        <div className="flex flex-col gap-2 mt-2">
+          <div className="text-[12px] font-bold text-ink-muted uppercase tracking-wide">Unmatched candidates</div>
+          <input
+            value={unmatchedQuery}
+            onChange={(e) => setUnmatchedQuery(e.target.value)}
+            placeholder="Search name, company, email…"
+            className="w-full max-w-sm border border-border rounded-md px-3 py-2 text-[12.5px] bg-surface outline-none focus:border-brand"
+          />
+          {unmatchedLoading ? (
+            <div className="text-[12.5px] text-ink-muted">Loading…</div>
+          ) : unmatched.length === 0 ? (
+            <div className="text-[12px] text-ink-muted">
+              Every candidate in your library currently matches at least one job.
+            </div>
+          ) : (
+            <div className="border border-border rounded-lg bg-surface divide-y divide-border">
+              {unmatched.map((c) => (
+                <div key={c.id} className="flex items-center gap-2 group hover:bg-page/60">
+                  <button onClick={() => openProfile(c.id)} className="flex-1 min-w-0 text-left flex items-center gap-3 px-3.5 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold text-ink flex items-center gap-1.5">
+                        {c.name || "Unnamed"}
+                        {c.dedupe_status === "possible_duplicate" && (
+                          <span className="text-[10px] font-semibold text-warning-text bg-warning-wash rounded-full px-1.5 py-0.5">Possible duplicate</span>
+                        )}
+                      </div>
+                      <div className="text-[11.5px] text-ink-muted truncate">
+                        {[c.current_company, c.location, c.qualification].filter(Boolean).join(" · ") || "No details extracted"}
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-ink-muted flex-shrink-0">{fmtDate(c.created_at)}</div>
+                  </button>
+                  <button
+                    onClick={() => deleteUnmatchedCandidate(c)}
+                    title="Delete candidate"
+                    className="opacity-0 group-hover:opacity-100 text-ink-muted hover:text-critical flex-shrink-0 px-3"
+                  >
+                    <Icon name="trash" className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -908,7 +883,7 @@ export default function ShortlistApp() {
     const job = activeJob;
     return (
       <div className="flex flex-col gap-4">
-        <button onClick={() => setView("jobs")} className="text-[12px] text-ink-muted hover:text-ink flex items-center gap-1 self-start">
+        <button onClick={backToJobs} className="text-[12px] text-ink-muted hover:text-ink flex items-center gap-1 self-start">
           <Icon name="chevronLeft" className="w-3.5 h-3.5" /> Back to Jobs
         </button>
 
@@ -958,6 +933,14 @@ export default function ShortlistApp() {
               >
                 <Icon name="sparkle" className="w-3.5 h-3.5" />
                 {reevaluating ? "Re-evaluating…" : "Re-evaluate"}
+              </button>
+              <button
+                onClick={() => deleteJob(job)}
+                title="Delete job"
+                className="text-[12px] font-semibold text-critical border border-border rounded-md px-2.5 py-1.5 hover:border-critical flex items-center gap-1"
+              >
+                <Icon name="trash" className="w-3.5 h-3.5" />
+                Delete
               </button>
             </div>
           </div>
@@ -1037,7 +1020,7 @@ export default function ShortlistApp() {
           </div>
         ) : (
           <div className="border border-border rounded-lg bg-surface overflow-x-auto">
-            <table className="w-full text-[12.5px] min-w-[900px]">
+            <table className="w-full text-[12.5px] min-w-[1900px]">
               <thead>
                 <tr className="border-b border-border text-left text-ink-muted text-[11px] uppercase tracking-wide">
                   <th className="px-3 py-2 w-8">
@@ -1051,11 +1034,18 @@ export default function ShortlistApp() {
                   <th className="px-3 py-2">Score</th>
                   <th className="px-3 py-2">Company</th>
                   <th className="px-3 py-2">Experience</th>
+                  <th className="px-3 py-2">Qualification</th>
                   <th className="px-3 py-2">Location</th>
-                  <th className="px-3 py-2">Notice</th>
+                  <th className="px-3 py-2">Compensation</th>
+                  <th className="px-3 py-2">Expectation</th>
+                  <th className="px-3 py-2">Notice period</th>
+                  <th className="px-3 py-2">Evaluation</th>
+                  <th className="px-3 py-2">Contact number</th>
+                  <th className="px-3 py-2">Email</th>
+                  <th className="px-3 py-2">LinkedIn</th>
                   <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Contact</th>
-                  <th className="px-3 py-2">Added</th>
+                  <th className="px-3 py-2">Date added</th>
+                  <th className="px-3 py-2 w-8"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -1089,8 +1079,25 @@ export default function ShortlistApp() {
                       </td>
                       <td className="px-3 py-2 text-ink-2">{c?.current_company || "Not found"}</td>
                       <td className="px-3 py-2 text-ink-2">{c?.total_experience_years != null ? `${c.total_experience_years} yrs` : "Not found"}</td>
+                      <td className="px-3 py-2 text-ink-2 max-w-[160px] truncate" title={c?.qualification || undefined}>{c?.qualification || "Not found"}</td>
                       <td className="px-3 py-2 text-ink-2">{c?.location || "Not found"}</td>
+                      <td className="px-3 py-2 text-ink-2">{c?.current_compensation || "Not found"}</td>
+                      <td className="px-3 py-2 text-ink-2">{c?.expected_compensation || "Not found"}</td>
                       <td className="px-3 py-2 text-ink-2">{c?.notice_period || "Not found"}</td>
+                      <td className="px-3 py-2 text-ink-muted max-w-[220px] truncate" title={m.evaluation || undefined}>
+                        <button onClick={() => c && openProfile(c.id, m)} className="hover:text-ink hover:underline text-left truncate block w-full">
+                          {m.evaluation || "Not evaluated yet"}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2 text-ink-muted text-[11.5px]">{c?.phone || "Not found"}</td>
+                      <td className="px-3 py-2 text-ink-muted text-[11.5px]">{c?.email || "Not found"}</td>
+                      <td className="px-3 py-2">
+                        {c?.linkedin_url ? (
+                          <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-brand font-semibold hover:underline">View</a>
+                        ) : (
+                          <span className="text-ink-muted">Not found</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2">
                         <select
                           value={m.status}
@@ -1100,62 +1107,17 @@ export default function ShortlistApp() {
                           {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
                         </select>
                       </td>
-                      <td className="px-3 py-2 text-ink-muted text-[11.5px]">
-                        {c?.email || "Not found"}
-                      </td>
                       <td className="px-3 py-2 text-ink-muted text-[11px]">{fmtDate(c?.created_at || null)}</td>
+                      <td className="px-3 py-2">
+                        <button onClick={() => unmatchCandidate(m)} title="Remove from this job" className="text-ink-muted hover:text-critical">
+                          <Icon name="trash" className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  function renderCandidatesLibrary() {
-    return (
-      <div className="flex flex-col gap-4">
-        {dropZone}
-        <div className="flex flex-wrap items-center gap-2">
-          <input value={candQuery} onChange={(e) => setCandQuery(e.target.value)} placeholder="Search name, company, email…" className="flex-1 min-w-[180px] border border-border rounded-md px-3 py-2 text-[13px] bg-surface outline-none focus:border-brand" />
-          <input value={candSkill} onChange={(e) => setCandSkill(e.target.value)} placeholder="Skill" className="w-[130px] border border-border rounded-md px-2.5 py-2 text-[12px] bg-surface outline-none" />
-          <input value={candLocation} onChange={(e) => setCandLocation(e.target.value)} placeholder="Location" className="w-[130px] border border-border rounded-md px-2.5 py-2 text-[12px] bg-surface outline-none" />
-          <input value={candMinExp} onChange={(e) => setCandMinExp(e.target.value.replace(/[^\d.]/g, ""))} placeholder="Min yrs" className="w-[80px] border border-border rounded-md px-2.5 py-2 text-[12px] bg-surface outline-none" />
-          <input value={candMaxExp} onChange={(e) => setCandMaxExp(e.target.value.replace(/[^\d.]/g, ""))} placeholder="Max yrs" className="w-[80px] border border-border rounded-md px-2.5 py-2 text-[12px] bg-surface outline-none" />
-          <input value={candNoticeMax} onChange={(e) => setCandNoticeMax(e.target.value.replace(/[^\d]/g, ""))} placeholder="Notice ≤ days" className="w-[110px] border border-border rounded-md px-2.5 py-2 text-[12px] bg-surface outline-none" />
-        </div>
-
-        {candidatesLoading ? (
-          <div className="text-[13px] text-ink-muted">Loading…</div>
-        ) : allCandidates.length === 0 ? (
-          <div className="border border-dashed border-border rounded-lg px-6 py-10 text-center text-[13px] text-ink-muted">
-            Drop CVs and Shortlist.ai will build your candidate library automatically.
-          </div>
-        ) : (
-          <div className="border border-border rounded-lg bg-surface divide-y divide-border">
-            {allCandidates.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => openProfile(c.id)}
-                className="w-full text-left flex items-center gap-3 px-3.5 py-2.5 hover:bg-page/60"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold text-ink flex items-center gap-1.5">
-                    {c.name || "Unnamed"}
-                    {c.dedupe_status === "possible_duplicate" && (
-                      <span className="text-[10px] font-semibold text-warning-text bg-warning-wash rounded-full px-1.5 py-0.5">Possible duplicate</span>
-                    )}
-                  </div>
-                  <div className="text-[11.5px] text-ink-muted truncate">
-                    {[c.current_company, c.location, c.qualification].filter(Boolean).join(" · ") || "No details extracted"}
-                  </div>
-                </div>
-                <div className="text-[11px] text-ink-muted flex-shrink-0">{fmtDate(c.created_at)}</div>
-              </button>
-            ))}
           </div>
         )}
       </div>
