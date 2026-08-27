@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Icon from "./Icon";
 import TopbarStatus from "./TopbarStatus";
+import { useToolHomeHandler } from "./ToolHomeContext";
 
 export default function Topbar({
   title,
@@ -16,6 +17,8 @@ export default function Topbar({
    *  not just hide below lg like it does on the Home page. */
   alwaysShowMenu?: boolean;
 }) {
+  const toolHome = useToolHomeHandler();
+
   return (
     <header className="flex-shrink-0 bg-surface px-4 sm:px-[26px] py-3 flex items-center gap-2">
       <button
@@ -34,7 +37,18 @@ export default function Topbar({
       >
         <Icon name="home" className="w-[15px] h-[15px]" />
       </Link>
-      <h1 className="m-0 ml-1 text-[15px] sm:text-[16px] font-semibold text-ink flex-shrink-0 truncate">{title}</h1>
+      {toolHome ? (
+        <button
+          type="button"
+          onClick={toolHome}
+          title={`Back to ${title} home`}
+          className="m-0 ml-1 text-[15px] sm:text-[16px] font-semibold text-ink flex-shrink-0 truncate hover:text-brand transition-colors"
+        >
+          {title}
+        </button>
+      ) : (
+        <h1 className="m-0 ml-1 text-[15px] sm:text-[16px] font-semibold text-ink flex-shrink-0 truncate">{title}</h1>
+      )}
       <div className="flex-1" />
       <TopbarStatus />
     </header>

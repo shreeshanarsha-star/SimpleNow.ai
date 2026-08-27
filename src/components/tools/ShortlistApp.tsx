@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "@/components/Icon";
+import { useRegisterToolHome } from "@/components/ToolHomeContext";
 
 // ---------------------------------------------------------------------
 // Types
@@ -298,6 +299,11 @@ export default function ShortlistApp() {
   function backToJobs() {
     setActiveJob(null);
   }
+
+  // Lets the top bar's "Shortlist.ai" title act as a "back to job list"
+  // shortcut while viewing a job's detail -- registered via Context since
+  // Topbar is a sibling, not a parent, of this component.
+  useRegisterToolHome(useCallback(() => setActiveJob(null), []));
 
   // -------------------------------------------------------------------
   // Delete / remove
@@ -991,26 +997,35 @@ export default function ShortlistApp() {
           </select>
         </div>
 
-        {selectedMatchIds.size > 0 && (
-          <div className="border border-brand/30 bg-brand-wash rounded-md px-3 py-2 flex flex-wrap items-center gap-2">
-            <span className="text-[12px] font-semibold text-brand">{selectedMatchIds.size} selected</span>
-            <select
-              onChange={(e) => {
-                if (e.target.value) bulkStatus(e.target.value as MatchStatus);
-                e.target.value = "";
-              }}
-              className="border border-border rounded-md px-2 py-1 text-[11.5px] bg-surface outline-none"
-              defaultValue=""
-            >
-              <option value="" disabled>Change status…</option>
-              {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-            </select>
-            <button onClick={() => setShowExport(true)} className="text-[11.5px] font-semibold text-ink-2 border border-border rounded-md px-2.5 py-1 bg-surface">Export</button>
-            <button onClick={() => setShowShare(true)} className="text-[11.5px] font-semibold text-ink-2 border border-border rounded-md px-2.5 py-1 bg-surface">Share</button>
-            <button onClick={() => bulkStatus("rejected")} className="text-[11.5px] font-semibold text-critical border border-border rounded-md px-2.5 py-1 bg-surface">Reject</button>
-            <button onClick={() => setSelectedMatchIds(new Set())} className="text-[11.5px] text-ink-muted ml-auto">Clear</button>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-[12px] text-ink-muted">
+            <input
+              type="checkbox"
+              checked={selectedMatchIds.size === matches.length && matches.length > 0}
+              onChange={(e) => setSelectedMatchIds(e.target.checked ? new Set(matches.map((m) => m.id)) : new Set())}
+            />
+            {selectedMatchIds.size > 0 ? `${selectedMatchIds.size} selected` : `Select all (${matches.length})`}
+          </label>
+          <button onClick={() => setShowExport(true)} className="text-[11.5px] font-semibold text-ink-2 border border-border rounded-md px-2.5 py-1 bg-surface hover:border-brand">Export</button>
+          <button onClick={() => setShowShare(true)} className="text-[11.5px] font-semibold text-ink-2 border border-border rounded-md px-2.5 py-1 bg-surface hover:border-brand">Share</button>
+          {selectedMatchIds.size > 0 && (
+            <>
+              <select
+                onChange={(e) => {
+                  if (e.target.value) bulkStatus(e.target.value as MatchStatus);
+                  e.target.value = "";
+                }}
+                className="border border-border rounded-md px-2 py-1 text-[11.5px] bg-surface outline-none"
+                defaultValue=""
+              >
+                <option value="" disabled>Change status…</option>
+                {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+              </select>
+              <button onClick={() => bulkStatus("rejected")} className="text-[11.5px] font-semibold text-critical border border-border rounded-md px-2.5 py-1 bg-surface">Reject</button>
+              <button onClick={() => setSelectedMatchIds(new Set())} className="text-[11.5px] text-ink-muted ml-auto">Clear</button>
+            </>
+          )}
+        </div>
 
         {matchesLoading ? (
           <div className="text-[13px] text-ink-muted">Loading candidates…</div>
@@ -1019,105 +1034,75 @@ export default function ShortlistApp() {
             Drop CVs here and Shortlist.ai will analyze and match them automatically.
           </div>
         ) : (
-          <div className="border border-border rounded-lg bg-surface overflow-x-auto">
-            <table className="w-full text-[12.5px] min-w-[1900px]">
-              <thead>
-                <tr className="border-b border-border text-left text-ink-muted text-[11px] uppercase tracking-wide">
-                  <th className="px-3 py-2 w-8">
+          <div className="flex flex-col gap-2.5">
+            {matches.map((m) => {
+              const c = m.candidate;
+              return (
+                <div key={m.id} className="border border-border rounded-lg bg-surface p-3.5 flex flex-col gap-2.5">
+                  <div className="flex flex-wrap items-start gap-2.5">
                     <input
                       type="checkbox"
-                      checked={selectedMatchIds.size === matches.length && matches.length > 0}
-                      onChange={(e) => setSelectedMatchIds(e.target.checked ? new Set(matches.map((m) => m.id)) : new Set())}
+                      className="mt-1"
+                      checked={selectedMatchIds.has(m.id)}
+                      onChange={(e) => {
+                        const next = new Set(selectedMatchIds);
+                        if (e.target.checked) next.add(m.id); else next.delete(m.id);
+                        setSelectedMatchIds(next);
+                      }}
                     />
-                  </th>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Score</th>
-                  <th className="px-3 py-2">Company</th>
-                  <th className="px-3 py-2">Experience</th>
-                  <th className="px-3 py-2">Qualification</th>
-                  <th className="px-3 py-2">Location</th>
-                  <th className="px-3 py-2">Compensation</th>
-                  <th className="px-3 py-2">Expectation</th>
-                  <th className="px-3 py-2">Notice period</th>
-                  <th className="px-3 py-2">Evaluation</th>
-                  <th className="px-3 py-2">Contact number</th>
-                  <th className="px-3 py-2">Email</th>
-                  <th className="px-3 py-2">LinkedIn</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Date added</th>
-                  <th className="px-3 py-2 w-8"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {matches.map((m) => {
-                  const c = m.candidate;
-                  return (
-                    <tr key={m.id} className="hover:bg-page/60">
-                      <td className="px-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedMatchIds.has(m.id)}
-                          onChange={(e) => {
-                            const next = new Set(selectedMatchIds);
-                            if (e.target.checked) next.add(m.id); else next.delete(m.id);
-                            setSelectedMatchIds(next);
-                          }}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <button onClick={() => c && openProfile(c.id, m)} className="font-semibold text-brand hover:underline text-left">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button onClick={() => c && openProfile(c.id, m)} className="font-semibold text-brand hover:underline text-[13.5px] text-left">
                           {c?.name || "Unnamed"}
                         </button>
-                        {c?.dedupe_status === "possible_duplicate" && (
-                          <div className="text-[10px] text-warning-text mt-0.5">Possible duplicate</div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
                         <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${scoreClass(m.overall_score)}`}>
                           {m.overall_score ?? "—"}
                         </span>
-                      </td>
-                      <td className="px-3 py-2 text-ink-2">{c?.current_company || "Not found"}</td>
-                      <td className="px-3 py-2 text-ink-2">{c?.total_experience_years != null ? `${c.total_experience_years} yrs` : "Not found"}</td>
-                      <td className="px-3 py-2 text-ink-2 max-w-[160px] truncate" title={c?.qualification || undefined}>{c?.qualification || "Not found"}</td>
-                      <td className="px-3 py-2 text-ink-2">{c?.location || "Not found"}</td>
-                      <td className="px-3 py-2 text-ink-2">{c?.current_compensation || "Not found"}</td>
-                      <td className="px-3 py-2 text-ink-2">{c?.expected_compensation || "Not found"}</td>
-                      <td className="px-3 py-2 text-ink-2">{c?.notice_period || "Not found"}</td>
-                      <td className="px-3 py-2 text-ink-muted max-w-[220px] truncate" title={m.evaluation || undefined}>
-                        <button onClick={() => c && openProfile(c.id, m)} className="hover:text-ink hover:underline text-left truncate block w-full">
-                          {m.evaluation || "Not evaluated yet"}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2 text-ink-muted text-[11.5px]">{c?.phone || "Not found"}</td>
-                      <td className="px-3 py-2 text-ink-muted text-[11.5px]">{c?.email || "Not found"}</td>
-                      <td className="px-3 py-2">
-                        {c?.linkedin_url ? (
-                          <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-brand font-semibold hover:underline">View</a>
-                        ) : (
-                          <span className="text-ink-muted">Not found</span>
+                        {c?.dedupe_status === "possible_duplicate" && (
+                          <span className="text-[10px] text-warning-text">Possible duplicate</span>
                         )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <select
-                          value={m.status}
-                          onChange={(e) => updateMatchStatus(m.id, e.target.value as MatchStatus)}
-                          className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-none outline-none ${statusPillClass(m.status)}`}
-                        >
-                          {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-                        </select>
-                      </td>
-                      <td className="px-3 py-2 text-ink-muted text-[11px]">{fmtDate(c?.created_at || null)}</td>
-                      <td className="px-3 py-2">
-                        <button onClick={() => unmatchCandidate(m)} title="Remove from this job" className="text-ink-muted hover:text-critical">
-                          <Icon name="trash" className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+                    </div>
+                    <select
+                      value={m.status}
+                      onChange={(e) => updateMatchStatus(m.id, e.target.value as MatchStatus)}
+                      className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-none outline-none ${statusPillClass(m.status)}`}
+                    >
+                      {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                    </select>
+                    <button onClick={() => unmatchCandidate(m)} title="Remove from this job" className="text-ink-muted hover:text-critical mt-0.5">
+                      <Icon name="trash" className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="grid sm:grid-cols-3 lg:grid-cols-5 gap-x-4 gap-y-2 text-[12px]">
+                    <Field label="Company" value={c?.current_company ?? null} />
+                    <Field label="Experience" value={c?.total_experience_years != null ? `${c.total_experience_years} yrs` : null} />
+                    <Field label="Qualification" value={c?.qualification ?? null} />
+                    <Field label="Location" value={c?.location ?? null} />
+                    <Field label="Notice period" value={c?.notice_period ?? null} />
+                    <Field label="Compensation" value={c?.current_compensation ?? null} />
+                    <Field label="Expectation" value={c?.expected_compensation ?? null} />
+                    <Field label="Contact number" value={c?.phone ?? null} />
+                    <Field label="Email" value={c?.email ?? null} />
+                    <div>
+                      <div className="text-ink-muted">LinkedIn</div>
+                      {c?.linkedin_url ? (
+                        <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-brand font-medium hover:underline">View</a>
+                      ) : (
+                        <div className="text-ink-2 font-medium">Not found</div>
+                      )}
+                    </div>
+                    <Field label="Date added" value={fmtDate(c?.created_at || null)} />
+                  </div>
+
+                  <button onClick={() => c && openProfile(c.id, m)} className="text-[12px] text-ink-muted hover:text-ink text-left">
+                    <span className="font-semibold text-ink-2">Evaluation: </span>
+                    {m.evaluation || "Not evaluated yet"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1169,6 +1154,7 @@ export default function ShortlistApp() {
                 <div className="grid sm:grid-cols-2 gap-5">
                   <div className="flex flex-col gap-3">
                     <div className="text-[12px] font-bold text-ink-muted uppercase tracking-wide">Professional Information</div>
+                    <EditableField label="Name" value={profileData.candidate.name} field="name" manual={profileData.candidate.manual_fields} editingField={editingField} setEditingField={setEditingField} onSave={saveField} />
                     <EditableField label="Current company" value={profileData.candidate.current_company} field="current_company" manual={profileData.candidate.manual_fields} editingField={editingField} setEditingField={setEditingField} onSave={saveField} />
                     <EditableField label="Total experience (yrs)" value={profileData.candidate.total_experience_years} field="total_experience_years" manual={profileData.candidate.manual_fields} editingField={editingField} setEditingField={setEditingField} onSave={saveField} type="number" />
                     <EditableField label="Qualification" value={profileData.candidate.qualification} field="qualification" manual={profileData.candidate.manual_fields} editingField={editingField} setEditingField={setEditingField} onSave={saveField} />

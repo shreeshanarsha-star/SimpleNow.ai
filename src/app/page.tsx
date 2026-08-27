@@ -1,35 +1,10 @@
-import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import Avatar from "@/components/Avatar";
 import GoldSearchGlyph from "@/components/GoldSearchGlyph";
 import GlobalSearchBar from "@/components/GlobalSearchBar";
-import Icon from "@/components/Icon";
-import { DEPARTMENTS, PERSONAL_TOOLS, totalLiveTools, type Tool } from "@/lib/departments";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
-
-// A short, real, hand-picked set of live tools to spotlight on first
-// arrival -- never the whole catalog (that's what Sidebar + search are
-// for). Every href here is a genuine route from departments.ts, nothing
-// fabricated. Order is deliberate: the two heaviest-used HR tools, then
-// one from elsewhere in Talent Acquisition, then Personal Tools last
-// since it's available regardless of org/license.
-const SPOTLIGHT_KEYS = ["Talent.ai", "Job Postings.ai", "Offer.ai"];
-
-function findSpotlightTools(): (Tool & { deptIcon: string })[] {
-  const found: (Tool & { deptIcon: string })[] = [];
-  for (const key of SPOTLIGHT_KEYS) {
-    for (const dept of DEPARTMENTS) {
-      const t = dept.tools.find((tool) => tool.n === key && tool.s === "live" && tool.href);
-      if (t) {
-        found.push({ ...t, deptIcon: dept.icon });
-        break;
-      }
-    }
-  }
-  return found;
-}
 
 function greetingWord(): string {
   const hour = new Date().getHours();
@@ -57,9 +32,6 @@ export default async function OverviewPage() {
     firstName = label ? label.split(" ")[0] : null;
     avatarUrl = profile?.avatar_url ?? null;
   }
-
-  const spotlight = findSpotlightTools();
-  const deptCount = DEPARTMENTS.length;
 
   return (
     <AppShell title="Overview" sidebarMode="home">
@@ -111,20 +83,6 @@ export default async function OverviewPage() {
             <div className="text-[30px] sm:text-[34px] font-semibold text-ink tracking-tight leading-tight">
               What do you need?
             </div>
-            <div className="text-[14.5px] text-ink-muted max-w-[440px] mx-auto">
-              One place to search, ask, and work across every AI system your
-              organization has licensed.
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 text-[12.5px] text-ink-muted">
-            <span className="inline-flex items-center gap-1.5 bg-brand-wash text-brand-dark rounded-full px-3 py-1 font-medium">
-              <span className="w-[6px] h-[6px] rounded-full bg-good" />
-              {totalLiveTools} live AI systems
-            </span>
-            <span className="inline-flex items-center gap-1.5 bg-surface border border-border rounded-full px-3 py-1 font-medium shadow-soft-sm">
-              {deptCount} departments mapped
-            </span>
           </div>
         </div>
 
@@ -132,32 +90,6 @@ export default async function OverviewPage() {
           <GlobalSearchBar />
         </div>
 
-        {spotlight.length > 0 && (
-          <div className="relative z-10 px-[26px] pb-6 -mt-2">
-            <div className="max-w-[640px] mx-auto flex flex-wrap items-center justify-center gap-2">
-              <span className="text-[11.5px] text-ink-muted font-medium mr-1">
-                Quick start:
-              </span>
-              {spotlight.map((tool) => (
-                <Link
-                  key={tool.n}
-                  href={tool.href!}
-                  className="inline-flex items-center gap-1.5 bg-surface border border-border rounded-full px-3 py-1.5 text-[12.5px] font-medium text-ink-2 shadow-soft-sm hover:border-brand hover:text-brand-dark transition-colors"
-                >
-                  <Icon name={tool.deptIcon} className="w-3.5 h-3.5" />
-                  {tool.n}
-                </Link>
-              ))}
-              <Link
-                href={`/departments/${PERSONAL_TOOLS.id}`}
-                className="inline-flex items-center gap-1.5 bg-surface border border-border rounded-full px-3 py-1.5 text-[12.5px] font-medium text-ink-2 shadow-soft-sm hover:border-brand hover:text-brand-dark transition-colors"
-              >
-                <Icon name={PERSONAL_TOOLS.icon} className="w-3.5 h-3.5" />
-                Personal Tools
-              </Link>
-            </div>
-          </div>
-        )}
       </div>
     </AppShell>
   );
