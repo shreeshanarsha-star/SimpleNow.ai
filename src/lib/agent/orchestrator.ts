@@ -5,7 +5,7 @@ import { callAgentModel, type AgentMessage } from "./model";
 export type QueryResult = {
   conversationId: string;
   reply: string;
-  resultType: "text" | "search" | "weather" | "currency" | "calc" | "clarify" | "navigate" | "candidates";
+  resultType: "text" | "search" | "weather" | "currency" | "calc" | "clarify" | "navigate" | "candidates" | "todo";
   resultData: Record<string, unknown> | null;
   toolsUsed: string[];
 };
@@ -34,6 +34,8 @@ function toolResultTypeFor(toolName: string | null): QueryResult["resultType"] {
       return "navigate";
     case "find_top_candidates":
       return "candidates";
+    case "add_todo":
+      return "todo";
     default:
       return "text";
   }
@@ -85,6 +87,7 @@ Rules:
 - Only call save_memory for something the user clearly wants remembered long-term (a preference, their city, etc.), not incidental details.
 - If the user wants to GO somewhere or DO something inside Askshree (e.g. "create a requisition", "open job postings", "take me to my candidates"), call open_feature -- don't just describe how to get there.
 - If the user asks who the best/most suitable candidate is for a requisition (by number or role title), call find_top_candidates -- this is a real database lookup against Talent.ai's own match scores, don't guess or use search_web for it.
+- If the user asks to add/put/remind them of something on their to-do or task list, call add_todo -- this really creates the item. After it succeeds, reply with a short confirmation like "Added to your to-do list." (the app itself shows a "View list" link next to your reply, so don't invent your own link or say where to click).
 - If either open_feature or find_top_candidates reports hasAccess: false, tell the user plainly they don't have access to Talent.ai yet and to ask their org admin -- do not say you opened or looked something up, and do not proceed as if you did. If find_top_candidates reports requisitionFound: false, say you couldn't find a requisition matching that, and mention otherPossibleMatches if any were close.
 - Never fabricate that an external action succeeded.
 

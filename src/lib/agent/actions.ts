@@ -468,6 +468,53 @@ const openFeature: ActionSpec = {
   },
 };
 
+// --- add_todo -------------------------------------------------------
+// Lets the agent actually create a real row in the user's personal
+// To-Do List (same table/insert shape as POST /api/personal/todos),
+// instead of just talking about adding it. write_reversible: a mistaken
+// add is trivially undone by deleting/un-checking the item afterward.
+const addTodo: ActionSpec = {
+  name: "add_todo",
+  description:
+    'Add a task to the user\'s personal To-Do List. Use this whenever the user asks to add/put/remind them of something on their to-do list or task list -- e.g. "add call Ravi tomorrow to my to-do list", "remind me to send the invoice", "put buy groceries on my list". If the user gives a relative date ("tomorrow", "next Monday"), call get_current_datetime first and pass an absolute due_date. Do not use this for one-off reminders about something happening right now -- only for actual to-do list items.',
+  parameters: {
+    type: "object",
+    properties: {
+      text: { type: "string", description: "The task text, e.g. 'Call Ravi'." },
+      due_date: { type: "string", description: "Optional due date as YYYY-MM-DD." },
+    },
+    required: ["text"],
+  },
+  riskTier: "write_reversible",
+  async run(args, ctx) {
+    const text = typeof args?.text === "string" ? args.text.trim() : "";
+    if (!text) return { ok: false, error: "No task text given." };
+    const dueDate =
+      typeof args?.due_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(args.due_date) ? args.due_date : null;
+
+    const { data: existing } = await ctx.supabase
+      .from("personal_todos")
+      .select("position")
+      .eq("user_id", ctx.userId)
+      .order("position", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const nextPosition = existing ? existing.position + 1 : 0;
+
+    const { data: todo, error } = await ctx.supabase
+      .from("personal_todos")
+      .insert({ user_id: ctx.userId, text, position: nextPosition, due_date: dueDate })
+      .select()
+      .single();
+    if (error) return { ok: false, error: error.message };
+
+    return {
+      ok: true,
+      data: { added: true, id: todo.id, text: todo.text, dueDate: todo.due_date, href: "/tools/widgets-ai?tool=todo" },
+    };
+  },
+};
+
 // --- find_top_candidates -------------------------------------------------
 // Answers "who is the best candidate for R-2208261" for real, against the
 // actual Talent.ai pipeline -- not a web search. Reuses the same
@@ -561,6 +608,7 @@ export const ACTION_REGISTRY: ActionSpec[] = [
   getMemory,
   openFeature,
   findTopCandidates,
+  addTodo,
 ];
 
 export function getAction(name: string): ActionSpec | undefined {

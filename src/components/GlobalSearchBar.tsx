@@ -6,7 +6,7 @@ import Icon from "./Icon";
 import { VScroller } from "./Scroller";
 import { ALL_ITEMS } from "@/lib/departments";
 
-type ResultType = "text" | "search" | "weather" | "currency" | "calc" | "clarify" | "navigate" | "candidates";
+type ResultType = "text" | "search" | "weather" | "currency" | "calc" | "clarify" | "navigate" | "candidates" | "todo";
 
 type FeedTurn = {
   id: string;
@@ -422,6 +422,22 @@ function FeedCard({ turn }: { turn: FeedTurn }) {
             ))}
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (turn.resultType === "todo" && data && data.added) {
+    return (
+      <div className="self-start max-w-[85%] bg-surface border border-border rounded-md px-3.5 py-2 text-[13px] text-ink shadow-soft-sm flex flex-col gap-1.5">
+        <span className="whitespace-pre-wrap">{turn.content}</span>
+        <div className="flex items-center gap-1.5 text-[12px]">
+          <span className="text-ink-muted truncate">&quot;{String(data.text)}&quot; added.</span>
+          {typeof data.href === "string" && (
+            <a href={data.href} className="font-semibold text-brand flex-shrink-0 hover:underline">
+              View here →
+            </a>
+          )}
+        </div>
       </div>
     );
   }

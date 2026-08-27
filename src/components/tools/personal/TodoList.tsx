@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
 
-type Todo = { id: string; text: string; done: boolean; position: number; created_at: string; due_date: string | null };
+type Todo = {
+  id: string;
+  text: string;
+  done: boolean;
+  position: number;
+  created_at: string;
+  due_date: string | null;
+  completed_at: string | null;
+};
 
 export default function TodoList() {
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -12,8 +20,10 @@ export default function TodoList() {
   const [text, setText] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [adding, setAdding] = useState(false);
-  const [hideDone, setHideDone] = useState(false);
   const [editingDateId, setEditingDateId] = useState<string | null>(null);
+  // Completed tasks live in their own folder, closed by default -- they're
+  // meant to be out of the way, not just struck-through in the same list.
+  const [showCompleted, setShowCompleted] = useState(false);
 
   useEffect(() => {
     load();
@@ -72,7 +82,11 @@ export default function TodoList() {
   }
 
   async function toggle(id: string, done: boolean) {
-    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done } : t)));
+    // Optimistic completed_at: mirrors what the server will actually
+    // stamp on PATCH, so the Completed folder shows correct times
+    // immediately instead of waiting on a refetch.
+    const nowIso = new Date().toISOString();
+    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done, completed_at: done ? nowIso : null } : t)));
     try {
       await fetch(`/api/personal/todos/${id}`, {
         method: "PATCH",
@@ -93,8 +107,15 @@ export default function TodoList() {
     }
   }
 
-  const visible = hideDone ? todos.filter((t) => !t.done) : todos;
-  const doneCount = todos.filter((t) => t.done).length;
+  const active = todos.filter((t) => !t.done);
+  const completed = todos
+    .filter((t) => t.done)
+    .slice()
+    .sort((a, b) => {
+      const at = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+      const bt = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+      return bt - at; // most recently completed first
+    });
 
   if (loading) return <div className="text-[13px] text-ink-muted">Loading to-dos…</div>;
 
@@ -104,6 +125,23 @@ export default function TodoList() {
     // regardless of the viewer's timezone offset from UTC.
     const d = new Date(iso + "T00:00:00");
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+  function formatDateTime(iso: string) {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + ", " +
+      d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  }
+  function formatDuration(startIso: string, endIso: string) {
+    const ms = Math.max(0, new Date(endIso).getTime() - new Date(startIso).getTime());
+    const mins = Math.round(ms / 60000);
+    if (mins < 1) return "< 1 min";
+    if (mins < 60) return `${mins} min`;
+    const hours = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    if (hours < 24) return remMins ? `${hours} hr ${remMins} min` : `${hours} hr`;
+    const days = Math.floor(hours / 24);
+    const remHours = hours % 24;
+    return remHours ? `${days} d ${remHours} hr` : `${days} d`;
   }
 
   return (
@@ -134,36 +172,23 @@ export default function TodoList() {
         </button>
       </form>
 
-      <div className="flex items-center justify-between text-[11.5px] text-ink-muted">
-        <span>
-          {doneCount} of {todos.length} done
-        </span>
-        <button onClick={() => setHideDone((v) => !v)} className="font-semibold text-brand">
-          {hideDone ? "Show completed" : "Hide completed"}
-        </button>
-      </div>
-
       <div className="border border-border rounded-lg bg-surface divide-y divide-border overflow-hidden">
-        {visible.length === 0 && (
+        {active.length === 0 && (
           <div className="text-[12.5px] text-ink-muted text-center px-3 py-6">
             {todos.length === 0 ? "Nothing on your list yet." : "All caught up."}
           </div>
         )}
-        {visible.map((t) => {
+        {active.map((t) => {
           const overdue = !!t.due_date && !t.done && t.due_date < todayStr;
           return (
             <div key={t.id} className="flex items-center gap-2.5 px-3 py-2.5">
               <button
-                onClick={() => toggle(t.id, !t.done)}
-                className={`w-4.5 h-4.5 rounded-sm border flex-shrink-0 flex items-center justify-center ${
-                  t.done ? "bg-brand border-brand text-white" : "border-border-strong"
-                }`}
+                onClick={() => toggle(t.id, true)}
+                className="w-4.5 h-4.5 rounded-sm border border-border-strong flex-shrink-0 flex items-center justify-center"
                 style={{ width: 18, height: 18 }}
-                aria-label={t.done ? "Mark not done" : "Mark done"}
-              >
-                {t.done && <Icon name="check" className="w-3 h-3" />}
-              </button>
-              <span className={`flex-1 text-[13px] ${t.done ? "line-through text-ink-muted" : "text-ink"}`}>{t.text}</span>
+                aria-label="Mark done"
+              />
+              <span className="flex-1 text-[13px] text-ink">{t.text}</span>
 
               {editingDateId === t.id ? (
                 <input
@@ -201,6 +226,56 @@ export default function TodoList() {
             </div>
           );
         })}
+      </div>
+
+      {/* Completed folder -- finished tasks are auto-saved here (with their
+          created/completed timestamps and time-to-complete) and kept out of
+          the active list, rather than just struck through above it. */}
+      <div className="border border-border rounded-lg bg-surface overflow-hidden">
+        <button
+          onClick={() => setShowCompleted((v) => !v)}
+          className="w-full flex items-center gap-2 px-3 py-2.5 text-[12.5px] font-semibold text-ink-2"
+        >
+          <Icon name="boxArchive" className="w-3.5 h-3.5 text-ink-muted" />
+          <span className="flex-1 text-left">Completed</span>
+          <span className="text-ink-muted font-normal">{completed.length}</span>
+          <Icon
+            name="chevronDown"
+            className={`w-3.5 h-3.5 text-ink-muted transition-transform ${showCompleted ? "rotate-180" : ""}`}
+          />
+        </button>
+        {showCompleted && (
+          <div className="border-t border-border divide-y divide-border">
+            {completed.length === 0 && (
+              <div className="text-[12.5px] text-ink-muted text-center px-3 py-6">
+                Nothing completed yet.
+              </div>
+            )}
+            {completed.map((t) => (
+              <div key={t.id} className="flex items-start gap-2.5 px-3 py-2.5">
+                <button
+                  onClick={() => toggle(t.id, false)}
+                  className="w-4.5 h-4.5 rounded-sm border bg-brand border-brand text-white flex-shrink-0 flex items-center justify-center mt-0.5"
+                  style={{ width: 18, height: 18 }}
+                  aria-label="Mark not done"
+                >
+                  <Icon name="check" className="w-3 h-3" />
+                </button>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] text-ink-muted line-through truncate">{t.text}</div>
+                  <div className="text-[11px] text-ink-muted mt-0.5 flex flex-wrap gap-x-2.5 gap-y-0.5">
+                    <span>Created {formatDateTime(t.created_at)}</span>
+                    {t.completed_at && <span>Completed {formatDateTime(t.completed_at)}</span>}
+                    {t.completed_at && <span>Took {formatDuration(t.created_at, t.completed_at)}</span>}
+                  </div>
+                </div>
+                <button onClick={() => remove(t.id)} className="text-ink-muted hover:text-critical flex-shrink-0" aria-label="Delete">
+                  <Icon name="x" className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

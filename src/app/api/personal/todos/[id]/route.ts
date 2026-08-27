@@ -11,7 +11,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
   const patch: Record<string, unknown> = {};
-  if (typeof body.done === "boolean") patch.done = body.done;
+  if (typeof body.done === "boolean") {
+    patch.done = body.done;
+    // Stamp/clear completed_at alongside done so the Completed folder can
+    // show when a task actually finished (and how long it took), without
+    // trusting the client to send its own timestamp.
+    patch.completed_at = body.done ? new Date().toISOString() : null;
+  }
   if (typeof body.text === "string" && body.text.trim()) patch.text = body.text.trim();
   if (typeof body.position === "number") patch.position = body.position;
   // due_date: a YYYY-MM-DD string to set/change it, or null to clear it.
