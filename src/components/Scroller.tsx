@@ -48,8 +48,17 @@ export function HScroller({
     el.scrollBy({ left: dir * Math.min(280, el.clientWidth * 0.7), behavior: "smooth" });
   };
 
+  // Tailwind's compiled stylesheet orders position utilities as
+  // static/fixed/absolute/relative/sticky regardless of class-attribute
+  // order, so unconditionally prefixing "relative" here would silently
+  // beat a caller's "absolute"/"fixed"/"sticky" (equal specificity, later
+  // in the sheet wins) -- the wrapper would stay in normal flow instead of
+  // overlaying, growing the layout instead of floating over it. Only
+  // default to relative when the caller hasn't already set a position.
+  const hasPosition = /\b(absolute|fixed|sticky|static)\b/.test(className);
+
   return (
-    <div className={`relative ${className}`}>
+    <div className={`${hasPosition ? "" : "relative"} ${className}`}>
       <div
         ref={trackRef}
         onScroll={updateArrows}
@@ -130,8 +139,13 @@ export const VScroller = forwardRef<HTMLDivElement, {
     el.scrollBy({ top: dir * Math.min(160, el.clientHeight * 0.6), behavior: "smooth" });
   };
 
+  // Same Tailwind cascade-order hazard as HScroller above -- don't force
+  // "relative" when the caller already supplied a position utility (e.g.
+  // "absolute ... bottom-[...]" to float this panel over other content).
+  const hasPosition = /\b(absolute|fixed|sticky|static)\b/.test(className);
+
   return (
-    <div className={`relative ${className}`} onClick={onClick}>
+    <div className={`${hasPosition ? "" : "relative"} ${className}`} onClick={onClick}>
       <div
         ref={setRefs}
         onScroll={updateArrows}
