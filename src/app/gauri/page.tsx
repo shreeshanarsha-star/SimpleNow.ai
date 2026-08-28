@@ -20,37 +20,12 @@ import { DEFAULT_THEME, getThemeAccentStyle } from "@/components/gauri/gauriThem
 const LANGUAGES = [
   { code: "English", speechLang: "en-IN", label: "English" },
   { code: "Hindi", speechLang: "hi-IN", label: "हिंदी" },
-  { code: "Kannada", speechLang: "kn-IN", label: "ಕನ್ನಡ" },
-  { code: "Tamil", speechLang: "ta-IN", label: "தமிழ்" },
-  { code: "Telugu", speechLang: "te-IN", label: "తెలుగు" },
-  { code: "Marathi", speechLang: "mr-IN", label: "मराठी" },
-  { code: "Bengali", speechLang: "bn-IN", label: "বাংলা" },
-  { code: "Gujarati", speechLang: "gu-IN", label: "ગુજરાતી" },
-  { code: "Punjabi", speechLang: "pa-IN", label: "ਪੰਜਾਬੀ" },
-  { code: "Malayalam", speechLang: "ml-IN", label: "മലയാളം" },
 ];
 const GREETING: Record<string, string> = {
   English: "Namaste. I am Gauri. Please tell me what's happening with your cow — I'm listening.",
   Hindi: "नमस्ते। मैं गौरी हूँ। कृपया बताइए आपकी गाय को क्या हुआ है — मैं सुन रही हूँ।",
-  Kannada: "ನಮಸ್ತೆ. ನಾನು ಗೌರಿ. ದಯವಿಟ್ಟು ನಿಮ್ಮ ಹಸುವಿಗೆ ಏನಾಗಿದೆ ಎಂದು ಹೇಳಿ — ನಾನು ಕೇಳುತ್ತಿದ್ದೇನೆ.",
-  Tamil: "வணக்கம். நான் கௌரி. உங்கள் பசுவுக்கு என்ன ஆனது என்று சொல்லுங்கள் — நான் கேட்டுக்கொண்டிருக்கிறேன்.",
-  Telugu: "నమస్తే. నేను గౌరి. మీ ఆవుకు ఏమైందో దయచేసి చెప్పండి — నేను వింటున్నాను.",
-  Marathi: "नमस्कार. मी गौरी आहे. कृपया सांगा तुमच्या गायीला काय झाले आहे — मी ऐकत आहे.",
-  Bengali: "নমস্কার। আমি গৌরী। দয়া করে বলুন আপনার গরুর কী হয়েছে — আমি শুনছি।",
-  Gujarati: "નમસ્તે. હું ગૌરી છું. કૃપા કરી કહો તમારી ગાયને શું થયું છે — હું સાંભળી રહી છું.",
-  Punjabi: "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ। ਮੈਂ ਗੌਰੀ ਹਾਂ। ਕਿਰਪਾ ਕਰਕੇ ਦੱਸੋ ਤੁਹਾਡੀ ਗਾਂ ਨੂੰ ਕੀ ਹੋਇਆ ਹੈ — ਮੈਂ ਸੁਣ ਰਹੀ ਹਾਂ।",
-  Malayalam: "നമസ്തേ. ഞാൻ ഗൗരി. നിങ്ങളുടെ പശുവിന് എന്ത് സംഭവിച്ചു എന്ന് ദയവായി പറയൂ — ഞാൻ കേൾക്കുന്നു.",
 };
 const STATE_LANGUAGE: Record<string, string> = {
-  Karnataka: "Kannada",
-  "Tamil Nadu": "Tamil",
-  "Andhra Pradesh": "Telugu",
-  Telangana: "Telugu",
-  Maharashtra: "Marathi",
-  "West Bengal": "Bengali",
-  Gujarat: "Gujarati",
-  Punjab: "Punjabi",
-  Kerala: "Malayalam",
 };
 
 interface Message { role: "farmer" | "gauri"; text: string; }

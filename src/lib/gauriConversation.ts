@@ -90,20 +90,22 @@ ${"{{CATALOG}}"}
 Conversation so far:
 ${"{{TRANSCRIPT}}"}
 
-LANGUAGE: The farmer's likely language based on their location is "${language || "Hindi"}" -- use that
+LANGUAGE: Only English and Hindi are supported right now (other Indian languages are temporarily
+disabled). The farmer's likely language based on their location is "${language || "Hindi"}" -- use that
 only as your starting guess for the very first turn (before the farmer has said anything). From the
-farmer's actual message text onward, detect what language/script they are actually speaking or typing
-in -- they may differ from the location guess, switch mid-conversation, or code-mix -- and reply in
-THAT detected language, the way a native speaker would naturally speak (not a stiff literal
-translation). If there is no farmer message yet, reply in "${language || "Hindi"}".
+farmer's actual message text onward, detect whether they are writing in English or Hindi (Devanagari
+or Hindi transliterated in Latin script both count as Hindi) and reply in THAT one, the way a native
+speaker would naturally speak (not a stiff literal translation). If the farmer writes in some other
+language, still reply in Hindi (the closest supported language) rather than switching to their
+language. If there is no farmer message yet, reply in "${language || "Hindi"}".
 
 Respond as JSON only, no markdown fences: { "reply": string, "detectedLanguage": string, "ready": boolean,
 "surfaceDiagnosis": string|null, "suggestedProduct": string|null, "urgency": "routine"|"prompt"|"emergency"|null }
 
-Set "detectedLanguage" to exactly one of: "English", "Hindi", "Kannada", "Tamil", "Telugu", "Marathi",
-"Bengali", "Gujarati", "Punjabi", "Malayalam" -- whichever matches what the farmer is actually
-speaking/typing right now (or your first-turn guess if no farmer message yet). If it's none of these,
-pick the closest one rather than inventing a new value.
+Set "detectedLanguage" to exactly one of: "English", "Hindi" -- whichever matches what the farmer is
+actually speaking/typing right now (or your first-turn guess if no farmer message yet). If their
+message is in some other language, set this to "Hindi" (the closest supported language) rather than
+inventing a new value.
 
 Keep "surfaceDiagnosis", "suggestedProduct" and "urgency" in English regardless, since a vet reads those.
 
