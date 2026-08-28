@@ -163,9 +163,14 @@ export const DEPARTMENTS: Department[] = [
     id: "support",
     name: "Customer Success & Support",
     icon: "headset",
-    status: "soon",
+    status: "live",
     desc: "Ticket triage, churn signals, and support copiloting.",
     tools: [
+      // Bundled, same as Team Chat / Contracts & eSign -- Gauri.ai has its
+      // own self-contained staff login (vet/agent/stockist/paramed/admin),
+      // completely separate from org licensing, so it must stay reachable
+      // regardless of an org's feature grants.
+      { n: "Gauri.ai", s: "live", href: "/gauri", bundled: true },
       { n: "Ticket Triage.ai", s: "soon" },
       { n: "Churn Signal.ai", s: "soon" },
       { n: "Support Copilot.ai", s: "soon" },

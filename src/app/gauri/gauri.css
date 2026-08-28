@@ -1,0 +1,140 @@
+/* Gauri.ai -- scoped port of askshree-app (v1)'s dark/amber "reactor" visual
+   language (globals.css), narrowed to exactly the classes Gauri.ai's pages
+   use. Every rule is nested under .gauri-scope so it can't leak into (or be
+   overridden by) v2's own ivory/gold site-wide tokens -- both stylesheets
+   load site-wide, but only elements inside .gauri-scope pick these up. */
+
+.gauri-scope {
+  --navy: #0b0f1a;
+  --navy-2: #111726;
+  --amber: #e8a33d;
+  --amber-dim: #b9822f;
+  --amber-rgb: 232, 163, 61;
+  --cream: #ede8dc;
+  --slate: #8a93a6;
+  --line: rgba(232, 163, 61, 0.16);
+
+  position: relative;
+  min-height: 100vh;
+  background: var(--navy);
+  color: var(--cream);
+  font-family: "Plus Jakarta Sans", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.gauri-scope * { box-sizing: border-box; }
+.gauri-scope { scrollbar-width: thin; scrollbar-color: var(--amber-dim) transparent; }
+.gauri-scope ::-webkit-scrollbar { width: 9px; height: 9px; }
+.gauri-scope ::-webkit-scrollbar-track { background: transparent; }
+.gauri-scope ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--amber-dim), #8a611f);
+  border-radius: 20px; border: 2px solid var(--navy); background-clip: padding-box;
+}
+.gauri-scope ::-webkit-scrollbar-thumb:hover { background: var(--amber); background-clip: padding-box; }
+
+.gauri-scope .serif { font-family: "Fraunces", serif; }
+.gauri-scope .eyebrow {
+  font-family: "Plus Jakarta Sans", sans-serif; font-weight: 500; letter-spacing: 0.01em;
+  font-size: 12.5px; color: var(--amber-dim); margin-bottom: 18px;
+  display: flex; align-items: center; gap: 10px; justify-content: center;
+}
+.gauri-scope .file-hint { font-size: 11.5px; color: var(--slate); margin-top: 8px; line-height: 1.6; }
+.gauri-scope .primary-btn {
+  margin-top: 18px; border: 1px solid var(--amber-dim); color: var(--amber); background: transparent;
+  font-family: "Plus Jakarta Sans", sans-serif; font-weight: 500; letter-spacing: 0.01em; font-size: 12px;
+  padding: 11px 26px; border-radius: 6px; cursor: pointer;
+}
+.gauri-scope .primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.gauri-scope .free-text-input {
+  width: 100%; background: rgba(255, 255, 255, 0.025); border: 1px solid var(--line); border-radius: 8px;
+  padding: 14px; color: var(--cream); font-size: 13px; font-family: "Plus Jakarta Sans", sans-serif;
+  font-weight: 500; letter-spacing: 0.01em; outline: none;
+}
+
+/* ---------- Admin/staff dashboard shell ---------- */
+.gauri-scope .admin-shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; position: relative; z-index: 2; }
+.gauri-scope .admin-side { border-right: 1px solid var(--line); padding: 24px 0; }
+.gauri-scope .admin-side .logo { font-family: "Fraunces", serif; font-size: 16px; padding: 0 24px 24px; border-bottom: 1px solid var(--line); color: var(--cream); }
+.gauri-scope .admin-side .logo span { color: var(--amber); }
+.gauri-scope .admin-nav { margin-top: 20px; }
+.gauri-scope .admin-nav a { display: block; padding: 10px 24px; font-size: 13px; color: var(--slate); text-decoration: none; }
+.gauri-scope .admin-nav a.active { color: var(--cream); background: rgba(255, 255, 255, 0.04); border-left: 2px solid var(--amber); }
+.gauri-scope .admin-main { padding: 32px 40px; }
+.gauri-scope .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 26px; }
+.gauri-scope .admin-header h2 { font-family: "Fraunces", serif; font-size: 20px; color: var(--cream); font-weight: 500; margin: 0; }
+.gauri-scope .panel { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 22px; background: rgba(255, 255, 255, 0.018); backdrop-filter: blur(4px); }
+.gauri-scope .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--line); }
+.gauri-scope .panel-head h3 { font-size: 13.5px; color: var(--cream); font-weight: 500; font-family: "Plus Jakarta Sans", sans-serif; margin: 0; }
+.gauri-scope .panel-head .action { font-size: 11.5px; color: var(--amber); font-family: "Plus Jakarta Sans", sans-serif; font-weight: 500; letter-spacing: 0.01em; }
+.gauri-scope table.admin-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.gauri-scope table.admin-table th {
+  text-align: left; padding: 10px 20px; color: var(--slate); font-weight: 500; font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1px solid var(--line);
+}
+.gauri-scope table.admin-table td { padding: 11px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-family: "Plus Jakarta Sans", sans-serif; font-weight: 500; letter-spacing: 0.01em; font-size: 12px; color: var(--cream); }
+.gauri-scope td.name-cell { font-family: "Plus Jakarta Sans", sans-serif; }
+.gauri-scope .status-pill { font-family: "Plus Jakarta Sans", sans-serif; font-size: 10.5px; font-weight: 500; padding: 3px 10px; border-radius: 12px; }
+.gauri-scope .row-action { font-size: 11px; color: var(--slate); text-decoration: underline; cursor: pointer; margin-right: 10px; font-family: "Plus Jakarta Sans", sans-serif; }
+
+/* ---------- Staff login ---------- */
+.gauri-scope .login-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; position: relative; z-index: 2; }
+.gauri-scope .login-card { width: 340px; border: 1px solid var(--line); border-radius: 12px; padding: 36px 30px; background: rgba(255, 255, 255, 0.02); }
+.gauri-scope .login-card .mark {
+  width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--amber-dim); color: var(--amber);
+  display: flex; align-items: center; justify-content: center; font-family: "Fraunces", serif; font-size: 15px; margin-bottom: 18px;
+}
+.gauri-scope .login-card .logo { font-family: "Fraunces", serif; font-size: 18px; color: var(--cream); margin-bottom: 4px; }
+.gauri-scope .login-card .logo span { color: var(--amber); }
+.gauri-scope .login-card .sub { font-size: 12px; color: var(--slate); margin-bottom: 26px; }
+.gauri-scope .login-card label { font-size: 11.5px; color: var(--slate); display: block; margin-bottom: 6px; font-family: "Plus Jakarta Sans", sans-serif; font-weight: 500; letter-spacing: 0.01em; }
+.gauri-scope .login-card input {
+  width: 100%; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 6px;
+  padding: 10px 12px; color: var(--cream); font-size: 13px; margin-bottom: 16px; outline: none; font-family: "Plus Jakarta Sans", sans-serif;
+}
+.gauri-scope .login-card button {
+  width: 100%; background: var(--amber); color: #1a1204; border: none; border-radius: 6px; padding: 11px;
+  font-weight: 500; font-size: 13px; cursor: pointer; font-family: "Plus Jakarta Sans", sans-serif;
+}
+
+/* ---------- Expressive avatar shell (two-column glass panel) ---------- */
+.gauri-scope .gav-shell {
+  position: relative; display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 0; align-items: stretch;
+  border: 1.5px solid rgba(var(--amber-rgb), 0.24); border-radius: 22px; padding: 32px 36px; margin-top: 6px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.008));
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.25) inset;
+}
+.gauri-scope .gav-shell-col { display: flex; flex-direction: column; min-width: 0; padding: 0 31px; }
+.gauri-scope .gav-shell-col:first-child { padding-left: 0; }
+.gauri-scope .gav-shell-col:last-child { padding-right: 0; position: relative; }
+.gauri-scope .gav-shell-col:last-child::before {
+  content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 1.5px;
+  background: linear-gradient(180deg, transparent, rgba(var(--amber-rgb), 0.28) 15%, rgba(var(--amber-rgb), 0.28) 85%, transparent);
+}
+.gauri-scope .gav-shell-label { font-family: "Plus Jakarta Sans", sans-serif; font-weight: 600; font-size: 10.5px; letter-spacing: 0.14em; color: var(--amber); text-transform: uppercase; margin-bottom: 14px; }
+.gauri-scope .gav-shell-empty { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--slate); font-family: "Plus Jakarta Sans", sans-serif; font-size: 12.5px; line-height: 1.7; padding: 24px 10px; }
+@media (max-width: 760px) {
+  .gauri-scope .gav-shell { grid-template-columns: 1fr; padding: 20px; }
+  .gauri-scope .gav-shell-col { padding: 0 !important; }
+  .gauri-scope .gav-shell-col:last-child::before { display: none; }
+  .gauri-scope .gav-shell-col:last-child { margin-top: 26px; padding-top: 22px !important; position: relative; }
+  .gauri-scope .gav-shell-col:last-child::after {
+    content: ""; position: absolute; top: 0; left: 4px; right: 4px; height: 1.5px;
+    background: linear-gradient(90deg, transparent, rgba(var(--amber-rgb), 0.28) 15%, rgba(var(--amber-rgb), 0.28) 85%, transparent);
+  }
+}
+
+.gauri-scope .gav-stage { position: relative; overflow: hidden; border-radius: 20px; background: #090b0e; aspect-ratio: 750/937; box-shadow: 0 20px 70px #000c; width: 100%; max-width: 336px; margin: 0 auto; }
+.gauri-scope .gav-face3d-mount { position: absolute; inset: 0; width: 100%; height: 100%; }
+.gauri-scope .gav-face3d-mount canvas { display: block; width: 100% !important; height: 100% !important; }
+.gauri-scope .gav-status { position: absolute; top: 12px; left: 12px; padding: 6px 12px; border-radius: 99px; background: #090d12cc; border: 1px solid #fff2; backdrop-filter: blur(10px); font-size: 11px; font-family: "Plus Jakarta Sans", sans-serif; font-weight: 500; letter-spacing: 0.01em; color: var(--cream); z-index: 20; }
+.gauri-scope .gav-tap-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #000a; cursor: pointer; z-index: 30; }
+.gauri-scope .gav-tap-card { font-family: "Plus Jakarta Sans", sans-serif; font-weight: 500; letter-spacing: 0.01em; font-size: 13px; color: var(--cream); border: 1px solid var(--amber-dim); background: #090d12ee; padding: 12px 22px; border-radius: 99px; }
+
+.gauri-scope .gav-chat { flex: 1; min-height: 0; margin: 0; max-height: 408px; overflow-y: auto; padding: 2px 4px 0; }
+.gauri-scope .gav-bubble { margin-bottom: 10px; max-width: 90%; font-size: 13px; line-height: 1.6; padding: 10px 14px; border-radius: 14px; }
+.gauri-scope .gav-bubble.farmer { margin-left: auto; background: rgba(var(--amber-rgb), 0.12); color: var(--cream); border: 1px solid var(--amber-dim); }
+.gauri-scope .gav-bubble.gauri { margin-right: auto; background: rgba(255, 255, 255, 0.03); color: var(--cream); border: 1px solid var(--line); }
+.gauri-scope .gav-controls { display: grid; grid-template-columns: 1fr auto auto; gap: 9px; margin-top: 14px; }
+.gauri-scope .gav-confirm { margin-top: 14px; border: 1px solid var(--amber-dim); border-radius: 12px; padding: 18px; background: rgba(var(--amber-rgb), 0.06); }
+.gauri-scope .gav-confirm .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+@media (max-width: 600px) { .gauri-scope .gav-confirm .row { grid-template-columns: 1fr; } }
