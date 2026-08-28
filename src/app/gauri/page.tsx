@@ -82,7 +82,7 @@ export default function GauriAvatarPage() {
   const [language, setLanguage] = useState("Hindi");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState<"" | "listening" | "speaking">("");
+  const [mode, setMode] = useState<"" | "listening" | "thinking" | "speaking">("");
   const [busy, setBusy] = useState(false);
   const [confirmData, setConfirmData] = useState<ConfirmData | null>(null);
   const [showConfirmForm, setShowConfirmForm] = useState(false);
@@ -167,7 +167,7 @@ export default function GauriAvatarPage() {
 
   function speak(text: string, onDone?: () => void) {
     stopVisemeFallback();
-    if (!window.speechSynthesis) { onDone?.(); return; }
+    if (!window.speechSynthesis) { setMode(""); onDone?.(); return; }
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     const langInfo = LANGUAGES.find((l) => l.code === languageRef.current) || LANGUAGES[0];
@@ -195,9 +195,13 @@ export default function GauriAvatarPage() {
       setMode("speaking");
       setTimeout(() => {
         if (!boundaryFired.current && window.speechSynthesis.speaking) {
-          const cycle = ["narrow", "wide", "round", "wide", "narrow"];
-          let i = 0;
-          visemeTimer.current = setInterval(() => { setViseme(cycle[i++ % cycle.length]); }, 200);
+          const options = ["narrow", "wide", "round"];
+          visemeTimer.current = setInterval(() => {
+            setViseme((prev) => {
+              const pick = options[Math.floor(Math.random() * options.length)];
+              return pick === prev ? options[(options.indexOf(pick) + 1) % options.length] : pick;
+            });
+          }, 150);
         }
       }, 450);
     };
@@ -274,6 +278,7 @@ export default function GauriAvatarPage() {
     setInput("");
     setBusy(true);
     setNote("");
+    setMode("thinking");
 
     const res = await fetch("/api/gauri/converse", {
       method: "POST",
@@ -283,6 +288,7 @@ export default function GauriAvatarPage() {
 
     setBusy(false);
     if (!res || !res.ok) {
+      setMode("");
       setNote("Gauri couldn't respond just now — please try again.");
       return;
     }
@@ -347,6 +353,8 @@ export default function GauriAvatarPage() {
   }
 
   const accentStyle = getThemeAccentStyle(DEFAULT_THEME);
+  const expression: "neutral" | "happy" | "concerned" =
+    micBlocked || note ? "concerned" : showConfirmForm ? "happy" : "neutral";
 
   if (caseCreated) {
     return (
@@ -378,9 +386,21 @@ export default function GauriAvatarPage() {
         <div className="gav-shell">
           <div className="gav-shell-col">
             <div className="gav-shell-label">Face</div>
-            <div className={`gav-stage ${mode === "speaking" ? "gav-speaking" : ""} ${mode === "listening" ? "gav-listening" : ""}`}>
-              <GauriFace3D mode={mode} viseme={viseme} />
-              <div className="gav-status">{mode === "speaking" ? "Gauri is speaking…" : mode === "listening" ? "Listening…" : started ? "Ready" : "Getting ready…"}</div>
+            <div
+              className={`gav-stage ${mode === "speaking" ? "gav-speaking" : ""} ${mode === "listening" ? "gav-listening" : ""} ${mode === "thinking" ? "gav-thinking" : ""}`}
+            >
+              <GauriFace3D mode={mode} viseme={viseme} expression={expression} />
+              <div className="gav-status">
+                {mode === "speaking"
+                  ? "Gauri is speaking…"
+                  : mode === "listening"
+                  ? "Gauri is listening…"
+                  : mode === "thinking"
+                  ? "Gauri is thinking…"
+                  : started
+                  ? "Ready"
+                  : "Getting ready…"}
+              </div>
               {needsTap && (
                 <div className="gav-tap-overlay" onClick={tapToBegin}>
                   <div className="gav-tap-card">Tap to start</div>
