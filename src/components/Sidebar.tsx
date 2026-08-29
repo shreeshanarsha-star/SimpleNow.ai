@@ -161,20 +161,24 @@ export default function Sidebar({
           ${staticBreakpoint}`}
       >
       {/* Same vertical padding (py-3) as Topbar's px-[26px] py-3, so the
-          brand block and the "Overview" title land on one continuous
-          horizontal line across the sidebar/main-column seam. */}
-      <div className="flex items-center gap-3 px-5 py-3">
+          brand block and the page title land on one continuous horizontal
+          line across the sidebar/main-column seam. Clickable -- always
+          goes home, same as Topbar's home icon, so there are two
+          consistent ways back to Overview on every page instead of a
+          redundant "Overview" nav row underneath it. */}
+      <Link href="/" onClick={onClose} className="flex items-center gap-3 px-5 py-3 group">
         <LogoMark size={32} className="shadow-emblem" />
         <div>
-          <div className="font-semibold text-[16px] leading-tight text-ink">Askshree</div>
+          <div className="font-semibold text-[16px] leading-tight text-ink group-hover:text-brand transition-colors">
+            Askshree
+          </div>
           <small className="block font-semibold text-[10px] text-brand tracking-[0.08em] mt-0.5">
             AI SYSTEMS
           </small>
         </div>
-      </div>
+      </Link>
 
       <nav className="flex-1 overflow-hidden px-3 pt-1 pb-2">
-        <SbLink href="/" icon="grid" name="Overview" active={pathname === "/"} onNavigate={onClose} />
         <SbLink
           href={`/departments/${PERSONAL_TOOLS.id}`}
           icon={PERSONAL_TOOLS.icon}
