@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import LogoMark from "@/components/LogoMark";
+import Logo from "@/components/Logo";
 import { createClient } from "@/lib/supabase/client";
 
 export default function ForgotPasswordPage() {
@@ -51,7 +51,7 @@ export default function ForgotPasswordPage() {
         onSubmit={handleSubmit}
         className="w-full max-w-sm bg-surface border border-border rounded-lg p-8 shadow-soft"
       >
-        <LogoMark size={30} />
+        <Logo height={32} />
         <div className="mb-4" />
         <h1 className="text-[19px] font-bold m-0 mb-1">Reset your password</h1>
         <p className="text-[12.5px] text-ink-muted m-0 mb-6">

@@ -1,6 +1,6 @@
 "use client";
 
-import LogoMark from "@/components/LogoMark";
+import Logo from "@/components/Logo";
 import { useEffect, useState, use } from "react";
 
 type Question = { id: string; dimension: string; text: string; reverse: boolean };
@@ -78,9 +78,8 @@ export default function TakeAssessmentPage({ params }: { params: Promise<{ token
   return (
     <div className="min-h-screen bg-page">
       <header className="border-b border-border bg-surface">
-        <div className="max-w-[720px] mx-auto px-6 py-4 flex items-center gap-2.5">
-          <LogoMark size={30} />
-          <div className="font-bold text-[15.5px]">SimpleNow</div>
+        <div className="max-w-[720px] mx-auto px-6 py-4 flex items-center">
+          <Logo height={28} />
         </div>
       </header>
 

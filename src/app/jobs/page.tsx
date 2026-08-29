@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Icon from "@/components/Icon";
 import Link from "next/link";
-import LogoMark from "@/components/LogoMark";
+import Logo from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
 
@@ -30,14 +30,11 @@ export default async function JobsPage() {
     <div className="min-h-screen bg-page">
       <header className="border-b border-border bg-surface">
         <div className="max-w-[1000px] mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
-            <LogoMark size={30} />
-            <div>
-              <div className="font-bold text-[15.5px] leading-tight">SimpleNow</div>
-              <small className="block font-medium text-[10.5px] text-ink-muted tracking-wide">
-                JOB BOARD
-              </small>
-            </div>
+          <Link href="/" className="flex flex-col items-start gap-0.5">
+            <Logo height={26} />
+            <small className="block font-medium text-[10.5px] text-ink-muted tracking-wide">
+              JOB BOARD
+            </small>
           </Link>
           <Link
             href="/jobs/post"

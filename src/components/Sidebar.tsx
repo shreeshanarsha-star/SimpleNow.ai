@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { DEPARTMENTS, PERSONAL_TOOLS } from "@/lib/departments";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
-import LogoMark from "./LogoMark";
+import Logo from "./Logo";
 import Avatar from "./Avatar";
 
 export default function Sidebar({
@@ -166,16 +166,11 @@ export default function Sidebar({
           goes home, same as Topbar's home icon, so there are two
           consistent ways back to Overview on every page instead of a
           redundant "Overview" nav row underneath it. */}
-      <Link href="/" onClick={onClose} className="flex items-center gap-3 px-5 py-3 group">
-        <LogoMark size={32} className="shadow-emblem" />
-        <div>
-          <div className="font-semibold text-[16px] leading-tight text-ink group-hover:text-brand transition-colors">
-            SimpleNow
-          </div>
-          <small className="block font-semibold text-[10px] text-brand tracking-[0.08em] mt-0.5">
-            AI SYSTEMS
-          </small>
-        </div>
+      <Link href="/" onClick={onClose} className="flex flex-col items-start gap-1 px-5 py-3 group">
+        <Logo height={28} />
+        <small className="block font-semibold text-[10px] text-brand tracking-[0.08em]">
+          AI SYSTEMS
+        </small>
       </Link>
 
       <nav className="flex-1 overflow-hidden px-3 pt-1 pb-2">

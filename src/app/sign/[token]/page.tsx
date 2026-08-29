@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
-import LogoMark from "@/components/LogoMark";
+import Logo from "@/components/Logo";
 import SignaturePad from "@/components/tools/SignaturePad";
 
 type FieldRow = { id: string; field_type: "signature" | "date" | "name" | "location"; page: number };
@@ -97,9 +97,8 @@ export default function SignPage({ params }: { params: Promise<{ token: string }
   return (
     <div className="min-h-screen bg-page">
       <header className="border-b border-border bg-surface">
-        <div className="max-w-[860px] mx-auto px-6 py-4 flex items-center gap-2.5">
-          <LogoMark size={30} />
-          <div className="font-bold text-[15.5px]">SimpleNow</div>
+        <div className="max-w-[860px] mx-auto px-6 py-4 flex items-center">
+          <Logo height={28} />
         </div>
       </header>
 
