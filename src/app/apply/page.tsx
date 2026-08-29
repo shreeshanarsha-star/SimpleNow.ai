@@ -28,7 +28,7 @@ export default async function ApplyPage() {
           <Link href="/" className="flex items-center gap-2.5">
             <LogoMark size={30} />
             <div>
-              <div className="font-bold text-[15.5px] leading-tight">Askshree</div>
+              <div className="font-bold text-[15.5px] leading-tight">SimpleNow</div>
               <small className="block font-medium text-[10.5px] text-ink-muted tracking-wide">
                 CAREERS
               </small>

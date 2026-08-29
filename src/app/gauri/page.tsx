@@ -342,7 +342,7 @@ export default function GauriAvatarPage() {
             Save this link to check status and see what&rsquo;s happening with your delivery:
           </p>
           <div className="file-hint" style={{ marginTop: 16, wordBreak: "break-all" }}>
-            <a href={`/gauri/status/${caseCreated}`} style={{ color: "var(--amber)" }}>askshree.com/gauri/status/{caseCreated}</a>
+            <a href={`/gauri/status/${caseCreated}`} style={{ color: "var(--amber)" }}>simplenow.ai/gauri/status/{caseCreated}</a>
           </div>
           <button className="primary-btn" style={{ marginTop: 24 }} onClick={() => window.location.reload()}>
             Report another issue

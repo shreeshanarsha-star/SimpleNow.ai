@@ -129,10 +129,10 @@ export async function POST(req: Request) {
   const orgName = org?.name || "your organization";
   const emailResult = await sendEmail({
     to: email,
-    subject: `You've been added to ${orgName} on Askshree`,
+    subject: `You've been added to ${orgName} on SimpleNow`,
     html: `
       <p>Hi ${fullName || ""},</p>
-      <p>An admin at <strong>${orgName}</strong> has created your account on Askshree.</p>
+      <p>An admin at <strong>${orgName}</strong> has created your account on SimpleNow.</p>
       <p><a href="${linkData.properties.action_link}">Click here to set your password and sign in</a>.</p>
       <p>This link is one-time use and will expire after a while -- if it's expired, ask your admin to resend it or use "Forgot password" on the sign-in page with this email address.</p>
     `,

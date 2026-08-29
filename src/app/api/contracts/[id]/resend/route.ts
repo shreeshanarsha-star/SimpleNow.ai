@@ -26,7 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const admin = createAdminClient();
 
   const { data: ownerProfile } = await admin.from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
-  const senderName = ownerProfile?.full_name || ownerProfile?.email || "Askshree";
+  const senderName = ownerProfile?.full_name || ownerProfile?.email || "SimpleNow";
 
   if (body.recipientId) {
     const { data: recipient } = await supabase.from("contracts_recipients").select("*").eq("id", body.recipientId).eq("envelope_id", id).maybeSingle();

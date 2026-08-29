@@ -50,7 +50,7 @@ export async function POST(request: Request) {
   const html = `
     <div style="font-family:sans-serif;color:#211f1a;">
       <h2>Shortlist.ai${jobTitle ? ` — ${escapeHtml(jobTitle)}` : ""}</h2>
-      <p>${candidates.length} candidate(s) shared from Askshree.</p>
+      <p>${candidates.length} candidate(s) shared from SimpleNow.</p>
       <table style="border-collapse:collapse;width:100%;font-size:13px;">
         <thead><tr style="text-align:left;">
           <th style="padding:8px;border-bottom:2px solid #ccc;">Name</th>

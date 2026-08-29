@@ -214,7 +214,7 @@ export default function OrgSettingsPanel({ org, meId }: { org: Org; meId: string
         <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Members</div>
 
         <details className="text-[12px]">
-          <summary className="cursor-pointer text-ink-muted select-none">Or add someone who already has an Askshree account</summary>
+          <summary className="cursor-pointer text-ink-muted select-none">Or add someone who already has a SimpleNow account</summary>
           <form onSubmit={addMember} className="flex items-center gap-2 flex-wrap mt-2">
             <input
               type="email"

@@ -6,7 +6,7 @@ import { verifyQuestionnaireAnswers } from "@/lib/jobPostings/questionnaire";
 export const maxDuration = 30;
 
 const SHORTLIST_CAP = 5;
-const APPLY_FROM_ADDRESS = process.env.APPLY_EMAIL_FROM || "Askshree Apply.ai <onboarding@resend.dev>";
+const APPLY_FROM_ADDRESS = process.env.APPLY_EMAIL_FROM || "SimpleNow Apply.ai <onboarding@resend.dev>";
 
 // Stage 3: candidate submits self-reported answers, verified against the
 // JD (rules + one AI judgment call for the fuzzy fields). Only a pass
@@ -98,7 +98,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   if (job.poster_email && job.email_verified && (count || 0) < SHORTLIST_CAP) {
     const candidate = application.apply_candidates;
     const html = `
-      <p><strong>&#9733; Vetted by Askshree</strong> &middot; AI-screened against your must-haves, then confirmed directly by the candidate against your full requirements.</p>
+      <p><strong>&#9733; Vetted by SimpleNow</strong> &middot; AI-screened against your must-haves, then confirmed directly by the candidate against your full requirements.</p>
       <h2>New match for ${job.title}${job.company ? ` at ${job.company}` : ""}</h2>
       <div style="margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid #eee;">
         <p><strong>${candidate?.name || "Candidate"}</strong>${candidate?.email ? ` -- ${candidate.email}` : ""}${

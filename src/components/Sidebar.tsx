@@ -170,7 +170,7 @@ export default function Sidebar({
         <LogoMark size={32} className="shadow-emblem" />
         <div>
           <div className="font-semibold text-[16px] leading-tight text-ink group-hover:text-brand transition-colors">
-            Askshree
+            SimpleNow
           </div>
           <small className="block font-semibold text-[10px] text-brand tracking-[0.08em] mt-0.5">
             AI SYSTEMS

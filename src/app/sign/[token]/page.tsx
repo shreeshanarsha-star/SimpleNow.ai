@@ -99,7 +99,7 @@ export default function SignPage({ params }: { params: Promise<{ token: string }
       <header className="border-b border-border bg-surface">
         <div className="max-w-[860px] mx-auto px-6 py-4 flex items-center gap-2.5">
           <LogoMark size={30} />
-          <div className="font-bold text-[15.5px]">Askshree</div>
+          <div className="font-bold text-[15.5px]">SimpleNow</div>
         </div>
       </header>
 

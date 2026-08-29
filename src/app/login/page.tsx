@@ -75,7 +75,7 @@ function LoginForm() {
         <div className="mb-4" />
         <h1 className="text-[19px] font-bold m-0 mb-1">Sign in</h1>
         <p className="text-[12.5px] text-ink-muted m-0 mb-6">
-          Sign in to your Askshree account.
+          Sign in to your SimpleNow account.
         </p>
 
         {error && (

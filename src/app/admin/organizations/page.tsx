@@ -66,7 +66,7 @@ export default async function AdminOrganizationsPage() {
         <div>
           <h2 className="m-0 text-[19px] font-bold">Organizations</h2>
           <p className="m-0 mt-1 text-[13px] text-ink-muted">
-            Every company using Askshree, sold individually or as a bulk plan. Approve new
+            Every company using SimpleNow, sold individually or as a bulk plan. Approve new
             signups, then grant them the tools they&apos;ve purchased.
           </p>
         </div>

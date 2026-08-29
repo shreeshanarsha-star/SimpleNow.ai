@@ -160,7 +160,7 @@ export default function ContractsEsignApp() {
           <Icon name="penSignature" className="w-8 h-8 text-ink-muted mb-1" />
           <p className="m-0 text-[13.5px] font-semibold">No documents yet</p>
           <p className="m-0 text-[12.5px] text-ink-muted max-w-xs">
-            Upload a document, add the people who need to sign or receive a copy, and Askshree AI prepares the rest.
+            Upload a document, add the people who need to sign or receive a copy, and SimpleNow AI prepares the rest.
           </p>
         </div>
       ) : (
@@ -464,7 +464,7 @@ function ProcessingView({ envelopeId, onDone }: { envelopeId: string; onDone: ()
       ) : (
         <>
           <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-          <div className="text-[16px] font-bold">AskShree is preparing your document</div>
+          <div className="text-[16px] font-bold">SimpleNow is preparing your document</div>
           <ul className="text-[12.5px] text-ink-2 flex flex-col gap-1.5 mt-1">
             {PROCESSING_STAGES.map((stage, i) => (
               <li key={stage} className={i <= stageIndex ? "text-brand font-semibold" : "text-ink-muted"}>
@@ -603,7 +603,7 @@ function DetailView({ envelopeId, onBack }: { envelopeId: string; onBack: () => 
 
       {needsReviewCount > 0 && (
         <div className="bg-warning-wash text-[#8a5a00] text-[12px] rounded-sm px-3 py-2">
-          AskShree flagged {needsReviewCount} signing field{needsReviewCount > 1 ? "s" : ""} it wasn&rsquo;t fully confident about -- it added a
+          SimpleNow flagged {needsReviewCount} signing field{needsReviewCount > 1 ? "s" : ""} it wasn&rsquo;t fully confident about -- it added a
           clear signature page rather than guess a position on the original document.
         </div>
       )}

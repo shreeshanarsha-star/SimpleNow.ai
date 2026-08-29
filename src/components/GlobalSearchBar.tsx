@@ -87,7 +87,7 @@ export default function GlobalSearchBar() {
     const saved = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
     if (!saved) return;
     conversationIdRef.current = saved;
-    fetch(`/api/ask-shree/conversations/${saved}`)
+    fetch(`/api/ask-simple/conversations/${saved}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data?.messages?.length) return;
@@ -137,7 +137,7 @@ export default function GlobalSearchBar() {
         // back to a default location automatically.
       }
 
-      const res = await fetch("/api/ask-shree/query", {
+      const res = await fetch("/api/ask-simple/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -148,7 +148,7 @@ export default function GlobalSearchBar() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Ask Shree couldn't process that.");
+      if (!res.ok) throw new Error(data?.error || "Ask Simple couldn't process that.");
 
       conversationIdRef.current = data.conversationId;
       if (typeof window !== "undefined" && data.conversationId) {
@@ -238,7 +238,7 @@ export default function GlobalSearchBar() {
           >
             {busy && (
               <div className="self-start bg-surface border border-border rounded-md px-3.5 py-2 text-[12.5px] text-ink-muted shadow-soft-sm">
-                Ask Shree is thinking…
+                Ask Simple is thinking…
               </div>
             )}
             {/* Newest exchange first -- reading the most recent answer
@@ -272,14 +272,14 @@ export default function GlobalSearchBar() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runSearch()}
-            placeholder={listening ? "Listening…" : "Ask Shree anything, or search departments or tools…"}
+            placeholder={listening ? "Listening…" : "Ask Simple anything, or search departments or tools…"}
             className="border-none outline-none bg-transparent text-[13.5px] w-full py-1 text-ink placeholder:text-ink-muted"
             disabled={busy}
           />
           <button
             type="button"
             onClick={toggleMic}
-            aria-label="Ask Shree with your voice"
+            aria-label="Ask Simple with your voice"
             className={`w-8 h-8 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
               listening
                 ? "border-brand/40 bg-brand-wash text-brand animate-pulse"

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/requireAdmin";
-import { runAskShreeQuery } from "@/lib/agent/orchestrator";
+import { runAskSimpleQuery } from "@/lib/agent/orchestrator";
 
 export const maxDuration = 60;
 
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await runAskShreeQuery({
+    const result = await runAskSimpleQuery({
       supabase,
       userId: user.id,
       message,
@@ -39,9 +39,9 @@ export async function POST(req: Request) {
     // The orchestrator already handles/logs its own internal failures and
     // returns a graceful reply -- reaching here means something structural
     // (e.g. conversation lookup) broke before that safety net engaged.
-    console.error("ask-shree/query fatal error:", err);
+    console.error("ask-simple/query fatal error:", err);
     return NextResponse.json(
-      { error: "Ask Shree is temporarily unavailable. Please try again." },
+      { error: "Ask Simple is temporarily unavailable. Please try again." },
       { status: 500 }
     );
   }
