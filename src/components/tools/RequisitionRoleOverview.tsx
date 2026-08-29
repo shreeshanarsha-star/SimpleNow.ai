@@ -221,11 +221,11 @@ export default function RequisitionRoleOverview({ requisitionId }: { requisition
     reqLabel(requisition),
     [requisition.employment_type, requisition.location, requisition.work_mode].filter(Boolean).map((v) => titleCase(String(v))).join(" · "),
     requisition.jd_source_text ? requisition.jd_source_text.slice(0, 220).trim() + (requisition.jd_source_text.length > 220 ? "…" : "") : "",
-    "Learn more / apply: https://www.askshree.com/apply",
+    "Learn more / apply: https://www.simplenow.ai/apply",
   ]
     .filter(Boolean)
     .join("\n\n");
-  const applyUrl = "https://www.askshree.com/apply";
+  const applyUrl = "https://www.simplenow.ai/apply";
 
   async function copyShareText() {
     try {

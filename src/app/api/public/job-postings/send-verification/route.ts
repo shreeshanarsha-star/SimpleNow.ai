@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
 
 const JOBPOSTINGS_FROM_ADDRESS =
-  process.env.JOBPOSTINGS_EMAIL_FROM || "Askshree Job Postings <onboarding@resend.dev>";
+  process.env.JOBPOSTINGS_EMAIL_FROM || "SimpleNow Job Postings <onboarding@resend.dev>";
 
 // POST { email, jobPostingIds: string[] } — emails the poster a link to
 // confirm their address. Confirming attaches poster_email/email_verified
@@ -35,13 +35,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const origin = request.headers.get("origin") || "https://askshree.com";
+  const origin = request.headers.get("origin") || "https://simplenow.ai";
   const verifyLink = `${origin}/api/public/job-postings/verify-email?token=${token}`;
 
   const result = await sendEmail({
     to: email,
     from: JOBPOSTINGS_FROM_ADDRESS,
-    subject: "Confirm your job posting — Askshree",
+    subject: "Confirm your job posting — SimpleNow",
     html: `<p>Click the link below to confirm your email and verify your job posting${
       jobPostingIds.length > 1 ? "s" : ""
     }:</p>

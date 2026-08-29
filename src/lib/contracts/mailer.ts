@@ -7,11 +7,11 @@
 // CONTRACTS_EMAIL_FROM once a verified sending domain is set up in Resend.
 import { sendEmail } from "@/lib/email";
 
-const CONTRACTS_FROM_ADDRESS = process.env.CONTRACTS_EMAIL_FROM || "Askshree Contracts <onboarding@resend.dev>";
+const CONTRACTS_FROM_ADDRESS = process.env.CONTRACTS_EMAIL_FROM || "SimpleNow Contracts <onboarding@resend.dev>";
 
 function shell(bodyHtml: string): string {
   return `<div style="font-family:Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a;">
-    <div style="font-weight:700;font-size:15px;margin-bottom:18px;">Askshree</div>
+    <div style="font-weight:700;font-size:15px;margin-bottom:18px;">SimpleNow</div>
     ${bodyHtml}
     <p style="font-size:11px;color:#8a8a8a;margin-top:28px;">This link is unique to you -- please don't forward it.</p>
   </div>`;

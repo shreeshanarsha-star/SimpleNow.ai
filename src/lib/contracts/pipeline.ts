@@ -18,7 +18,7 @@ const BUCKET = "contracts";
 async function getSenderName(ownerId: string): Promise<string> {
   const admin = createAdminClient();
   const { data } = await admin.from("profiles").select("full_name, email").eq("id", ownerId).maybeSingle();
-  return data?.full_name || data?.email || "Askshree";
+  return data?.full_name || data?.email || "SimpleNow";
 }
 
 async function logEvent(envelopeId: string, eventType: string, recipientId?: string | null, metadata?: Record<string, unknown>) {

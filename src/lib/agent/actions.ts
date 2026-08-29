@@ -446,7 +446,7 @@ async function checkFeatureAccess(
 const openFeature: ActionSpec = {
   name: "open_feature",
   description:
-    "Navigate the user to a real page or action inside Askshree. Only call this when the user clearly wants to GO somewhere or DO something in the app (e.g. \"create a requisition\", \"open job postings\", \"take me to my candidates\") -- never for general questions. Pick the single best-matching key from this list; if nothing genuinely matches, do NOT call this tool -- tell the user honestly that it isn't available. Available destinations:\n" +
+    "Navigate the user to a real page or action inside SimpleNow. Only call this when the user clearly wants to GO somewhere or DO something in the app (e.g. \"create a requisition\", \"open job postings\", \"take me to my candidates\") -- never for general questions. Pick the single best-matching key from this list; if nothing genuinely matches, do NOT call this tool -- tell the user honestly that it isn't available. Available destinations:\n" +
     APP_DESTINATIONS.map((d) => `- ${d.key}: ${d.hint}`).join("\n"),
   parameters: {
     type: "object",

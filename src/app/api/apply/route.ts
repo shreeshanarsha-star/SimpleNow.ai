@@ -14,7 +14,7 @@ const AUTO_APPLY_CAP = 10;
 const SEARCH_MODE_CAP = 10;
 const SHORTLIST_THRESHOLD = 70;
 
-const APPLY_FROM_ADDRESS = process.env.APPLY_EMAIL_FROM || "Askshree Apply.ai <onboarding@resend.dev>";
+const APPLY_FROM_ADDRESS = process.env.APPLY_EMAIL_FROM || "SimpleNow Apply.ai <onboarding@resend.dev>";
 
 // Public, unauthenticated Apply.ai -- the old askshree-app repo's CV-first
 // flow, recreated. Upload a resume once; either auto-apply (AI screens it
@@ -224,7 +224,7 @@ async function sendQuestionnaireEmail(
   r: { jobTitle: string; company: string | null },
   token: string
 ) {
-  const link = `${process.env.NEXT_PUBLIC_BASE_URL || "https://askshree.com"}/apply-questionnaire/${token}`;
+  const link = `${process.env.NEXT_PUBLIC_BASE_URL || "https://simplenow.ai"}/apply-questionnaire/${token}`;
   const html = `
     <p>Hi ${candidate.name || "there"},</p>
     <p>Your CV looks like a strong fit for <strong>${r.jobTitle}</strong>${
