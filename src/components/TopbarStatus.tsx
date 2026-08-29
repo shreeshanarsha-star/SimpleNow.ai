@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Icon from "./Icon";
 import { VScroller } from "./Scroller";
 import ThemeSwitcher from "./ThemeSwitcher";
+import { createClient } from "@/lib/supabase/client";
 
 // Bengaluru -- fallback location used only when the browser doesn't
 // share a real one (geolocation denied/unavailable). Askshree is
@@ -55,6 +56,7 @@ export default function TopbarStatus() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [firstName, setFirstName] = useState<string | null>(null);
 
   // Live clock -- updates every 30s, which is plenty for a "day/date/time"
   // readout that isn't a stopwatch.
@@ -62,6 +64,29 @@ export default function TopbarStatus() {
     setNow(new Date());
     const t = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(t);
+  }, []);
+
+  // Signed-in user's first name -- lets the greeting read "Good
+  // afternoon, Shree" instead of a bare "Good afternoon". Silent no-op
+  // for signed-out visitors (greeting still shows, just without a name).
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      const user = data.user;
+      if (!user) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      const label = profile?.full_name || user.email?.split("@")[0] || null;
+      setFirstName(label ? label.split(" ")[0] : null);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Real weather from Open-Meteo (free, keyless, CORS-enabled) -- tries
@@ -150,39 +175,57 @@ export default function TopbarStatus() {
         weekday: "short",
         month: "short",
         day: "numeric",
-        year: "numeric",
       })
     : "";
   const timeStr = now
     ? now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
     : "";
+  // Local-time greeting -- uses the visitor's own device clock, so it's
+  // automatically correct for whichever timezone they're logging in
+  // from, no geolocation lookup needed.
+  const greeting = now
+    ? now.getHours() < 12
+      ? "Good morning"
+      : now.getHours() < 17
+        ? "Good afternoon"
+        : "Good evening"
+    : "";
 
   return (
-    <div className="flex items-center gap-4">
-      <span className="hidden xl:inline text-[10px] font-semibold uppercase tracking-[0.12em] text-brand whitespace-nowrap">
-        Simpler ways. Smarter work.
-      </span>
-      <span className="hidden xl:block w-px h-4 bg-border" />
+    // One neat status card instead of a loose row of separate items --
+    // greeting + weather + time/date scale down gracefully at each
+    // breakpoint, while the two action icons (appearance, notifications)
+    // always stay put inside the same card.
+    <div className="flex items-center gap-1.5 sm:gap-2.5 pl-1 sm:pl-3.5 pr-1 py-1 rounded-full border border-border bg-page shadow-soft-sm">
+      {now && (
+        <div className="hidden sm:flex flex-col leading-tight">
+          <span className="text-[11.5px] font-semibold text-ink whitespace-nowrap">
+            {greeting}
+            {firstName ? `, ${firstName}` : ""}
+          </span>
+          <span className="text-[10px] text-ink-muted whitespace-nowrap">{dateStr}</span>
+        </div>
+      )}
+
+      {now && <span className="hidden sm:block w-px h-6 bg-border flex-shrink-0" />}
 
       {weather && (
-        <>
-          <div
-            className="hidden sm:flex items-center gap-1.5 text-[12px] text-ink-2 whitespace-nowrap"
-            title={weatherLabel(weather.code)}
-          >
-            <Icon name={weatherIcon(weather.code)} className="w-[15px] h-[15px] text-ink-muted" />
-            <span className="font-medium">{weather.temp}°C</span>
-          </div>
-          <span className="hidden sm:block w-px h-4 bg-border" />
-        </>
+        <div
+          className="hidden sm:flex items-center gap-1 text-[12px] text-ink-2 whitespace-nowrap"
+          title={weatherLabel(weather.code)}
+        >
+          <Icon name={weatherIcon(weather.code)} className="w-[14px] h-[14px] text-ink-muted" />
+          <span className="font-medium">{weather.temp}°C</span>
+        </div>
       )}
 
       {now && (
-        <div className="hidden md:flex flex-col items-end leading-tight whitespace-nowrap">
-          <span className="text-[12px] font-semibold text-ink">{timeStr}</span>
-          <span className="text-[10.5px] text-ink-muted">{dateStr}</span>
-        </div>
+        <span className="hidden md:inline text-[12px] font-semibold text-ink whitespace-nowrap">
+          {timeStr}
+        </span>
       )}
+
+      {now && <span className="hidden sm:block w-px h-6 bg-border flex-shrink-0" />}
 
       {/* Appearance -- a personalization preference, not a wayfinding
           control, so it lives here in the persistent global header (same
@@ -193,9 +236,9 @@ export default function TopbarStatus() {
           type="button"
           aria-label="Appearance"
           onClick={() => setThemeOpen((v) => !v)}
-          className="w-8 h-8 rounded-full border border-border bg-surface flex items-center justify-center text-ink-2 hover:border-border-strong hover:text-ink transition-colors flex-shrink-0"
+          className="w-7 h-7 rounded-full flex items-center justify-center text-ink-2 hover:text-ink hover:bg-surface transition-colors flex-shrink-0"
         >
-          <Icon name="palette" className="w-[15px] h-[15px]" />
+          <Icon name="palette" className="w-[14px] h-[14px]" />
         </button>
         {themeOpen && (
           <>
@@ -220,9 +263,9 @@ export default function TopbarStatus() {
           type="button"
           aria-label="Notifications"
           onClick={() => setNotifOpen((v) => !v)}
-          className="relative w-8 h-8 rounded-full border border-border bg-surface flex items-center justify-center text-ink-2 hover:border-border-strong hover:text-ink transition-colors flex-shrink-0"
+          className="relative w-7 h-7 rounded-full flex items-center justify-center text-ink-2 hover:text-ink hover:bg-surface transition-colors flex-shrink-0"
         >
-          <Icon name="bell" className="w-[15px] h-[15px]" />
+          <Icon name="bell" className="w-[14px] h-[14px]" />
           {unreadCount > 0 && (
             <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-critical text-white text-[9.5px] font-bold flex items-center justify-center leading-none">
               {unreadCount > 9 ? "9+" : unreadCount}
