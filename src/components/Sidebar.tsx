@@ -166,10 +166,10 @@ export default function Sidebar({
           goes home, same as Topbar's home icon, so there are two
           consistent ways back to Overview on every page instead of a
           redundant "Overview" nav row underneath it. */}
-      <Link href="/" onClick={onClose} className="flex flex-col items-start gap-1 px-5 py-3 group">
+      <Link href="/" onClick={onClose} className="flex flex-col items-start gap-2 px-5 py-3.5 group">
         <Logo height={28} />
-        <small className="block font-semibold text-[10px] text-brand tracking-[0.08em]">
-          AI SYSTEMS
+        <small className="block text-[11px] font-medium text-ink-muted leading-snug">
+          Simpler ways. Smarter work.
         </small>
       </Link>
 
