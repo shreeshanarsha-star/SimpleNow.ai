@@ -3,6 +3,34 @@
 @tailwind utilities;
 
 /* ==========================================================================
+   Brand wordmark font -- self-hosted under its own family name, "InterDisplay",
+   deliberately kept separate from the sitewide Google-Fonts "Inter" family
+   used everywhere else. Two reasons: (1) "Inter Display" -- the
+   display-optical cut the logo needs at ExtraBold 800 -- isn't published on
+   Google Fonts at all (only regular "Inter" is), so it has to be
+   self-hosted; (2) giving it its own family name (rather than layering a
+   same-named @font-face over Google's "Inter") avoids any risk of this
+   Latin-only subset silently winning the cascade for body text elsewhere
+   and dropping glyphs outside the subset. Used only by the Logo component,
+   for the wordmark (800) and its tagline (600). Subsetted to Latin +
+   basic punctuation (~31KB each) since that's all a brand mark ever needs.
+   ========================================================================== */
+@font-face {
+  font-family: "InterDisplay";
+  src: url("/fonts/InterDisplay-ExtraBold.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "InterDisplay";
+  src: url("/fonts/InterDisplay-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ==========================================================================
    Theme tokens -- four selectable themes (Gold / Blue / Dark / Teal), all
    sharing one layout and one component set. Every chrome color in the app
    (Tailwind's surface/page/ink/brand/border tokens + the soft/button/emblem
