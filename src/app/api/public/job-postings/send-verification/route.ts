@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
 
 const JOBPOSTINGS_FROM_ADDRESS =
-  process.env.JOBPOSTINGS_EMAIL_FROM || "SimpleNow Job Postings <onboarding@resend.dev>";
+  process.env.JOBPOSTINGS_EMAIL_FROM || "SimpleNow Job Postings <noreply@simplenow.ai>";
 
 // POST { email, jobPostingIds: string[] } — emails the poster a link to
 // confirm their address. Confirming attaches poster_email/email_verified

@@ -7,7 +7,7 @@
 // CONTRACTS_EMAIL_FROM once a verified sending domain is set up in Resend.
 import { sendEmail } from "@/lib/email";
 
-const CONTRACTS_FROM_ADDRESS = process.env.CONTRACTS_EMAIL_FROM || "SimpleNow Contracts <onboarding@resend.dev>";
+const CONTRACTS_FROM_ADDRESS = process.env.CONTRACTS_EMAIL_FROM || "SimpleNow Contracts <noreply@simplenow.ai>";
 
 function shell(bodyHtml: string): string {
   return `<div style="font-family:Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a;">

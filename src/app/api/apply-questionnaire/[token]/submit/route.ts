@@ -6,7 +6,7 @@ import { verifyQuestionnaireAnswers } from "@/lib/jobPostings/questionnaire";
 export const maxDuration = 30;
 
 const SHORTLIST_CAP = 5;
-const APPLY_FROM_ADDRESS = process.env.APPLY_EMAIL_FROM || "SimpleNow Apply.ai <onboarding@resend.dev>";
+const APPLY_FROM_ADDRESS = process.env.APPLY_EMAIL_FROM || "SimpleNow Apply.ai <noreply@simplenow.ai>";
 
 // Stage 3: candidate submits self-reported answers, verified against the
 // JD (rules + one AI judgment call for the fuzzy fields). Only a pass

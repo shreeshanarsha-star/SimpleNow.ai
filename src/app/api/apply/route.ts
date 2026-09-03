@@ -14,7 +14,7 @@ const AUTO_APPLY_CAP = 10;
 const SEARCH_MODE_CAP = 10;
 const SHORTLIST_THRESHOLD = 70;
 
-const APPLY_FROM_ADDRESS = process.env.APPLY_EMAIL_FROM || "SimpleNow Apply.ai <onboarding@resend.dev>";
+const APPLY_FROM_ADDRESS = process.env.APPLY_EMAIL_FROM || "SimpleNow Apply.ai <noreply@simplenow.ai>";
 
 // Public, unauthenticated Apply.ai -- the old askshree-app repo's CV-first
 // flow, recreated. Upload a resume once; either auto-apply (AI screens it

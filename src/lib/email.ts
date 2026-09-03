@@ -4,7 +4,7 @@
 // the resend npm package, to avoid adding a dependency for one call site.
 
 const RESEND_API_URL = "https://api.resend.com/emails";
-const FROM_ADDRESS = process.env.TALENT_EMAIL_FROM || "Talent.ai <onboarding@resend.dev>";
+const FROM_ADDRESS = process.env.TALENT_EMAIL_FROM || "Talent.ai <noreply@simplenow.ai>";
 
 export type SendEmailResult = { ok: boolean; error?: string };
 

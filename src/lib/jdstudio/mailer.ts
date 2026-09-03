@@ -1,6 +1,6 @@
 import { sendEmail } from "@/lib/email";
 
-const FROM_ADDRESS = process.env.JDSTUDIO_EMAIL_FROM || "JD Studio.ai <onboarding@resend.dev>";
+const FROM_ADDRESS = process.env.JDSTUDIO_EMAIL_FROM || "JD Studio.ai <noreply@simplenow.ai>";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://simplenow.ai";
 
 function escapeHtml(s: string): string {
