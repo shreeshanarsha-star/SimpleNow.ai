@@ -219,6 +219,7 @@ export const PERSONAL_TOOLS: Department = {
     { n: "Unit Converter", s: "live", href: "/tools/widgets-ai?tool=converter" },
     { n: "Jotz", s: "live", href: "/tools/jotz" },
     { n: "Shortlist.ai", s: "live", href: "/tools/shortlist-ai" },
+    { n: "JD Studio.ai", s: "live", href: "/tools/jd-studio-ai" },
   ],
 };
 
