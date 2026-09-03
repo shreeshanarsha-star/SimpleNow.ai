@@ -36,11 +36,21 @@ export async function sendEmail(params: {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      return { ok: false, error: `Resend ${res.status}: ${text.slice(0, 200)}` };
+      const error = `Resend ${res.status}: ${text.slice(0, 300)}`;
+      // Logged server-side (not just returned) because most callers don't
+      // surface SendEmailResult.error to the UI -- without this, a bad key,
+      // an unverified sending domain, or Resend's sandbox-mode recipient
+      // restriction (onboarding@resend.dev can only send to the account's
+      // own verified address until a custom domain is verified) fails
+      // completely silently from the user's point of view.
+      console.error(`[email:failed] to=${params.to} subject="${params.subject}" ${error}`);
+      return { ok: false, error };
     }
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Unknown email error" };
+    const error = err instanceof Error ? err.message : "Unknown email error";
+    console.error(`[email:failed] to=${params.to} subject="${params.subject}" ${error}`);
+    return { ok: false, error };
   }
 }
 
