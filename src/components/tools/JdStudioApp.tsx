@@ -50,9 +50,13 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 async function api<T>(url: string, options?: RequestInit): Promise<T> {
+  // FormData bodies (file uploads) need the browser to set its own
+  // multipart Content-Type with boundary -- forcing application/json
+  // here would break request.formData() parsing on the server.
+  const isFormData = typeof FormData !== "undefined" && options?.body instanceof FormData;
   const res = await fetch(url, {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options?.headers || {}) },
+    headers: isFormData ? options?.headers : { "Content-Type": "application/json", ...(options?.headers || {}) },
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
