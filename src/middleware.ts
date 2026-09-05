@@ -28,7 +28,7 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
+  let {
     data: { user },
   } = await supabase.auth.getUser();
 
@@ -40,6 +40,23 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/org") ||
     request.nextUrl.pathname.startsWith("/chat");
   const isLoginRoute = request.nextUrl.pathname === "/login";
+
+  // A short, explicit allowlist of tools that offer a no-signup guest
+  // trial (see lib/guestAccess.ts for the cap/window rules). Everything
+  // else under /tools stays owner-only as before. A first-time visitor
+  // here has no session at all yet, so sign them in anonymously right
+  // now — a real Supabase auth user, just unconfirmed — so every
+  // existing owner_id/RLS-shaped route downstream works completely
+  // unchanged; only the per-tool usage cap in guestAccess.ts is new.
+  const GUEST_ACCESSIBLE_PATHS = ["/tools/jd-studio-ai"];
+  const isGuestAccessiblePath = GUEST_ACCESSIBLE_PATHS.some((p) =>
+    request.nextUrl.pathname.startsWith(p)
+  );
+
+  if (!user && isGuestAccessiblePath) {
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (!error) user = data.user;
+  }
 
   if (isAdminRoute && !user) {
     const url = request.nextUrl.clone();

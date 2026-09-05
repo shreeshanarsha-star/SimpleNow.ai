@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import { useRegisterToolHome } from "@/components/ToolHomeContext";
+import { createClient } from "@/lib/supabase/client";
+import type { GuestGateResult } from "@/lib/guestAccess";
 import type {
   JdStudioRequest,
   JdStudioUpload,
@@ -49,6 +51,14 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+class ApiError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
 async function api<T>(url: string, options?: RequestInit): Promise<T> {
   // FormData bodies (file uploads) need the browser to set its own
   // multipart Content-Type with boundary -- forcing application/json
@@ -59,12 +69,43 @@ async function api<T>(url: string, options?: RequestInit): Promise<T> {
     headers: isFormData ? options?.headers : { "Content-Type": "application/json", ...(options?.headers || {}) },
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  // `code` carries structured errors (e.g. guest trial limits) so callers
+  // can show a real UI instead of a generic alert -- see handleExecute.
+  if (!res.ok) throw new ApiError(data.error || `Request failed (${res.status})`, data.code);
   return data;
 }
 
-export default function JdStudioApp() {
+export default function JdStudioApp({ guestStatus = null }: { guestStatus?: GuestGateResult | null }) {
   useRegisterToolHome(useCallback(() => setDetailId(null), []));
+
+  const isGuest = guestStatus?.allowed && guestStatus.tier === "guest";
+  const isCreditsTier = guestStatus?.allowed && guestStatus.tier === "credits";
+  const blockedOnLoad = guestStatus && !guestStatus.allowed ? guestStatus : null;
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [limitReached, setLimitReached] = useState<{ message: string } | null>(null);
+  const [upgradeEmail, setUpgradeEmail] = useState("");
+  const [upgradePassword, setUpgradePassword] = useState("");
+  const [upgradeBusy, setUpgradeBusy] = useState(false);
+  const [upgradeError, setUpgradeError] = useState<string | null>(null);
+  const [upgradeDone, setUpgradeDone] = useState(false);
+  const showUpgradeModal = upgradeOpen || !!limitReached;
+
+  async function handleUpgrade(e: React.FormEvent) {
+    e.preventDefault();
+    setUpgradeBusy(true);
+    setUpgradeError(null);
+    const supabase = createClient();
+    // Upgrades the *current* anonymous session in place (same user id) --
+    // NOT a fresh signUp(), which would create an unrelated account and
+    // strand this guest's uploads/drafts under the old anonymous id.
+    const { error } = await supabase.auth.updateUser({ email: upgradeEmail, password: upgradePassword });
+    setUpgradeBusy(false);
+    if (error) {
+      setUpgradeError(error.message);
+      return;
+    }
+    setUpgradeDone(true);
+  }
 
   const [requests, setRequests] = useState<JdStudioRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -187,7 +228,12 @@ export default function JdStudioApp() {
       setSampleAnswers({});
       await loadRequests();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Couldn't start this run.");
+      const code = err instanceof ApiError ? err.code : undefined;
+      if (code === "guest_cap_reached" || code === "guest_window_expired" || code === "credits_exhausted") {
+        setLimitReached({ message: err instanceof Error ? err.message : "You've hit your free limit." });
+      } else {
+        alert(err instanceof Error ? err.message : "Couldn't start this run.");
+      }
     } finally {
       setExecuting(false);
     }
@@ -226,6 +272,32 @@ export default function JdStudioApp() {
           Drop a master list, an email list, or a sample JD -- JD Studio.ai gathers the details and drafts the job description.
         </p>
       </div>
+
+      {(isGuest || isCreditsTier || blockedOnLoad) && (
+        <div className="flex items-center justify-between gap-3 border border-brand/30 bg-brand-wash rounded-md px-4 py-3">
+          <p className="m-0 text-[12.5px] text-ink">
+            {blockedOnLoad
+              ? blockedOnLoad.reason === "credits_exhausted"
+                ? "You're out of free credits."
+                : blockedOnLoad.reason === "guest_cap_reached"
+                  ? "You've used your free tries for this tool."
+                  : "Your free trial has ended."
+              : isGuest && guestStatus?.allowed && guestStatus.tier === "guest"
+                ? `Trying it out -- ${guestStatus.actionsRemaining} free draft${guestStatus.actionsRemaining === 1 ? "" : "s"} left, ${guestStatus.daysRemaining} day${guestStatus.daysRemaining === 1 ? "" : "s"} remaining.`
+                : guestStatus?.allowed && guestStatus.tier === "credits"
+                  ? `${guestStatus.creditsRemaining} credit${guestStatus.creditsRemaining === 1 ? "" : "s"} remaining.`
+                  : null}
+          </p>
+          {(isGuest || blockedOnLoad) && (
+            <button
+              className="text-[12px] font-bold px-3 py-1.5 rounded-full bg-brand text-white whitespace-nowrap"
+              onClick={() => setUpgradeOpen(true)}
+            >
+              Sign up free -- keep my work
+            </button>
+          )}
+        </div>
+      )}
 
       {/* --- Drop zone / review --- */}
       {!upload && (
@@ -629,6 +701,78 @@ export default function JdStudioApp() {
                 Delete
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showUpgradeModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4">
+          <div className="bg-surface border border-border rounded-lg shadow-soft max-w-sm w-full p-6">
+            {upgradeDone ? (
+              <>
+                <h2 className="m-0 text-[16px] font-bold mb-2">Check your email</h2>
+                <p className="m-0 text-[12.5px] text-ink-2 mb-4">
+                  We sent a confirmation link to <strong>{upgradeEmail}</strong>. Once you confirm it, you&apos;ll
+                  have 22 free credits and everything you&apos;ve drafted so far is already saved to your account.
+                </p>
+                <button
+                  className="w-full bg-brand text-white font-bold text-[13px] rounded-sm py-2.5"
+                  onClick={() => {
+                    setUpgradeOpen(false);
+                    setLimitReached(null);
+                    setUpgradeDone(false);
+                  }}
+                >
+                  Got it
+                </button>
+              </>
+            ) : (
+              <form onSubmit={handleUpgrade}>
+                <h2 className="m-0 text-[16px] font-bold mb-1">Create your free account</h2>
+                <p className="m-0 text-[12.5px] text-ink-muted mb-4">
+                  {limitReached?.message || "Get 22 free credits and keep everything you've drafted so far."}
+                </p>
+                {upgradeError && (
+                  <div className="bg-critical-wash text-critical text-[12px] rounded-sm px-3 py-2 mb-3">{upgradeError}</div>
+                )}
+                <label className="block text-[12px] font-bold mb-1.5">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={upgradeEmail}
+                  onChange={(e) => setUpgradeEmail(e.target.value)}
+                  className="w-full border border-border rounded-sm px-3 py-2.5 text-[13.5px] mb-3 outline-none focus:border-brand"
+                />
+                <label className="block text-[12px] font-bold mb-1.5">Password</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={upgradePassword}
+                  onChange={(e) => setUpgradePassword(e.target.value)}
+                  className="w-full border border-border rounded-sm px-3 py-2.5 text-[13.5px] mb-4 outline-none focus:border-brand"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="flex-1 border border-border text-[12.5px] font-bold rounded-sm py-2.5"
+                    onClick={() => {
+                      setUpgradeOpen(false);
+                      setLimitReached(null);
+                    }}
+                  >
+                    Not now
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={upgradeBusy}
+                    className="flex-1 bg-brand text-white font-bold text-[12.5px] rounded-sm py-2.5 disabled:opacity-60"
+                  >
+                    {upgradeBusy ? "Creating…" : "Sign up free"}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

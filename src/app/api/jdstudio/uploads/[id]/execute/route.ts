@@ -4,9 +4,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { findDuplicateCandidate } from "@/lib/jdstudio/duplicate";
 import { sendIntakeInviteEmail } from "@/lib/jdstudio/mailer";
 import { runDraftPipeline } from "@/lib/jdstudio/pipeline";
+import { checkGuestGate, consumeGuestOrCredit, guestGateErrorResponse, type GuestGateResult } from "@/lib/guestAccess";
 import type { JdStudioRequest, JdTemplate, ApproverMode } from "@/lib/jdstudio/types";
 
 export const maxDuration = 60;
+
+const TOOL_KEY = "JD Studio.ai";
 
 interface Target {
   name: string | null;
@@ -27,6 +30,40 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const admin = createAdminClient();
   const { data: upload } = await supabase.from("jdstudio_uploads").select("*").eq("id", id).eq("owner_id", user.id).maybeSingle();
   if (!upload) return NextResponse.json({ error: "Upload not found." }, { status: 404 });
+
+  const { data: profileRow } = await admin
+    .from("profiles")
+    .select("org_id, is_anonymous, credits, guest_tool_usage, created_at")
+    .eq("id", user.id)
+    .single();
+
+  // The bulk / email-list path sends real emails to real third parties
+  // (stakeholders filling out an intake questionnaire) -- that stays
+  // restricted to real organizations, same reasoning as excluding Job
+  // Postings.ai and Contracts & eSign from the guest trial entirely.
+  // Guests and signed-up-but-org-less individuals only get the
+  // self-contained "draft from a sample JD" path below.
+  if (upload.kind !== "sample_jd" && !profileRow?.org_id) {
+    return NextResponse.json(
+      { error: "Sending intake invites to other people requires an approved organization. Drop a sample JD instead to draft one yourself." },
+      { status: 403 }
+    );
+  }
+
+  let gate: GuestGateResult | null = null;
+  if (upload.kind === "sample_jd" && profileRow) {
+    gate = checkGuestGate(
+      {
+        org_id: profileRow.org_id,
+        is_anonymous: profileRow.is_anonymous,
+        credits: profileRow.credits,
+        guest_tool_usage: profileRow.guest_tool_usage as Record<string, number> | null,
+        created_at: profileRow.created_at,
+      },
+      TOOL_KEY
+    );
+    if (!gate.allowed) return guestGateErrorResponse(gate);
+  }
 
   const body = await request.json().catch(() => ({}));
   const questionSetId: string | null = typeof body.question_set_id === "string" ? body.question_set_id : null;
@@ -98,6 +135,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (upload.mode === "auto") {
         await runDraftPipeline(req as JdStudioRequest, user.email || null);
       }
+      // Only spend a guest action / credit once the request actually got
+      // created -- a failed insert shouldn't cost the guest their try.
+      if (gate) await consumeGuestOrCredit(admin, user.id, gate, TOOL_KEY);
     }
   } else {
     const targets: Target[] = Array.isArray(body.targets) ? body.targets : upload.extracted_rows || [];
