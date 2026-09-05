@@ -3,7 +3,7 @@ import { requireAdminUser } from "@/lib/supabase/requireAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { toolPauseKey, GUEST_TRIAL_ENABLED_KEY, getAllSettings, setBooleanSetting } from "@/lib/platformSettings";
 import { logAdminActivity } from "@/lib/adminActivityLog";
-import { DEPARTMENTS } from "@/lib/departments";
+import { DEPARTMENTS, PERSONAL_TOOLS } from "@/lib/departments";
 
 // Owner-only kill switches: pause any live tool site-wide, or pause new
 // guest-trial sign-ups, without a redeploy. GET returns the current state
@@ -11,12 +11,20 @@ import { DEPARTMENTS } from "@/lib/departments";
 
 // Tools gated by requireFeatureAccess() plus JD Studio.ai (gated inline,
 // see its own routes) -- these are the ones a pause toggle actually does
-// something for. Free/bundled tools (Team Chat, Personal Tools, etc.)
-// aren't listed since pausing them wouldn't be wired to anything.
+// something for. Free/bundled tools (Team Chat, Gauri.ai, Contracts & eSign,
+// Calculator, Notes, etc.) aren't listed since pausing them wouldn't be
+// wired to anything. JD Studio.ai lives in PERSONAL_TOOLS (not DEPARTMENTS)
+// but is explicitly gated (see uploads/route.ts + execute/route.ts), so it
+// is pulled in by name rather than by including all of PERSONAL_TOOLS.
 const PAUSABLE_TOOLS = DEPARTMENTS.flatMap((d) => d.tools)
   .filter((t) => t.s === "live" && !t.bundled)
   .map((t) => t.n)
-  .filter((n) => n !== "Job Board (public)"); // public listing page, not itself a gated action
+  .filter((n) => n !== "Job Board (public)") // public listing page, not itself a gated action
+  .concat(
+    PERSONAL_TOOLS.tools.some((t) => t.n === "JD Studio.ai" && t.s === "live")
+      ? ["JD Studio.ai"]
+      : []
+  );
 
 export async function GET() {
   try {
