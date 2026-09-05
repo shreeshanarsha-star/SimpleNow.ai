@@ -50,7 +50,14 @@ export default async function DepartmentPage({
         .maybeSingle();
 
       if (profile?.is_admin) {
-        // Platform owner -- sees everything, no filtering.
+        // Platform owner -- sees every tool except Talent.ai. He manages
+        // orgs/approvals/grants at the platform level and isn't a
+        // recruiter/hiring-manager/approver in anyone's Talent.ai workflow,
+        // so it's hidden from his own nav; he checks a customer's Talent.ai
+        // usage from that org's row in the Owner Console (/admin/organizations)
+        // instead. Scoped to just this one tool for now -- every other live
+        // tool stays unfiltered for him.
+        visibleTools = d.tools.filter((t) => t.n !== "Talent.ai");
       } else if (!profile?.org_id) {
         visibleTools = [];
         gateMessage =

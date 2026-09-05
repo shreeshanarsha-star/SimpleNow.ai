@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
 import { createClient } from "@/lib/supabase/server";
@@ -24,6 +25,14 @@ export default async function TalentAiPage() {
     .select("is_admin, org_id")
     .eq("id", user.id)
     .single();
+
+  // Platform owner: no personal Talent.ai workspace. He manages orgs,
+  // approvals, and feature grants from the Owner Console -- checking a
+  // specific customer's Talent.ai usage happens from that org's row there,
+  // not by opening this tool as if he were a user of it.
+  if (profile?.is_admin) {
+    redirect("/admin/organizations");
+  }
 
   let hasAccess = !!profile?.is_admin;
   if (!hasAccess && profile?.org_id) {

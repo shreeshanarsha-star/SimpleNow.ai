@@ -42,18 +42,37 @@ export default async function AdminOrganizationsPage() {
   const { data: members } = await supabase.from("profiles").select("id, org_id");
   const { data: grants } = await supabase.from("feature_access").select("org_id, feature_key").not("org_id", "is", null);
 
-  const byOrg = new Map<string, { members: number; features: string[] }>();
-  for (const o of orgsData || []) byOrg.set(o.id, { members: 0, features: [] });
+  // Read-only Talent.ai usage snapshot per org -- lets the platform owner
+  // see how much a customer is actually using Talent.ai (requisitions,
+  // candidates in the pipeline) without opening the tool itself. Dataset is
+  // small (tens of requisitions, low hundreds of candidates today), so a
+  // plain fetch-and-reduce here is simpler than a DB-side aggregate/RPC and
+  // easy to revisit if either table grows a lot.
+  const { data: requisitions } = await supabase.from("talent_requisitions").select("id, org_id");
+  const reqOrgById = new Map((requisitions || []).map((r) => [r.id, r.org_id as string | null]));
+  const { data: candidateReqIds } = await supabase.from("talent_candidates").select("requisition_id");
+
+  const byOrg = new Map<string, { members: number; features: string[]; requisitions: number; candidates: number }>();
+  for (const o of orgsData || []) byOrg.set(o.id, { members: 0, features: [], requisitions: 0, candidates: 0 });
   for (const m of members || []) {
     if (m.org_id && byOrg.has(m.org_id)) byOrg.get(m.org_id)!.members += 1;
   }
   for (const g of grants || []) {
     if (g.org_id && byOrg.has(g.org_id)) byOrg.get(g.org_id)!.features.push(g.feature_key);
   }
+  for (const r of requisitions || []) {
+    if (r.org_id && byOrg.has(r.org_id)) byOrg.get(r.org_id)!.requisitions += 1;
+  }
+  for (const c of candidateReqIds || []) {
+    const orgId = c.requisition_id ? reqOrgById.get(c.requisition_id) : null;
+    if (orgId && byOrg.has(orgId)) byOrg.get(orgId)!.candidates += 1;
+  }
   const orgs = (orgsData || []).map((o) => ({
     ...o,
     memberCount: byOrg.get(o.id)?.members ?? 0,
     features: byOrg.get(o.id)?.features ?? [],
+    talentRequisitions: byOrg.get(o.id)?.requisitions ?? 0,
+    talentCandidates: byOrg.get(o.id)?.candidates ?? 0,
   }));
 
   const pending = orgs.filter((o) => o.status === "pending");

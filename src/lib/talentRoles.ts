@@ -90,14 +90,21 @@ export async function buildApprovalChain(
   ];
 }
 
-// Org admins (and the platform owner) act as every Talent.ai role inside
-// their own org -- oversight/support capability, and also means one admin
-// account can exercise the whole workflow (recruiter, hiring manager,
-// reporting manager, HR approver, TA head) without needing a separate
-// login per role.
+// Org admins act as every Talent.ai role inside their own org --
+// oversight/support capability for a real customer org, and also means one
+// admin account can exercise the whole workflow (recruiter, hiring manager,
+// reporting manager, HR approver, TA head) without needing a separate login
+// per role.
+//
+// The platform owner (profiles.is_admin) is deliberately NOT included here.
+// Shree (the platform owner) manages orgs/approvals/grants at the platform
+// level -- he is not a recruiter, hiring manager, or approver inside any
+// customer's Talent.ai workflow. Platform-owner support/oversight access is
+// handled separately (isPlatformOwner-style checks in individual API
+// routes), not by silently holding every operational role here.
 export async function getUserRoles(admin: SupabaseClient, userId: string): Promise<TalentRole[]> {
-  const { data: profile } = await admin.from("profiles").select("is_admin, org_role").eq("id", userId).maybeSingle();
-  if (profile?.is_admin || profile?.org_role === "org_admin") {
+  const { data: profile } = await admin.from("profiles").select("org_role").eq("id", userId).maybeSingle();
+  if (profile?.org_role === "org_admin") {
     return [...TALENT_ROLES];
   }
   const { data } = await admin.from("talent_user_roles").select("role").eq("user_id", userId);
@@ -109,8 +116,8 @@ export async function hasTalentRole(
   userId: string,
   role: TalentRole
 ): Promise<boolean> {
-  const { data: profile } = await admin.from("profiles").select("is_admin, org_role").eq("id", userId).maybeSingle();
-  if (profile?.is_admin || profile?.org_role === "org_admin") return true;
+  const { data: profile } = await admin.from("profiles").select("org_role").eq("id", userId).maybeSingle();
+  if (profile?.org_role === "org_admin") return true;
   const { data } = await admin
     .from("talent_user_roles")
     .select("id")

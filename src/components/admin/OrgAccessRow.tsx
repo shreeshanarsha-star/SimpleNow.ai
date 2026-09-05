@@ -11,6 +11,8 @@ type Org = {
   created_at: string;
   memberCount: number;
   features: string[];
+  talentRequisitions: number;
+  talentCandidates: number;
 };
 
 export default function OrgAccessRow({ org, allFeatures }: { org: Org; allFeatures: string[] }) {
@@ -18,6 +20,7 @@ export default function OrgAccessRow({ org, allFeatures }: { org: Org; allFeatur
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const granted = new Set(org.features);
+  const hasTalentAccess = org.plan === "bulk" || granted.has("Talent.ai") || org.talentRequisitions > 0;
 
   async function patchOrg(action: string, extra: Record<string, unknown> = {}) {
     setBusy(action);
@@ -143,6 +146,13 @@ export default function OrgAccessRow({ org, allFeatures }: { org: Org; allFeatur
             );
           })}
         </div>
+      )}
+
+      {hasTalentAccess && (
+        <p className="text-[11.5px] text-ink-muted m-0 pt-1 border-t border-border/60">
+          Talent.ai: {org.talentRequisitions} requisition{org.talentRequisitions === 1 ? "" : "s"} ·{" "}
+          {org.talentCandidates} candidate{org.talentCandidates === 1 ? "" : "s"} in pipeline
+        </p>
       )}
     </div>
   );

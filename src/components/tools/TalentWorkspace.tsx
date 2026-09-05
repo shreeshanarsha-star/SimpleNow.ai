@@ -61,15 +61,21 @@ export default function TalentWorkspace() {
   const isAdmin = !!me?.isAdmin;
   const isOrgAdmin = !!me?.isOrgAdmin;
   const canManageRoles = isAdmin || isOrgAdmin;
-  const canApprove = isAdmin || roles.includes("reporting_manager") || roles.includes("hr_approver");
-  const canAssign = isAdmin || roles.includes("ta_head");
-  const canRecruit = isAdmin || roles.includes("recruiter") || roles.includes("ta_head");
+  // Platform owner (isAdmin) is deliberately excluded from the three
+  // operational flags below -- he manages orgs/approvals at the platform
+  // level, not inside any customer's Talent.ai recruiting workflow. A real
+  // org_admin still gets full coverage here because getUserRoles() already
+  // returns every TalentRole for org_role === "org_admin", so it shows up
+  // via roles.includes(...) without needing isAdmin OR'd in.
+  const canApprove = roles.includes("reporting_manager") || roles.includes("hr_approver");
+  const canAssign = roles.includes("ta_head");
+  const canRecruit = roles.includes("recruiter") || roles.includes("ta_head");
   const isRecruiterOnly = roles.includes("recruiter") && !isAdmin && !isOrgAdmin;
 
   const tabs: { id: Tab; label: string; show: boolean }[] = [
     { id: "home", label: "My requisitions", show: true },
     { id: "recruiter", label: "Search candidates", show: canRecruit },
-    { id: "funnel", label: "My analytics", show: canRecruit || canAssign || isAdmin },
+    { id: "funnel", label: "My analytics", show: canRecruit || canAssign },
     { id: "projects", label: "My Projects", show: canRecruit },
     { id: "approvals", label: "Approvals", show: canApprove },
     { id: "assign", label: "TA Assignment", show: canAssign },
