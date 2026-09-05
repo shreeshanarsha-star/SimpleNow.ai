@@ -5,6 +5,7 @@ import { findDuplicateCandidate } from "@/lib/jdstudio/duplicate";
 import { sendIntakeInviteEmail } from "@/lib/jdstudio/mailer";
 import { runDraftPipeline } from "@/lib/jdstudio/pipeline";
 import { checkGuestGate, consumeGuestOrCredit, guestGateErrorResponse, type GuestGateResult } from "@/lib/guestAccess";
+import { isGuestTrialEnabled, isToolPaused } from "@/lib/platformSettings";
 import type { JdStudioRequest, JdTemplate, ApproverMode } from "@/lib/jdstudio/types";
 
 export const maxDuration = 60;
@@ -25,6 +26,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     ({ user, supabase } = await requireUser());
   } catch (res) {
     return res as Response;
+  }
+
+  if (await isToolPaused(supabase, TOOL_KEY)) {
+    return NextResponse.json(
+      { error: "JD Studio.ai is temporarily unavailable. Please try again shortly." },
+      { status: 503 }
+    );
   }
 
   const admin = createAdminClient();
@@ -52,6 +60,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   let gate: GuestGateResult | null = null;
   if (upload.kind === "sample_jd" && profileRow) {
+    const guestTrialEnabled = await isGuestTrialEnabled(admin);
     gate = checkGuestGate(
       {
         org_id: profileRow.org_id,
@@ -61,7 +70,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         guest_tool_usage: profileRow.guest_tool_usage as Record<string, number> | null,
         created_at: profileRow.created_at,
       },
-      TOOL_KEY
+      TOOL_KEY,
+      guestTrialEnabled
     );
     if (!gate.allowed) return guestGateErrorResponse(gate);
   }

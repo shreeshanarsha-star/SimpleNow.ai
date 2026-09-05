@@ -5,15 +5,23 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { extractFileText } from "@/lib/jdstudio/extractText";
 import { classifyUpload, extractRecipientRows, draftAnswersFromSampleJd } from "@/lib/jdstudio/ai";
 import { ALLOWED_UPLOAD_TYPES, MAX_UPLOAD_BYTES } from "@/lib/jdstudio/types";
+import { isToolPaused } from "@/lib/platformSettings";
 
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
-  let user;
+  let user, supabase;
   try {
-    ({ user } = await requireUser());
+    ({ user, supabase } = await requireUser());
   } catch (res) {
     return res as Response;
+  }
+
+  if (await isToolPaused(supabase, "JD Studio.ai")) {
+    return NextResponse.json(
+      { error: "JD Studio.ai is temporarily unavailable. Please try again shortly." },
+      { status: 503 }
+    );
   }
 
   const form = await request.formData().catch(() => null);

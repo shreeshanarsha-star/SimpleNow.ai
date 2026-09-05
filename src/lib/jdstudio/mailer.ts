@@ -39,7 +39,7 @@ export async function sendIntakeInviteEmail(params: {
      <p style="margin:24px 0;"><a href="${link}" style="background:#b08d57;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Answer the questions</a></p>
      <p style="color:#9a9484;font-size:13px;">This link is unique to you and expires in 30 days.</p>`
   );
-  return sendEmail({ to: params.to, subject: `Quick input needed: ${params.jobTitle || "new role"}`, html, from: FROM_ADDRESS });
+  return sendEmail({ to: params.to, subject: `Quick input needed: ${params.jobTitle || "new role"}`, html, from: FROM_ADDRESS, tool: "JD Studio.ai" });
 }
 
 export async function sendReminderEmail(params: {
@@ -58,7 +58,7 @@ export async function sendReminderEmail(params: {
      } — it's still waiting on your input.</p>
      <p style="margin:24px 0;"><a href="${link}" style="background:#b08d57;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Answer the questions</a></p>`
   );
-  return sendEmail({ to: params.to, subject: `Reminder: ${params.jobTitle || "job description"} details`, html, from: FROM_ADDRESS });
+  return sendEmail({ to: params.to, subject: `Reminder: ${params.jobTitle || "job description"} details`, html, from: FROM_ADDRESS, tool: "JD Studio.ai" });
 }
 
 export async function sendEscalationEmail(params: {
@@ -76,7 +76,7 @@ export async function sendEscalationEmail(params: {
     )} still hasn't been answered after several reminders.</p>
      <p style="color:#3a3d45;line-height:1.6;">You may want to follow up directly or reassign it from your JD Studio.ai dashboard.</p>`
   );
-  return sendEmail({ to: params.to, subject: `Stalled: ${params.jobTitle || "JD"} intake`, html, from: FROM_ADDRESS });
+  return sendEmail({ to: params.to, subject: `Stalled: ${params.jobTitle || "JD"} intake`, html, from: FROM_ADDRESS, tool: "JD Studio.ai" });
 }
 
 export async function sendApprovalRequestEmail(params: {
@@ -93,5 +93,5 @@ export async function sendApprovalRequestEmail(params: {
     )}) has been drafted and is waiting on your approval.</p>
      <p style="margin:24px 0;"><a href="${link}" style="background:#b08d57;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Review & approve</a></p>`
   );
-  return sendEmail({ to: params.to, subject: `Approval needed: ${params.jobTitle || "job description"}`, html, from: FROM_ADDRESS });
+  return sendEmail({ to: params.to, subject: `Approval needed: ${params.jobTitle || "job description"}`, html, from: FROM_ADDRESS, tool: "JD Studio.ai" });
 }

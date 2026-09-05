@@ -2,6 +2,7 @@ import AppShell from "@/components/AppShell";
 import { createClient } from "@/lib/supabase/server";
 import JdStudioApp from "@/components/tools/JdStudioApp";
 import { checkGuestGate, type GuestGateResult } from "@/lib/guestAccess";
+import { isGuestTrialEnabled } from "@/lib/platformSettings";
 
 const TOOL_KEY = "JD Studio.ai";
 
@@ -38,6 +39,7 @@ export default async function JdStudioPage() {
 
   let guestStatus: GuestGateResult | null = null;
   if (profile) {
+    const guestTrialEnabled = await isGuestTrialEnabled(supabase);
     guestStatus = checkGuestGate(
       {
         org_id: profile.org_id,
@@ -47,7 +49,8 @@ export default async function JdStudioPage() {
         guest_tool_usage: profile.guest_tool_usage as Record<string, number> | null,
         created_at: profile.created_at,
       },
-      TOOL_KEY
+      TOOL_KEY,
+      guestTrialEnabled
     );
   }
 

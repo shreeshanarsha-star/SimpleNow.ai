@@ -25,7 +25,8 @@ export type GuestGateResult =
   | { allowed: true; tier: "guest"; actionsUsed: number; actionsRemaining: number; daysRemaining: number }
   | { allowed: true; tier: "credits"; creditsRemaining: number }
   | { allowed: false; reason: "guest_window_expired" | "guest_cap_reached"; daysRemaining: number }
-  | { allowed: false; reason: "credits_exhausted" };
+  | { allowed: false; reason: "credits_exhausted" }
+  | { allowed: false; reason: "guest_trial_disabled"; daysRemaining: number };
 
 interface GateProfile {
   org_id: string | null;
@@ -45,7 +46,11 @@ function daysRemaining(createdAt: string): number {
 // Read-only check -- call before doing any real work, then call
 // consumeGuestOrCredit() only once the action actually succeeds (so a
 // failed upload/AI call doesn't burn part of someone's trial).
-export function checkGuestGate(profile: GateProfile, toolKey: string): GuestGateResult {
+export function checkGuestGate(
+  profile: GateProfile,
+  toolKey: string,
+  guestTrialEnabled: boolean = true
+): GuestGateResult {
   // Platform owner -- never subject to the guest trial or credits, same
   // as every other feature gate in the app. Without this, detaching an
   // owner from an org (see the Talent.ai owner/user-separation work)
@@ -53,6 +58,13 @@ export function checkGuestGate(profile: GateProfile, toolKey: string): GuestGate
   // a zero balance and no way to earn more.
   if (profile.is_admin) return { allowed: true, tier: "org_member" };
   if (profile.org_id) return { allowed: true, tier: "org_member" };
+
+  // Owner-console kill switch: an already-anonymous guest mid-trial gets
+  // cut off immediately too, not just new sign-ins (that part is
+  // middleware's job). Checked ahead of the window/cap math below.
+  if (profile.is_anonymous && !guestTrialEnabled) {
+    return { allowed: false, reason: "guest_trial_disabled", daysRemaining: 0 };
+  }
 
   if (profile.is_anonymous) {
     const remaining = daysRemaining(profile.created_at);
@@ -102,9 +114,14 @@ export function guestGateErrorResponse(gate: Extract<GuestGateResult, { allowed:
             error: `You've used your ${GUEST_ACTIONS_PER_TOOL} free tries for this tool. Sign up free to keep going -- you'll get ${SIGNUP_BONUS_CREDITS} credits and your work so far is saved.`,
             code: "guest_cap_reached",
           }
-        : {
-            error: `Your ${GUEST_TRIAL_DAYS}-day free trial has ended. Sign up free to keep going -- you'll get ${SIGNUP_BONUS_CREDITS} credits and your work so far is saved.`,
-            code: "guest_window_expired",
-          };
+        : gate.reason === "guest_trial_disabled"
+          ? {
+              error: "Guest trials are paused right now. Please sign up or sign in to continue.",
+              code: "guest_trial_disabled",
+            }
+          : {
+              error: `Your ${GUEST_TRIAL_DAYS}-day free trial has ended. Sign up free to keep going -- you'll get ${SIGNUP_BONUS_CREDITS} credits and your work so far is saved.`,
+              code: "guest_window_expired",
+            };
   return new Response(JSON.stringify(body), { status: 402, headers: { "Content-Type": "application/json" } });
 }

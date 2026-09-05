@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type Org = {
   id: string;
@@ -119,6 +120,12 @@ export default function OrgAccessRow({ org, allFeatures }: { org: Org; allFeatur
             Reactivate
           </button>
         )}
+        <Link
+          href={`/admin/organizations/${org.id}`}
+          className="text-[12px] font-bold px-3 py-1.5 rounded-sm border border-border bg-surface text-ink-2"
+        >
+          Inspect →
+        </Link>
       </div>
 
       {error && <p className="text-[12px] text-critical m-0">{error}</p>}

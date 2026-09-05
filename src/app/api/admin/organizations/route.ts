@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/requireAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logAdminActivity } from "@/lib/adminActivityLog";
 
 
 // Platform owner only: list every organization (any status), how many
@@ -75,5 +76,16 @@ export async function PATCH(req: Request) {
   const admin = createAdminClient();
   const { data, error } = await admin.from("organizations").update(patch).eq("id", orgId).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAdminActivity(admin, {
+    actorId: user.id,
+    actorEmail: user.email,
+    action: body.action,
+    targetType: "organization",
+    targetId: orgId,
+    targetLabel: data?.name,
+    details: body.action === "set_plan" ? { plan: body.plan } : undefined,
+  });
+
   return NextResponse.json({ organization: data });
 }

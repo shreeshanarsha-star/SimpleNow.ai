@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isGuestTrialEnabled } from "@/lib/platformSettings";
 
 // Protects /admin/** — the owner's approval console. Everything else
 // (the public console, tool pages) stays open; auth is layered in only
@@ -54,8 +55,14 @@ export async function middleware(request: NextRequest) {
   );
 
   if (!user && isGuestAccessiblePath) {
-    const { data, error } = await supabase.auth.signInAnonymously();
-    if (!error) user = data.user;
+    // Owner-console kill switch: if the guest trial has been paused, skip
+    // the anonymous sign-in entirely -- the visitor falls through to the
+    // normal "not signed in" path below instead of getting a session.
+    const guestTrialEnabled = await isGuestTrialEnabled(supabase);
+    if (guestTrialEnabled) {
+      const { data, error } = await supabase.auth.signInAnonymously();
+      if (!error) user = data.user;
+    }
   }
 
   if (isAdminRoute && !user) {

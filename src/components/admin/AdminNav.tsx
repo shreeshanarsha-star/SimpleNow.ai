@@ -7,9 +7,11 @@ export default function AdminNav() {
   const pathname = usePathname();
 
   const tabs = [
+    { href: "/admin/overview", label: "Overview" },
     { href: "/admin", label: "Approvals" },
     { href: "/admin/organizations", label: "Organizations" },
     { href: "/admin/users", label: "Users" },
+    { href: "/admin/activity", label: "Activity Log" },
   ];
 
   return (

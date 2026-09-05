@@ -1,4 +1,5 @@
 import { createClient } from "./server";
+import { isToolPaused } from "@/lib/platformSettings";
 
 function unauthorized(message: string, status: number) {
   return new Response(JSON.stringify({ error: message }), {
@@ -56,6 +57,16 @@ export async function requireFeatureAccess(featureKey: string) {
 
   if (profile?.is_admin) {
     return { user, supabase, isAdmin: true, orgId: profile.org_id as string | null };
+  }
+
+  // Owner-console kill switch: pausing a tool blocks every non-owner
+  // immediately, no redeploy needed. Checked after the is_admin bypass
+  // above so the owner can always get back in to un-pause it.
+  if (await isToolPaused(supabase, featureKey)) {
+    throw unauthorized(
+      `${featureKey} is temporarily unavailable. Please try again shortly.`,
+      503
+    );
   }
 
   if (!profile?.org_id) {

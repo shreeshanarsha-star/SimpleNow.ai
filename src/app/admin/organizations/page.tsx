@@ -2,6 +2,7 @@ import AppShell from "@/components/AppShell";
 import { createClient } from "@/lib/supabase/server";
 import { DEPARTMENTS } from "@/lib/departments";
 import OrgAccessRow from "@/components/admin/OrgAccessRow";
+import OrganizationsList from "@/components/admin/OrganizationsList";
 import AdminNav from "@/components/admin/AdminNav";
 import SignOutButton from "@/components/admin/SignOutButton";
 
@@ -121,11 +122,7 @@ export default async function AdminOrganizationsPage() {
             No approved or suspended organizations yet.
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
-            {rest.map((org) => (
-              <OrgAccessRow key={org.id} org={org} allFeatures={LIVE_FEATURES.map((f) => f.n)} />
-            ))}
-          </div>
+          <OrganizationsList orgs={rest} allFeatures={LIVE_FEATURES.map((f) => f.n)} />
         )}
       </section>
     </AppShell>

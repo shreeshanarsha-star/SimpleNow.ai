@@ -32,7 +32,7 @@ export async function sendSigningRequestEmail(params: {
       <a href="${params.signUrl}" style="background:#2a78d6;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:11px 20px;border-radius:6px;display:inline-block;">Review &amp; Sign</a>
     </p>
   `);
-  return sendEmail({ to: params.to, subject: `Signature required: ${params.documentName}`, html, from: CONTRACTS_FROM_ADDRESS });
+  return sendEmail({ to: params.to, subject: `Signature required: ${params.documentName}`, html, from: CONTRACTS_FROM_ADDRESS, tool: "Contracts & eSign" });
 }
 
 export async function sendCopyRecipientEmail(params: {
@@ -50,7 +50,7 @@ export async function sendCopyRecipientEmail(params: {
       <a href="${params.viewUrl}" style="background:#2a78d6;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:11px 20px;border-radius:6px;display:inline-block;">View &amp; Download</a>
     </p>
   `);
-  return sendEmail({ to: params.to, subject: `Completed: ${params.documentName}`, html, from: CONTRACTS_FROM_ADDRESS });
+  return sendEmail({ to: params.to, subject: `Completed: ${params.documentName}`, html, from: CONTRACTS_FROM_ADDRESS, tool: "Contracts & eSign" });
 }
 
 function escapeHtml(value: string): string {
