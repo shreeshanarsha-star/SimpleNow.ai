@@ -29,6 +29,7 @@ export type GuestGateResult =
 
 interface GateProfile {
   org_id: string | null;
+  is_admin: boolean;
   is_anonymous: boolean;
   credits: number;
   guest_tool_usage: Record<string, number> | null;
@@ -45,6 +46,12 @@ function daysRemaining(createdAt: string): number {
 // consumeGuestOrCredit() only once the action actually succeeds (so a
 // failed upload/AI call doesn't burn part of someone's trial).
 export function checkGuestGate(profile: GateProfile, toolKey: string): GuestGateResult {
+  // Platform owner -- never subject to the guest trial or credits, same
+  // as every other feature gate in the app. Without this, detaching an
+  // owner from an org (see the Talent.ai owner/user-separation work)
+  // would leave them looking exactly like a credits-tier individual with
+  // a zero balance and no way to earn more.
+  if (profile.is_admin) return { allowed: true, tier: "org_member" };
   if (profile.org_id) return { allowed: true, tier: "org_member" };
 
   if (profile.is_anonymous) {

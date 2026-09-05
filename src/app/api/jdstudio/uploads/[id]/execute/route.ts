@@ -33,7 +33,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: profileRow } = await admin
     .from("profiles")
-    .select("org_id, is_anonymous, credits, guest_tool_usage, created_at")
+    .select("org_id, is_admin, is_anonymous, credits, guest_tool_usage, created_at")
     .eq("id", user.id)
     .single();
 
@@ -55,6 +55,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     gate = checkGuestGate(
       {
         org_id: profileRow.org_id,
+        is_admin: !!profileRow.is_admin,
         is_anonymous: profileRow.is_anonymous,
         credits: profileRow.credits,
         guest_tool_usage: profileRow.guest_tool_usage as Record<string, number> | null,

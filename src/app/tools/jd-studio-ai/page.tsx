@@ -32,7 +32,7 @@ export default async function JdStudioPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("org_id, is_anonymous, credits, guest_tool_usage, created_at")
+    .select("org_id, is_admin, is_anonymous, credits, guest_tool_usage, created_at")
     .eq("id", user.id)
     .single();
 
@@ -41,6 +41,7 @@ export default async function JdStudioPage() {
     guestStatus = checkGuestGate(
       {
         org_id: profile.org_id,
+        is_admin: !!profile.is_admin,
         is_anonymous: profile.is_anonymous,
         credits: profile.credits,
         guest_tool_usage: profile.guest_tool_usage as Record<string, number> | null,
