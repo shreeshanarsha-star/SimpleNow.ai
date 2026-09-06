@@ -269,7 +269,7 @@ export default function JdStudioApp({ guestStatus = null }: { guestStatus?: Gues
           JD Studio.ai
         </h1>
         <p className="m-0 mt-1 text-[13px] text-ink-muted">
-          Drop a master list, an email list, or a sample JD -- JD Studio.ai gathers the details and drafts the job description.
+          Build your organization&apos;s people architecture. Create clear, standardized, AI-assisted job descriptions.
         </p>
       </div>
 
