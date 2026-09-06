@@ -3,16 +3,17 @@ import { requireAdminUser } from "@/lib/supabase/requireAdmin";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(request: Request) {
+  let user, supabase;
   try {
-    await requireAdminUser();
+    ({ user, supabase } = await requireAdminUser());
   } catch (res) {
     return res as Response;
   }
   const url = new URL(request.url);
   const limit = Math.min(200, Number(url.searchParams.get("limit")) || 100);
 
-  const admin = createAdminClient();
-  const { data, error } = await admin
+  const client = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
+  const { data, error } = await client
     .from("admin_activity_log")
     .select("*")
     .order("created_at", { ascending: false })

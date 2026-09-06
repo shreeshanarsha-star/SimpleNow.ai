@@ -51,7 +51,7 @@ export default function UserAccessRow({
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-[13.5px] font-medium truncate">{user.email}</div>
-          <div className="text-[11px] text-ink-muted">
+          <div className="text-[11px] text-ink-muted" suppressHydrationWarning>
             Joined {new Date(user.created_at).toLocaleDateString()}
           </div>
         </div>

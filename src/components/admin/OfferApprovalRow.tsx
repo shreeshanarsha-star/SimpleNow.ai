@@ -60,7 +60,7 @@ export default function OfferApprovalRow({ offer, readOnly = false }: { offer: O
           {offer.candidate_name} — {offer.role_title}
         </span>
         {offer.proposed_ctc_annual && (
-          <span className="text-[11.5px] text-ink-muted">
+          <span className="text-[11.5px] text-ink-muted" suppressHydrationWarning>
             {offer.currency} {offer.proposed_ctc_annual.toLocaleString()}
           </span>
         )}

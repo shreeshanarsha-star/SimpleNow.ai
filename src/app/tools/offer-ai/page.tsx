@@ -1,3 +1,4 @@
+import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
 import { createClient } from "@/lib/supabase/server";
@@ -11,7 +12,9 @@ export default async function OfferAiPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  const isRealUser = Boolean(user && !user.is_anonymous && user.email);
+
+  if (!isRealUser || !user) {
     return (
       <AppShell title="Offer.ai">
         <AccessDenied reason="You need to sign in first." />
@@ -58,6 +61,12 @@ function AccessDenied({ reason }: { reason: string }) {
       <Icon name="x" className="w-8 h-8 text-ink-muted mb-1" />
       <div className="text-[16px] font-bold">Access needed</div>
       <p className="text-[12.5px] text-ink-muted max-w-[320px] leading-relaxed">{reason}</p>
+      <Link
+        href="/login"
+        className="bg-brand text-white text-[12.5px] font-bold px-4 py-2 rounded-sm mt-1 shadow-soft-sm hover:opacity-90 transition-opacity"
+      >
+        Sign in
+      </Link>
     </div>
   );
 }

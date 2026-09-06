@@ -37,7 +37,9 @@ export default async function DepartmentPage({
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) {
+    const isRealUser = Boolean(user && !user.is_anonymous && user.email);
+
+    if (!isRealUser || !user) {
       // Guests browse the full, unfiltered tool list for this department --
       // same "see everything, sign in to use it" rule as Sidebar. Clicking
       // into a live tool hits middleware's /tools/** auth redirect, so

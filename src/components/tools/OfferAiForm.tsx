@@ -58,6 +58,35 @@ export default function OfferAiForm() {
     setComponents((prev) => prev.filter((_, i) => i !== idx));
   }
 
+  function handleDraftManually() {
+    setError(null);
+    const cleanComponents = components
+      .filter((c) => c.label && c.annual)
+      .map((c) => `- ${c.label}: ${currency} ${Number(c.annual).toLocaleString()}/year`);
+
+    const manualLetter = [
+      `Dear ${candidateName || "Candidate"},`,
+      "",
+      `We are pleased to offer you the position of ${roleTitle} at our organization.`,
+      "",
+      proposedCtc ? `Total Proposed Compensation (CTC): ${currency} ${Number(proposedCtc).toLocaleString()} per annum.` : "",
+      cleanComponents.length > 0 ? `\nCompensation Structure:\n${cleanComponents.join("\n")}` : "",
+      noticePeriod ? `\nNotice Period: ${noticePeriod}` : "",
+      joiningDate ? `\nProposed Joining Date: ${joiningDate}` : "",
+      draftNotes ? `\nAdditional Notes: ${draftNotes}` : "",
+      "",
+      "Please review and confirm your acceptance of this offer.",
+      "",
+      "Sincerely,",
+      "Talent Acquisition & HR Team",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    setPolished(manualLetter);
+    setStep("review");
+  }
+
   async function handlePolish() {
     setError(null);
     setStep("polishing");
@@ -240,13 +269,23 @@ export default function OfferAiForm() {
             />
           </Field>
 
-          <button
-            onClick={handlePolish}
-            disabled={!candidateName || !roleTitle || step === "polishing"}
-            className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 self-start shadow-soft-sm"
-          >
-            {step === "polishing" ? "Polishing…" : "Polish with AI"}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handlePolish}
+              disabled={!candidateName || !roleTitle || step === "polishing"}
+              className="bg-brand text-white text-[13px] font-bold px-4 py-2.5 rounded-sm disabled:opacity-50 shadow-soft-sm"
+            >
+              {step === "polishing" ? "Polishing…" : "Polish with AI"}
+            </button>
+            <button
+              onClick={handleDraftManually}
+              disabled={!candidateName || !roleTitle || step === "polishing"}
+              type="button"
+              className="border border-border text-[13px] font-bold px-4 py-2.5 rounded-sm bg-surface hover:bg-page transition-colors text-ink"
+            >
+              Draft manually / Skip AI
+            </button>
+          </div>
         </div>
       )}
 

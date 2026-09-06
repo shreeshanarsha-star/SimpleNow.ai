@@ -52,8 +52,9 @@ export default function Sidebar({
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
       const user = data.user;
-      setEmail(user?.email ?? null);
-      if (!user) {
+      const isRealUser = Boolean(user && !user.is_anonymous && user.email);
+      setEmail(isRealUser ? (user?.email ?? null) : null);
+      if (!isRealUser || !user) {
         // Guests can browse the full catalog -- every department/tool is
         // visible so they can see what's on offer; actually *using* a live
         // tool is what requires signing in (middleware redirects /tools/**

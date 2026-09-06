@@ -76,7 +76,7 @@ export default function OrgAccessRow({ org, allFeatures }: { org: Org; allFeatur
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-[14px] font-bold truncate">{org.name}</div>
-          <div className="text-[11px] text-ink-muted">
+          <div className="text-[11px] text-ink-muted" suppressHydrationWarning>
             {org.memberCount} member{org.memberCount === 1 ? "" : "s"} · Created{" "}
             {new Date(org.created_at).toLocaleDateString()}
           </div>

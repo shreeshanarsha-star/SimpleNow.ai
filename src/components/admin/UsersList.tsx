@@ -71,7 +71,7 @@ export default function UsersList({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[13.5px] font-medium truncate">{profile.email}</div>
-                <div className="text-[11px] text-ink-muted">
+                <div className="text-[11px] text-ink-muted" suppressHydrationWarning>
                   Joined {new Date(profile.created_at).toLocaleDateString()}
                 </div>
               </div>

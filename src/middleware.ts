@@ -65,20 +65,17 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (isAdminRoute && !user) {
+  const isRealUser = Boolean(user && !user.is_anonymous && user.email);
+
+  if (isAdminRoute && !isGuestAccessiblePath && !isRealUser) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", request.nextUrl.pathname);
     return NextResponse.redirect(url);
   }
 
-  if (isLoginRoute && user) {
-    // Previously this always sent signed-in visitors to /admin, which
-    // meant any non-owner who landed on /login (e.g. via the "Forgot
-    // password?" round trip, or just re-visiting the URL) got redirected
-    // into the owner's approval console. Send them home instead --
-    // /login's own submit handler is what knows to route the actual
-    // platform owner to /admin.
+  if (isLoginRoute && isRealUser) {
+    // Already signed in as a confirmed user -- send to overview instead of showing login form
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.searchParams.delete("next");

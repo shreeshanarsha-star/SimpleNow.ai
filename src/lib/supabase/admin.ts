@@ -6,11 +6,11 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 // authenticated admin (see requireAdminUser() in ./requireAdmin.ts).
 export function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!url || !serviceKey) {
     throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY is not set. Add it in your environment (Vercel dashboard or .env.local) — see .env.example."
+      "Neither SUPABASE_SERVICE_ROLE_KEY nor NEXT_PUBLIC_SUPABASE_ANON_KEY is set."
     );
   }
 
