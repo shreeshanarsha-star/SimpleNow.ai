@@ -45,21 +45,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .eq("id", user.id)
     .single();
 
-  // The bulk / email-list path sends real emails to real third parties
-  // (stakeholders filling out an intake questionnaire) -- that stays
-  // restricted to real organizations, same reasoning as excluding Job
-  // Postings.ai and Contracts & eSign from the guest trial entirely.
-  // Guests and signed-up-but-org-less individuals only get the
-  // self-contained "draft from a sample JD" path below.
-  if (upload.kind !== "sample_jd" && !profileRow?.org_id) {
-    return NextResponse.json(
-      { error: "Sending intake invites to other people requires an approved organization. Drop a sample JD instead to draft one yourself." },
-      { status: 403 }
-    );
-  }
-
+  // If user is guest/anonymous, ensure they have tries/credits
   let gate: GuestGateResult | null = null;
-  if (upload.kind === "sample_jd" && profileRow) {
+  if (profileRow?.is_anonymous) {
     const guestTrialEnabled = await isGuestTrialEnabled(admin);
     gate = checkGuestGate(
       {
@@ -78,7 +66,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const body = await request.json().catch(() => ({}));
   const questionSetId: string | null = typeof body.question_set_id === "string" ? body.question_set_id : null;
-  const template: JdTemplate = ["standard", "compact", "branded"].includes(body.template) ? body.template : "standard";
+  const template: JdTemplate = ["internal", "external", "both", "standard", "compact", "branded"].includes(body.template) ? body.template : "both";
   const approverMode: ApproverMode = body.approver_mode === "route" ? "route" : "self";
   const approverEmail: string | null = typeof body.approver_email === "string" ? body.approver_email : null;
   const defaultDepartment: string = typeof body.department === "string" && body.department ? body.department : "General";

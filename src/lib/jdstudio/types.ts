@@ -26,7 +26,7 @@ export type RequestStatus =
   | "failed";
 
 export type ApproverMode = "self" | "route";
-export type JdTemplate = "standard" | "compact" | "branded";
+export type JdTemplate = "internal" | "external" | "both" | "standard" | "compact" | "branded";
 export type QuestionSection = "role_context" | "must_have" | "good_to_have";
 export type QuestionType = "text" | "textarea";
 
@@ -52,6 +52,7 @@ export interface JdStudioUpload {
     confidence: "high" | "medium" | "low";
     reason: string;
     row_count?: number;
+    sample_answers?: Record<string, unknown>;
   } | null;
   extracted_rows: ExtractedRow[] | null;
   error: string | null;
@@ -64,6 +65,8 @@ export interface ExtractedRow {
   email: string | null;
   department: string | null;
   job_title: string | null;
+  approver_email?: string | null;
+  approver_email_2?: string | null;
 }
 
 export interface JdStudioQuestionSet {
@@ -76,7 +79,41 @@ export interface JdStudioQuestionSet {
   updated_at: string;
 }
 
+// 1. Internal People Architecture Blueprint
+export interface InternalJdFormat {
+  role_title: string;
+  department: string;
+  band_grade: string;
+  location: string;
+  experience_level: string;
+  role_purpose: string;
+  kras: string[]; // Top 5 Key Result Areas
+  performance_metrics: string[]; // How KRAs are measured / OKRs
+  functional_interfaces: string[]; // Collaboration interfaces & boundaries
+  core_competencies: string[]; // Top non-negotiable competencies
+  additional_strengths: string[]; // Certifications, specialized skills
+}
+
+// 2. External Market & Candidate Facing Job Description
+export interface ExternalJdFormat {
+  role_title: string;
+  department: string;
+  location_mode: string;
+  employment_type: string;
+  experience_level: string;
+  about_role: string;
+  responsibilities: string[]; // What You'll Do
+  must_have_qualifications: string[]; // Top 3 Non-Negotiable bars
+  preferred_qualifications: string[]; // Additional strengths & certifications
+  compensation_range: string | null;
+}
+
 export interface JdDraft {
+  // Primary Dual Formats
+  internal?: InternalJdFormat;
+  external?: ExternalJdFormat;
+
+  // Legacy fallback fields for backward compatibility
   summary: string;
   responsibilities: string[];
   must_have_skills: string[];
@@ -116,10 +153,13 @@ export interface JdStudioRequest {
   duplicate_score: number | null;
   approver_mode: ApproverMode;
   approver_email: string | null;
+  approver_email_2?: string | null;
   approved_by: string | null;
   approved_at: string | null;
   template: JdTemplate;
   final_docx_path: string | null;
+  final_internal_docx_path?: string | null;
+  final_external_docx_path?: string | null;
   job_posting_id: string | null;
   published_at: string | null;
   reminder_count: number;

@@ -56,19 +56,35 @@ export async function generateAndStoreFinalDocx(admin: AdminClient, request: JdS
   const draft = request.ai_draft_json;
   if (!draft) throw new Error("No AI draft to finalize.");
 
-  const buffer = await generateJdDocx(
-    { jobTitle: request.job_title || "Job Description", department: request.department, draft },
-    request.template
-  );
-
   const safeDept = (request.department || "General").replace(/[^a-zA-Z0-9_-]/g, "_");
-  const path = `${request.owner_id}/final/${safeDept}/${request.id}.docx`;
+  const jobTitle = request.job_title || "Job Description";
 
-  const { error: uploadError } = await admin.storage.from("jdstudio").upload(path, buffer, {
+  // Generate both internal and external formats
+  const internalBuffer = await generateJdDocx({ jobTitle, department: request.department, draft }, "internal");
+  const externalBuffer = await generateJdDocx({ jobTitle, department: request.department, draft }, "external");
+
+  const internalPath = `${request.owner_id}/final/${safeDept}/${request.id}_internal.docx`;
+  const externalPath = `${request.owner_id}/final/${safeDept}/${request.id}_external.docx`;
+
+  await Promise.all([
+    admin.storage.from("jdstudio").upload(internalPath, internalBuffer, {
+      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      upsert: true,
+    }),
+    admin.storage.from("jdstudio").upload(externalPath, externalBuffer, {
+      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      upsert: true,
+    }),
+  ]);
+
+  // Primary path: internal if requested, otherwise external
+  const primaryPath = request.template === "internal" ? internalPath : externalPath;
+  // Also save a canonical copy at standard path
+  const standardPath = `${request.owner_id}/final/${safeDept}/${request.id}.docx`;
+  await admin.storage.from("jdstudio").upload(standardPath, externalBuffer, {
     contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     upsert: true,
   });
-  if (uploadError) throw new Error(uploadError.message);
 
-  return path;
+  return primaryPath;
 }

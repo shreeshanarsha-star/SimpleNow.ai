@@ -11,6 +11,8 @@ import type {
   JdStudioQuestionSet,
   JdTemplate,
   ApproverMode,
+  JdDraft,
+  BiasFlag,
 } from "@/lib/jdstudio/types";
 
 type Target = { name: string | null; email: string; department: string; job_title: string | null; include: boolean };
@@ -117,14 +119,26 @@ export default function JdStudioApp({ guestStatus = null }: { guestStatus?: Gues
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
 
-  // Upload / review flow
+  // Mode: "instant" for direct generation on the spot; "team" for email dispatch & stakeholder intake
+  const [studioMode, setStudioMode] = useState<"instant" | "team">("instant");
+  const [instantText, setInstantText] = useState("");
+  const [instantGenerating, setInstantGenerating] = useState(false);
+  const [instantResult, setInstantResult] = useState<{
+    request: JdStudioRequest;
+    draft: JdDraft;
+    bias_flags: BiasFlag[];
+  } | null>(null);
+  const [instantTab, setInstantTab] = useState<"internal" | "external">("internal");
+  const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
+
+  // Upload / review flow for team mode
   const [uploading, setUploading] = useState(false);
   const [upload, setUpload] = useState<JdStudioUpload | null>(null);
-  const [uploadMode, setUploadMode] = useState<"auto" | "manual">("manual");
+  const [uploadMode, setUploadMode] = useState<"auto" | "manual">("auto");
   const [targets, setTargets] = useState<Target[]>([]);
   const [sampleAnswers, setSampleAnswers] = useState<Record<string, string>>({});
   const [questionSetId, setQuestionSetId] = useState<string>("");
-  const [template, setTemplate] = useState<JdTemplate>("standard");
+  const [template, setTemplate] = useState<JdTemplate>("both");
   const [approverMode, setApproverMode] = useState<ApproverMode>("self");
   const [approverEmail, setApproverEmail] = useState("");
   const [defaultDept, setDefaultDept] = useState("General");
@@ -177,7 +191,9 @@ export default function JdStudioApp({ guestStatus = null }: { guestStatus?: Gues
       const { upload: u } = await api<{ upload: JdStudioUpload }>("/api/jdstudio/uploads", { method: "POST", body: form });
       setUpload(u);
       if (u.status === "failed") return;
+
       if (u.kind === "master_data" || u.kind === "email_list") {
+        setStudioMode("team");
         setTargets(
           (u.extracted_rows || []).map((r) => ({
             name: r.name,
@@ -187,22 +203,66 @@ export default function JdStudioApp({ guestStatus = null }: { guestStatus?: Gues
             include: true,
           }))
         );
-      } else if (u.kind === "sample_jd") {
+      } else {
+        // Sample JD or single doc - if in instant mode, trigger immediate direct drafting
         const sa = (u.classification as unknown as { sample_answers?: Record<string, string> })?.sample_answers || {};
-        setSampleAnswers({
-          job_title: sa.job_title || "",
-          department: sa.department || defaultDept,
-          location_mode: sa.location_mode || "",
-          employment_headcount: sa.employment_headcount || "",
-          years_experience: sa.years_experience || "",
-          comp_range: sa.comp_range || "",
-          top_responsibilities: sa.top_responsibilities || "",
-        });
+        if (studioMode === "instant") {
+          await handleDirectDraft(file.name, {
+            role_title: sa.job_title || file.name.replace(/\.[^/.]+$/, ""),
+            department: sa.department || defaultDept,
+            location: sa.location_mode || "Hybrid / Flexible",
+            experience_level: sa.years_experience || "",
+            comp_range: sa.comp_range || "",
+            kras: sa.top_responsibilities ? [sa.top_responsibilities] : [],
+          });
+        } else {
+          setSampleAnswers({
+            job_title: sa.job_title || "",
+            department: sa.department || defaultDept,
+            location_mode: sa.location_mode || "",
+            employment_headcount: sa.employment_headcount || "",
+            years_experience: sa.years_experience || "",
+            comp_range: sa.comp_range || "",
+            top_responsibilities: sa.top_responsibilities || "",
+          });
+        }
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : "Upload failed.");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleDirectDraft(overrideTitle?: string, prefillAnswers?: Record<string, unknown>) {
+    if (!instantText.trim() && !overrideTitle && !prefillAnswers) return;
+    setInstantGenerating(true);
+    setInstantResult(null);
+    try {
+      const body = {
+        raw_text: instantText,
+        department: defaultDept,
+        template,
+        answers: prefillAnswers || {
+          role_title: overrideTitle || "Role Specification",
+          department: defaultDept,
+        },
+      };
+      const res = await api<{ request: JdStudioRequest; draft: JdDraft; bias_flags: BiasFlag[] }>(
+        "/api/jdstudio/direct-draft",
+        { method: "POST", body: JSON.stringify(body) }
+      );
+      setInstantResult(res);
+      await loadRequests();
+    } catch (err) {
+      const code = err instanceof ApiError ? err.code : undefined;
+      if (code === "guest_cap_reached" || code === "guest_window_expired" || code === "credits_exhausted") {
+        setLimitReached({ message: err instanceof Error ? err.message : "You've hit your free limit." });
+      } else {
+        alert(err instanceof Error ? err.message : "Generation failed.");
+      }
+    } finally {
+      setInstantGenerating(false);
     }
   }
 
@@ -259,6 +319,12 @@ export default function JdStudioApp({ guestStatus = null }: { guestStatus?: Gues
     a.remove();
   }
 
+  function copyToClipboard(text: string, formatKey: string) {
+    navigator.clipboard.writeText(text);
+    setCopiedFormat(formatKey);
+    setTimeout(() => setCopiedFormat(null), 2000);
+  }
+
   const detail = requests.find((r) => r.id === detailId) || null;
 
   return (
@@ -299,195 +365,416 @@ export default function JdStudioApp({ guestStatus = null }: { guestStatus?: Gues
         </div>
       )}
 
-      {/* --- Drop zone / review --- */}
-      {!upload && (
-        <div
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault();
-            const f = e.dataTransfer.files?.[0];
-            if (f) handleFile(f);
-          }}
-          className="border-2 border-dashed border-border rounded-xl px-6 py-10 text-center cursor-pointer transition-colors hover:border-brand"
-          onClick={() => fileRef.current?.click()}
+      {/* --- Mode Selector Tabs --- */}
+      <div className="flex border-b border-border gap-6 text-[13.5px] font-bold">
+        <button
+          onClick={() => setStudioMode("instant")}
+          className={`pb-2.5 flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+            studioMode === "instant" ? "border-brand text-brand" : "border-transparent text-ink-muted hover:text-ink"
+          }`}
         >
-          <Icon name="upload" className="w-8 h-8 mx-auto mb-3 text-brand" />
-          <p className="m-0 text-[15px] font-bold">{uploading ? "Reading your file…" : "Click or drop a file to start"}</p>
-          <p className="m-0 mt-1.5 text-[12.5px] text-ink-muted max-w-md mx-auto">
-            A master data sheet or email list (.xlsx/.csv) to gather details from stakeholders, or a sample JD (.docx/.pdf/.txt) to draft from directly.
-          </p>
-          <input
-            ref={fileRef}
-            type="file"
-            className="hidden"
-            accept=".xlsx,.xls,.csv,.docx,.pdf,.txt"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
+          <span>⚡</span>
+          <span>Instant Studio (Direct Generation)</span>
+        </button>
+        <button
+          onClick={() => setStudioMode("team")}
+          className={`pb-2.5 flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+            studioMode === "team" ? "border-brand text-brand" : "border-transparent text-ink-muted hover:text-ink"
+          }`}
+        >
+          <span>👥</span>
+          <span>Team Rollout (Manager Intakes & Approval)</span>
+        </button>
+      </div>
+
+      {/* --- PART 1: Instant Studio Mode --- */}
+      {studioMode === "instant" && (
+        <div className="flex flex-col gap-4">
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const f = e.dataTransfer.files?.[0];
               if (f) handleFile(f);
-              e.target.value = "";
             }}
-          />
-          <div className="flex items-center justify-center gap-2 mt-5" onClick={(e) => e.stopPropagation()}>
-            <span className="text-[12px] font-semibold text-ink-muted">Mode:</span>
-            {(["manual", "auto"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setUploadMode(m)}
-                className={`text-[12.5px] font-bold px-3 py-1.5 rounded-full border transition-colors ${
-                  uploadMode === m ? "bg-brand text-white border-brand" : "border-border text-ink-muted hover:border-brand"
-                }`}
-              >
-                {m === "manual" ? "Manual (review before sending)" : "Auto (send immediately)"}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {upload && upload.status === "failed" && (
-        <div className="border border-critical/30 bg-critical-wash rounded-md px-4 py-3 text-[13px] text-critical flex items-center justify-between">
-          <span>{upload.error || "Couldn't process this file."}</span>
-          <button className="font-bold underline" onClick={() => setUpload(null)}>
-            Try again
-          </button>
-        </div>
-      )}
-
-      {upload && upload.status !== "failed" && (
-        <div className="border border-border rounded-xl p-5 flex flex-col gap-4 bg-surface">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] font-bold">{upload.file_name}</span>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-brand-wash text-brand-dark">
-                {upload.kind === "master_data" ? "Master data" : upload.kind === "email_list" ? "Email list" : upload.kind === "sample_jd" ? "Sample JD" : "Unrecognized"}
-              </span>
-            </div>
-            <button className="text-[12px] text-ink-muted hover:text-ink" onClick={() => setUpload(null)}>
-              Cancel
-            </button>
+            className="border-2 border-dashed border-border rounded-xl px-6 py-8 text-center cursor-pointer transition-colors hover:border-brand bg-surface"
+            onClick={() => fileRef.current?.click()}
+          >
+            <Icon name="upload" className="w-8 h-8 mx-auto mb-2 text-brand" />
+            <p className="m-0 text-[15px] font-bold">
+              {uploading ? "Analyzing role specification…" : "Drop a raw JD, notes, or role spec to start"}
+            </p>
+            <p className="m-0 mt-1 text-[12.5px] text-ink-muted max-w-md mx-auto">
+              Accepts .docx, .pdf, .txt, or a spreadsheet. We&apos;ll extract the core architecture and synthesize both formats instantly.
+            </p>
+            <input
+              ref={fileRef}
+              type="file"
+              className="hidden"
+              accept=".xlsx,.xls,.csv,.docx,.pdf,.txt"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+                e.target.value = "";
+              }}
+            />
           </div>
 
-          {(upload.kind === "master_data" || upload.kind === "email_list") && (
-            <div className="flex flex-col gap-2 max-h-72 overflow-auto">
-              {targets.map((t, i) => (
-                <div key={i} className="flex items-center gap-2 text-[12.5px] border-b border-border pb-2">
-                  <input type="checkbox" checked={t.include} onChange={(e) => setTargets((ts) => ts.map((x, xi) => (xi === i ? { ...x, include: e.target.checked } : x)))} />
-                  <input
-                    className="flex-1 border border-border rounded-md px-2 py-1"
-                    value={t.name || ""}
-                    placeholder="Name"
-                    onChange={(e) => setTargets((ts) => ts.map((x, xi) => (xi === i ? { ...x, name: e.target.value } : x)))}
-                  />
-                  <input
-                    className="flex-[1.4] border border-border rounded-md px-2 py-1"
-                    value={t.email}
-                    placeholder="Email"
-                    onChange={(e) => setTargets((ts) => ts.map((x, xi) => (xi === i ? { ...x, email: e.target.value } : x)))}
-                  />
-                  <input
-                    className="flex-1 border border-border rounded-md px-2 py-1"
-                    value={t.department}
-                    placeholder="Department"
-                    onChange={(e) => setTargets((ts) => ts.map((x, xi) => (xi === i ? { ...x, department: e.target.value } : x)))}
-                  />
-                  <input
-                    className="flex-1 border border-border rounded-md px-2 py-1"
-                    value={t.job_title || ""}
-                    placeholder="Job title"
-                    onChange={(e) => setTargets((ts) => ts.map((x, xi) => (xi === i ? { ...x, job_title: e.target.value } : x)))}
-                  />
-                </div>
-              ))}
-              {!targets.length && <p className="text-[12.5px] text-ink-muted">No rows with a valid email were found -- add one manually below.</p>}
-              <button
-                className="text-[12px] font-bold text-brand self-start"
-                onClick={() => setTargets((ts) => [...ts, { name: "", email: "", department: defaultDept, job_title: "", include: true }])}
-              >
-                + Add recipient
-              </button>
-            </div>
-          )}
-
-          {upload.kind === "sample_jd" && (
-            <div className="grid grid-cols-2 gap-3 text-[12.5px]">
-              {(
-                [
-                  ["job_title", "Job title"],
-                  ["department", "Department"],
-                  ["location_mode", "Location & work mode"],
-                  ["employment_headcount", "Employment type & headcount"],
-                  ["years_experience", "Years of experience"],
-                  ["comp_range", "Compensation range"],
-                ] as const
-              ).map(([key, label]) => (
-                <label key={key} className="flex flex-col gap-1">
-                  <span className="text-ink-muted font-semibold">{label}</span>
-                  <input
-                    className="border border-border rounded-md px-2 py-1.5"
-                    value={sampleAnswers[key] || ""}
-                    onChange={(e) => setSampleAnswers((a) => ({ ...a, [key]: e.target.value }))}
-                  />
-                </label>
-              ))}
-              <label className="flex flex-col gap-1 col-span-2">
-                <span className="text-ink-muted font-semibold">Top responsibilities</span>
-                <textarea
-                  className="border border-border rounded-md px-2 py-1.5 min-h-16"
-                  value={sampleAnswers.top_responsibilities || ""}
-                  onChange={(e) => setSampleAnswers((a) => ({ ...a, top_responsibilities: e.target.value }))}
+          <div className="flex flex-col gap-3 p-4 bg-surface border border-border rounded-xl">
+            <div className="flex items-center justify-between">
+              <span className="text-[12.5px] font-bold text-ink">Or paste role notes directly:</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-ink-muted font-medium">Department:</span>
+                <input
+                  className="border border-border rounded-md px-2 py-1 text-[12px] bg-page"
+                  placeholder="e.g. Engineering"
+                  value={defaultDept}
+                  onChange={(e) => setDefaultDept(e.target.value)}
                 />
-              </label>
+              </div>
+            </div>
+            <textarea
+              className="w-full border border-border rounded-md p-3 text-[13px] bg-page min-h-24 outline-none focus:border-brand"
+              placeholder="Paste raw bullet points, job duties, required years of experience, or rough notes here..."
+              value={instantText}
+              onChange={(e) => setInstantText(e.target.value)}
+            />
+            <div className="flex items-center justify-between pt-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-ink-muted font-medium">Output Template:</span>
+                <select
+                  className="border border-border rounded-md px-2 py-1 text-[12px] bg-page font-semibold"
+                  value={template}
+                  onChange={(e) => setTemplate(e.target.value as JdTemplate)}
+                >
+                  <option value="both">Both (Internal Blueprint + External JD)</option>
+                  <option value="internal">Internal Format Only (People Architecture)</option>
+                  <option value="external">External Format Only (Market Candidate JD)</option>
+                </select>
+              </div>
+              <button
+                disabled={instantGenerating || (!instantText.trim() && !upload)}
+                onClick={() => handleDirectDraft()}
+                className="bg-brand text-white font-bold text-[13px] px-5 py-2 rounded-lg shadow-xs hover:opacity-95 transition-opacity disabled:opacity-50 cursor-pointer flex items-center gap-2"
+              >
+                {instantGenerating ? (
+                  <>
+                    <span className="animate-spin">⏳</span>
+                    <span>Synthesizing People Architecture…</span>
+                  </>
+                ) : (
+                  <>
+                    <span>▶</span>
+                    <span>Execute & Generate JDs</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Instant Generated Result Canvas */}
+          {instantResult && (
+            <div className="border border-brand/40 bg-surface rounded-xl p-5 shadow-sm flex flex-col gap-4 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[15px] font-bold text-ink">
+                    {instantResult.draft.internal?.role_title || instantResult.draft.external?.role_title || "Job Description"}
+                  </span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-good-wash text-good-text">
+                    Ready
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    className="text-[12px] font-bold px-3 py-1.5 rounded-md border border-border bg-page hover:border-brand transition-colors text-ink flex items-center gap-1.5"
+                    href={`/api/jdstudio/requests/${instantResult.request.id}/download?format=internal`}
+                  >
+                    <span>📄</span>
+                    <span>Download Internal .docx</span>
+                  </a>
+                  <a
+                    className="text-[12px] font-bold px-3 py-1.5 rounded-md border border-border bg-page hover:border-brand transition-colors text-ink flex items-center gap-1.5"
+                    href={`/api/jdstudio/requests/${instantResult.request.id}/download?format=external`}
+                  >
+                    <span>📄</span>
+                    <span>Download External .docx</span>
+                  </a>
+                </div>
+              </div>
+
+              {/* Format Switcher */}
+              <div className="flex rounded-lg bg-page p-1 gap-1 border border-border">
+                <button
+                  onClick={() => setInstantTab("internal")}
+                  className={`flex-1 py-1.5 text-[12.5px] font-bold rounded-md transition-colors cursor-pointer ${
+                    instantTab === "internal" ? "bg-surface text-ink shadow-xs" : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  🏢 Internal Format (People Architecture & KRAs)
+                </button>
+                <button
+                  onClick={() => setInstantTab("external")}
+                  className={`flex-1 py-1.5 text-[12.5px] font-bold rounded-md transition-colors cursor-pointer ${
+                    instantTab === "external" ? "bg-surface text-ink shadow-xs" : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  🌐 External Format (Market Candidate JD)
+                </button>
+              </div>
+
+              {/* Rendered content */}
+              <div className="p-4 bg-page rounded-xl border border-border text-[13px] text-ink flex flex-col gap-4 max-h-[440px] overflow-y-auto">
+                {instantTab === "internal" ? (
+                  <>
+                    <div className="border-b border-border pb-3">
+                      <div className="text-[11px] font-bold uppercase text-brand tracking-wider">Internal People Blueprint</div>
+                      <div className="text-[14px] font-bold mt-1">{instantResult.draft.internal?.role_title}</div>
+                      <div className="text-[12px] text-ink-muted mt-0.5">
+                        Band/Grade: <strong>{instantResult.draft.internal?.band_grade || "Standard"}</strong> · Dept: {instantResult.draft.internal?.department} · Location: {instantResult.draft.internal?.location} · Exp: {instantResult.draft.internal?.experience_level}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-brand text-[11.5px] uppercase mb-1">1. Role Purpose & Strategic Context</div>
+                      <p className="m-0 leading-relaxed text-ink">{instantResult.draft.internal?.role_purpose}</p>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-brand text-[11.5px] uppercase mb-1">2. Top 5 Key Result Areas (KRAs)</div>
+                      <ol className="m-0 pl-4 space-y-1">
+                        {(instantResult.draft.internal?.kras || []).map((k, i) => (
+                          <li key={i} className="leading-relaxed">{k}</li>
+                        ))}
+                      </ol>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-brand text-[11.5px] uppercase mb-1">3. Performance Evaluation Benchmarks (OKRs / KPIs)</div>
+                      <ul className="m-0 pl-4 space-y-1">
+                        {(instantResult.draft.internal?.performance_metrics || []).map((m, i) => (
+                          <li key={i} className="leading-relaxed">{m}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-brand text-[11.5px] uppercase mb-1">4. Functional Interfaces & Cross-Team Boundaries</div>
+                      <ul className="m-0 pl-4 space-y-1">
+                        {(instantResult.draft.internal?.functional_interfaces || []).map((intf, i) => (
+                          <li key={i} className="leading-relaxed">{intf}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-brand text-[11.5px] uppercase mb-1">5. Core Competencies & Leveling Baseline (Non-Negotiable)</div>
+                      <ul className="m-0 pl-4 space-y-1">
+                        {(instantResult.draft.internal?.core_competencies || []).map((c, i) => (
+                          <li key={i} className="leading-relaxed">{c}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {instantResult.draft.internal?.additional_strengths && instantResult.draft.internal.additional_strengths.length > 0 && (
+                      <div>
+                        <div className="font-bold text-brand text-[11.5px] uppercase mb-1">6. Additional Strengths & Certifications</div>
+                        <ul className="m-0 pl-4 space-y-1">
+                          {instantResult.draft.internal.additional_strengths.map((s, i) => (
+                            <li key={i} className="leading-relaxed">{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="border-b border-border pb-3">
+                      <div className="text-[11px] font-bold uppercase text-brand tracking-wider">Candidate-Facing Job Description</div>
+                      <div className="text-[14px] font-bold mt-1">{instantResult.draft.external?.role_title}</div>
+                      <div className="text-[12px] text-ink-muted mt-0.5">
+                        {instantResult.draft.external?.department} · {instantResult.draft.external?.employment_type} · {instantResult.draft.external?.location_mode}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-brand text-[11.5px] uppercase mb-1">About the Role</div>
+                      <p className="m-0 leading-relaxed text-ink">{instantResult.draft.external?.about_role}</p>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-brand text-[11.5px] uppercase mb-1">What You&apos;ll Do</div>
+                      <ul className="m-0 pl-4 space-y-1">
+                        {(instantResult.draft.external?.responsibilities || []).map((r, i) => (
+                          <li key={i} className="leading-relaxed">{r}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-critical text-[11.5px] uppercase mb-1">Must-Have Qualifications (Non-Negotiable)</div>
+                      <ul className="m-0 pl-4 space-y-1">
+                        {(instantResult.draft.external?.must_have_qualifications || []).map((q, i) => (
+                          <li key={i} className="leading-relaxed">{q}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-brand text-[11.5px] uppercase mb-1">Preferred Qualifications & Bonus Strengths</div>
+                      <ul className="m-0 pl-4 space-y-1">
+                        {(instantResult.draft.external?.preferred_qualifications || []).map((q, i) => (
+                          <li key={i} className="leading-relaxed">{q}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  className="text-[12px] font-bold px-3 py-1.5 rounded-md border border-border bg-page hover:border-brand transition-colors text-ink"
+                  onClick={() => {
+                    const txt = instantTab === "internal"
+                      ? JSON.stringify(instantResult.draft.internal, null, 2)
+                      : JSON.stringify(instantResult.draft.external, null, 2);
+                    copyToClipboard(txt, instantTab);
+                  }}
+                >
+                  {copiedFormat === instantTab ? "✓ Copied to clipboard" : "📋 Copy content"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* --- PART 2: Team Rollout Mode --- */}
+      {studioMode === "team" && (
+        <div className="flex flex-col gap-4">
+          {!upload && (
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files?.[0];
+                if (f) handleFile(f);
+              }}
+              className="border-2 border-dashed border-border rounded-xl px-6 py-8 text-center cursor-pointer transition-colors hover:border-brand bg-surface"
+              onClick={() => fileRef.current?.click()}
+            >
+              <Icon name="upload" className="w-8 h-8 mx-auto mb-2 text-brand" />
+              <p className="m-0 text-[15px] font-bold">
+                {uploading ? "Reading spreadsheet…" : "Drop a team master list or email list (.xlsx / .csv)"}
+              </p>
+              <p className="m-0 mt-1 text-[12.5px] text-ink-muted max-w-md mx-auto">
+                Upload roles and hiring manager email IDs. We&apos;ll automatically dispatch the 3-minute intake link and route drafts to approvers.
+              </p>
             </div>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[12.5px] pt-3 border-t border-border">
-            <label className="flex flex-col gap-1">
-              <span className="text-ink-muted font-semibold">Question set</span>
-              <select className="border border-border rounded-md px-2 py-1.5" value={questionSetId} onChange={(e) => setQuestionSetId(e.target.value)}>
-                {questionSets.map((qs) => (
-                  <option key={qs.id} value={qs.id}>
-                    {qs.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-ink-muted font-semibold">Template</span>
-              <select className="border border-border rounded-md px-2 py-1.5" value={template} onChange={(e) => setTemplate(e.target.value as JdTemplate)}>
-                <option value="standard">Standard</option>
-                <option value="compact">Compact</option>
-                <option value="branded">Branded</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-ink-muted font-semibold">Approval</span>
-              <select className="border border-border rounded-md px-2 py-1.5" value={approverMode} onChange={(e) => setApproverMode(e.target.value as ApproverMode)}>
-                <option value="self">Self-approve</option>
-                <option value="route">Route to someone else</option>
-              </select>
-            </label>
-            {approverMode === "route" ? (
-              <label className="flex flex-col gap-1">
-                <span className="text-ink-muted font-semibold">Approver email</span>
-                <input className="border border-border rounded-md px-2 py-1.5" value={approverEmail} onChange={(e) => setApproverEmail(e.target.value)} placeholder="from your master tracker" />
-              </label>
-            ) : (
-              <label className="flex flex-col gap-1">
-                <span className="text-ink-muted font-semibold">Default department</span>
-                <input className="border border-border rounded-md px-2 py-1.5" value={defaultDept} onChange={(e) => setDefaultDept(e.target.value)} />
-              </label>
-            )}
-          </div>
+          {upload && upload.status === "failed" && (
+            <div className="border border-critical/30 bg-critical-wash rounded-md px-4 py-3 text-[13px] text-critical flex items-center justify-between">
+              <span>{upload.error || "Couldn't process this file."}</span>
+              <button className="font-bold underline" onClick={() => setUpload(null)}>
+                Try again
+              </button>
+            </div>
+          )}
 
-          <div className="flex justify-end">
-            <button
-              disabled={executing}
-              onClick={handleExecute}
-              className="text-[13px] font-bold px-5 py-2.5 rounded-lg bg-brand text-white shadow-button disabled:opacity-60"
-            >
-              {executing ? "Starting…" : upload.mode === "auto" ? "Execute (send now)" : "Execute (create for review)"}
-            </button>
-          </div>
+          {upload && upload.status !== "failed" && (
+            <div className="border border-border rounded-xl p-5 flex flex-col gap-4 bg-surface">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-bold">{upload.file_name}</span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-brand-wash text-brand-dark">
+                    {upload.kind === "master_data" ? "Master Data" : "Email List"}
+                  </span>
+                </div>
+                <button className="text-[12px] text-ink-muted hover:text-ink" onClick={() => setUpload(null)}>
+                  Cancel
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2 max-h-72 overflow-auto">
+                {targets.map((t, i) => (
+                  <div key={i} className="flex items-center gap-2 text-[12.5px] border-b border-border pb-2">
+                    <input
+                      type="checkbox"
+                      checked={t.include}
+                      onChange={(e) => setTargets((ts) => ts.map((x, xi) => (xi === i ? { ...x, include: e.target.checked } : x)))}
+                    />
+                    <input
+                      className="flex-1 border border-border rounded-md px-2 py-1 bg-page"
+                      value={t.name || ""}
+                      placeholder="Manager Name"
+                      onChange={(e) => setTargets((ts) => ts.map((x, xi) => (xi === i ? { ...x, name: e.target.value } : x)))}
+                    />
+                    <input
+                      className="flex-[1.4] border border-border rounded-md px-2 py-1 bg-page"
+                      value={t.email}
+                      placeholder="Manager Email"
+                      onChange={(e) => setTargets((ts) => ts.map((x, xi) => (xi === i ? { ...x, email: e.target.value } : x)))}
+                    />
+                    <input
+                      className="flex-1 border border-border rounded-md px-2 py-1 bg-page"
+                      value={t.department}
+                      placeholder="Department"
+                      onChange={(e) => setTargets((ts) => ts.map((x, xi) => (xi === i ? { ...x, department: e.target.value } : x)))}
+                    />
+                    <input
+                      className="flex-1 border border-border rounded-md px-2 py-1 bg-page"
+                      value={t.job_title || ""}
+                      placeholder="Role Designation"
+                      onChange={(e) => setTargets((ts) => ts.map((x, xi) => (xi === i ? { ...x, job_title: e.target.value } : x)))}
+                    />
+                  </div>
+                ))}
+                {!targets.length && <p className="text-[12.5px] text-ink-muted">No rows with a valid email were found -- add one manually below.</p>}
+                <button
+                  className="text-[12px] font-bold text-brand self-start cursor-pointer"
+                  onClick={() => setTargets((ts) => [...ts, { name: "", email: "", department: defaultDept, job_title: "", include: true }])}
+                >
+                  + Add recipient
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[12.5px] pt-3 border-t border-border">
+                <label className="flex flex-col gap-1">
+                  <span className="text-ink-muted font-semibold">Approver Routing</span>
+                  <select
+                    className="border border-border rounded-md px-2 py-1.5 bg-page"
+                    value={approverMode}
+                    onChange={(e) => setApproverMode(e.target.value as ApproverMode)}
+                  >
+                    <option value="self">Self (I will review & approve)</option>
+                    <option value="route">Route to 1–2 Approvers (by email)</option>
+                  </select>
+                </label>
+                {approverMode === "route" && (
+                  <label className="flex flex-col gap-1 sm:col-span-2">
+                    <span className="text-ink-muted font-semibold">Approver Email(s)</span>
+                    <input
+                      className="border border-border rounded-md px-2 py-1.5 bg-page"
+                      placeholder="e.g. hr-lead@company.com, dept-head@company.com"
+                      value={approverEmail}
+                      onChange={(e) => setApproverEmail(e.target.value)}
+                    />
+                  </label>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
+                <button
+                  disabled={executing || !targets.some((t) => t.include && t.email)}
+                  onClick={handleExecute}
+                  className="bg-brand text-white font-bold text-[13px] px-5 py-2.5 rounded-lg shadow-xs hover:opacity-95 transition-opacity disabled:opacity-50 cursor-pointer"
+                >
+                  {executing ? "Dispatching…" : `Dispatch Intakes to Managers (${targets.filter((t) => t.include && t.email).length})`}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -634,26 +921,55 @@ export default function JdStudioApp({ guestStatus = null }: { guestStatus?: Gues
 
             {detail.ai_draft_json && (
               <div className="flex flex-col gap-3 text-[12.5px] mb-4">
-                <div>
-                  <div className="font-bold text-ink-muted mb-1">Summary</div>
-                  <p className="m-0">{detail.ai_draft_json.summary}</p>
-                </div>
-                <div>
-                  <div className="font-bold text-ink-muted mb-1">Responsibilities</div>
-                  <ul className="m-0 pl-4">
-                    {detail.ai_draft_json.responsibilities.map((r, i) => (
-                      <li key={i}>{r}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="font-bold text-ink-muted mb-1">Must-have skills</div>
-                  <p className="m-0">{detail.ai_draft_json.must_have_skills.join(", ")}</p>
-                </div>
-                <div>
-                  <div className="font-bold text-ink-muted mb-1">Good-to-have skills</div>
-                  <p className="m-0">{detail.ai_draft_json.good_to_have_skills.join(", ") || "—"}</p>
-                </div>
+                {detail.ai_draft_json.internal ? (
+                  <div className="flex flex-col gap-3">
+                    <div className="p-3 bg-brand/5 rounded-lg border border-brand/20">
+                      <div className="font-bold text-brand text-[11px] uppercase tracking-wider mb-1">🏢 Internal Architecture Format</div>
+                      <div className="font-semibold text-ink">{detail.ai_draft_json.internal.role_purpose}</div>
+                      {detail.ai_draft_json.internal.band_grade && (
+                        <div className="mt-1.5 text-ink-muted text-[11.5px]">Band / Grade: <strong className="text-ink">{detail.ai_draft_json.internal.band_grade}</strong></div>
+                      )}
+                      <div className="mt-2 text-[11.5px] font-semibold text-ink">Key Result Areas (KRAs):</div>
+                      <ul className="m-0 pl-4 list-disc text-ink-2">
+                        {detail.ai_draft_json.internal.kras?.map((k, i) => <li key={i}>{k}</li>)}
+                      </ul>
+                    </div>
+
+                    {detail.ai_draft_json.external && (
+                      <div className="p-3 bg-good/5 rounded-lg border border-good/20">
+                        <div className="font-bold text-good-text text-[11px] uppercase tracking-wider mb-1">🌐 External Candidate Format</div>
+                        <div className="text-ink-2">{detail.ai_draft_json.external.about_role}</div>
+                        <div className="mt-2 text-[11.5px] font-semibold text-ink">Must-Have Qualifications:</div>
+                        <ul className="m-0 pl-4 list-disc text-ink-2">
+                          {detail.ai_draft_json.external.must_have_qualifications?.map((m, i) => <li key={i}>{m}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <div className="font-bold text-ink-muted mb-1">Summary</div>
+                      <p className="m-0">{detail.ai_draft_json.summary}</p>
+                    </div>
+                    <div>
+                      <div className="font-bold text-ink-muted mb-1">Responsibilities</div>
+                      <ul className="m-0 pl-4">
+                        {detail.ai_draft_json.responsibilities?.map((r, i) => (
+                          <li key={i}>{r}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <div className="font-bold text-ink-muted mb-1">Must-have skills</div>
+                      <p className="m-0">{detail.ai_draft_json.must_have_skills?.join(", ")}</p>
+                    </div>
+                    <div>
+                      <div className="font-bold text-ink-muted mb-1">Good-to-have skills</div>
+                      <p className="m-0">{detail.ai_draft_json.good_to_have_skills?.join(", ") || "—"}</p>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -676,13 +992,21 @@ export default function JdStudioApp({ guestStatus = null }: { guestStatus?: Gues
                   Approve & finalize
                 </button>
               )}
-              {detail.status === "approved" && detail.final_docx_path && (
-                <a
-                  className="text-[12.5px] font-bold px-3 py-1.5 rounded-full border border-border"
-                  href={`/api/jdstudio/download-zip?ids=${detail.id}`}
-                >
-                  Download final JD
-                </a>
+              {detail.status === "approved" && (
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    className="text-[12px] font-bold px-3 py-1.5 rounded-full border border-border bg-page hover:border-brand"
+                    href={`/api/jdstudio/requests/${detail.id}/download?format=internal`}
+                  >
+                    🏢 Internal .docx
+                  </a>
+                  <a
+                    className="text-[12px] font-bold px-3 py-1.5 rounded-full border border-border bg-page hover:border-brand"
+                    href={`/api/jdstudio/requests/${detail.id}/download?format=external`}
+                  >
+                    🌐 External .docx
+                  </a>
+                </div>
               )}
               {detail.status === "approved" && !detail.job_posting_id && (
                 <button className="text-[12.5px] font-bold px-3 py-1.5 rounded-full border border-border" onClick={() => act(detail.id, "publish")}>

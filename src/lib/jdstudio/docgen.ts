@@ -165,8 +165,160 @@ function buildBranded({ jobTitle, department, draft }: JdDocInput): Document {
   });
 }
 
+// -- 1. Internal People Architecture Blueprint (DOCX) -----------------
+function buildInternalDocx({ jobTitle, department, draft }: JdDocInput): Document {
+  const internal = draft.internal || {
+    role_title: jobTitle,
+    department,
+    band_grade: "Standard",
+    location: draft.location_mode || "Flexible",
+    experience_level: draft.experience || "",
+    role_purpose: draft.summary || "",
+    kras: draft.responsibilities || [],
+    performance_metrics: [],
+    functional_interfaces: [],
+    core_competencies: draft.must_have_skills || [],
+    additional_strengths: draft.good_to_have_skills || [],
+  };
+
+  const sectionHeading = (title: string) =>
+    new Paragraph({
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 240, after: 100 },
+      children: [new TextRun({ text: title, bold: true, color: GOLD, size: 22 })],
+    });
+
+  return new Document({
+    sections: [
+      {
+        children: [
+          new Paragraph({
+            text: `INTERNAL PEOPLE ARCHITECTURE BLUEPRINT`,
+            heading: HeadingLevel.HEADING_3,
+            children: [new TextRun({ text: "INTERNAL PEOPLE ARCHITECTURE BLUEPRINT", bold: true, color: MUTED, size: 18 })],
+            spacing: { after: 60 },
+          }),
+          new Paragraph({
+            text: internal.role_title || jobTitle || "Job Description",
+            heading: HeadingLevel.TITLE,
+            spacing: { after: 80 },
+          }),
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `Department: ${internal.department || department}  |  Band / Grade: ${internal.band_grade || "N/A"}  |  Location: ${internal.location || "Flexible"}  |  Exp: ${internal.experience_level || "N/A"}`,
+                bold: true,
+                color: MUTED,
+                size: 19,
+              }),
+            ],
+            spacing: { after: 240 },
+          }),
+
+          sectionHeading("1. Role Purpose & Strategic Context"),
+          new Paragraph({ text: internal.role_purpose || draft.summary || "—", spacing: { after: 160 } }),
+
+          sectionHeading("2. Top 5 Key Result Areas (KRAs) & Core Deliverables"),
+          ...(internal.kras?.length
+            ? internal.kras.map((kra, i) => new Paragraph({ text: `${i + 1}. ${kra}`, spacing: { after: 100 } }))
+            : bulletParas(draft.responsibilities)),
+
+          sectionHeading("3. Performance Evaluation Benchmarks (Quarterly OKRs / KPIs)"),
+          ...(internal.performance_metrics?.length ? bulletParas(internal.performance_metrics) : [new Paragraph({ text: "Standard department benchmarks apply.", spacing: { after: 100 } })]),
+
+          sectionHeading("4. Functional Interfaces & Cross-Team Collaboration Boundaries"),
+          ...(internal.functional_interfaces?.length ? bulletParas(internal.functional_interfaces) : [new Paragraph({ text: "Collaborates across departmental stakeholders.", spacing: { after: 100 } })]),
+
+          sectionHeading("5. Core Competencies & Leveling Baseline (Non-Negotiable)"),
+          ...bulletParas(internal.core_competencies?.length ? internal.core_competencies : draft.must_have_skills),
+
+          sectionHeading("6. Additional Strengths, Certifications & Differentiators"),
+          ...bulletParas(internal.additional_strengths?.length ? internal.additional_strengths : draft.good_to_have_skills),
+        ],
+      },
+    ],
+  });
+}
+
+// -- 2. External Market-Facing Job Description (DOCX) -----------------
+function buildExternalDocx({ jobTitle, department, draft }: JdDocInput): Document {
+  const external = draft.external || {
+    role_title: jobTitle,
+    department,
+    location_mode: draft.location_mode || "Hybrid / Flexible",
+    employment_type: draft.employment_type || "Full-time",
+    experience_level: draft.experience || "",
+    about_role: draft.summary || "",
+    responsibilities: draft.responsibilities || [],
+    must_have_qualifications: draft.must_have_skills || [],
+    preferred_qualifications: draft.good_to_have_skills || [],
+    compensation_range: draft.compensation_range,
+  };
+
+  const sectionHeading = (title: string) =>
+    new Paragraph({
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 240, after: 100 },
+      children: [new TextRun({ text: title, bold: true, color: INK, size: 22 })],
+    });
+
+  return new Document({
+    sections: [
+      {
+        children: [
+          new Paragraph({
+            text: external.role_title || jobTitle || "Job Description",
+            heading: HeadingLevel.TITLE,
+            spacing: { after: 60 },
+          }),
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${external.department || department}  ·  ${external.employment_type || "Full-time"}  ·  ${external.location_mode || "Flexible"}`,
+                color: MUTED,
+                size: 20,
+              }),
+            ],
+            spacing: { after: 260 },
+          }),
+
+          sectionHeading("About the Role"),
+          new Paragraph({ text: external.about_role || draft.summary || "—", spacing: { after: 160 } }),
+
+          sectionHeading("What You'll Do"),
+          ...bulletParas(external.responsibilities?.length ? external.responsibilities : draft.responsibilities),
+
+          sectionHeading("Must-Have Qualifications (Non-Negotiable)"),
+          ...bulletParas(external.must_have_qualifications?.length ? external.must_have_qualifications : draft.must_have_skills),
+
+          sectionHeading("Preferred Qualifications & Bonus Strengths"),
+          ...bulletParas(external.preferred_qualifications?.length ? external.preferred_qualifications : draft.good_to_have_skills),
+
+          ...(external.compensation_range || draft.compensation_range
+            ? [
+                sectionHeading("Compensation & Work Environment"),
+                new Paragraph({ text: (external.compensation_range || draft.compensation_range) as string, spacing: { after: 100 } }),
+              ]
+            : []),
+        ],
+      },
+    ],
+  });
+}
+
 export async function generateJdDocx(input: JdDocInput, template: JdTemplate): Promise<Buffer> {
-  const doc =
-    template === "compact" ? buildCompact(input) : template === "branded" ? buildBranded(input) : buildStandard(input);
+  let doc: Document;
+  if (template === "internal") {
+    doc = buildInternalDocx(input);
+  } else if (template === "external") {
+    doc = buildExternalDocx(input);
+  } else if (template === "compact") {
+    doc = buildCompact(input);
+  } else if (template === "branded") {
+    doc = buildBranded(input);
+  } else {
+    // If input draft has explicit internal, use internal or standard
+    doc = input.draft.internal && !input.draft.external ? buildInternalDocx(input) : buildStandard(input);
+  }
   return Packer.toBuffer(doc);
 }
