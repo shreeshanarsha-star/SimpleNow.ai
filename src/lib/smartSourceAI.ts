@@ -31,35 +31,63 @@ const JD_EXTRACT_PROMPT = `Read this job description and extract, as JSON only (
   "role_title": string or null,
   "company": string or null (the hiring company's name, only if explicitly named in the JD -- never the recruiter's own org),
   "location": string or null (city/region if mentioned),
-  "skills": array of 3-6 short strings -- the most important technical/functional skills,
+  "skills": array of 2-5 short strings -- the most important technical/functional skills,
   "min_experience_years": number or null,
   "domain": string or null (industry/vertical, e.g. "animal feed additives", only if clearly implied),
   "keywords": string or null (one short extra phrase worth including in a search, if any stands out)
 }
-Never invent a company, location, or experience figure that isn't stated -- use null.`;
+CRITICAL RULES:
+- "role_title": Standard professional job title only. Never include conversational filler like "candidate", "person", "looking for".
+- "location": Clean city, state, or country name only.
+- Never invent a company, location, or experience figure that isn't stated -- use null.`;
 
 const DESCRIBE_EXTRACT_PROMPT = `A recruiter described, in their own words, the kind of candidate they're
-looking for (not a formal job description). Read it and extract, as JSON only (no markdown fences, no prose):
+looking for (not a formal job description). Read it, understand their intent, correct any obvious typos or informal spelling, and extract, as JSON only (no markdown fences, no prose):
 {
   "role_title": string or null,
-  "company": string or null (only if a specific target company was named),
+  "company": string or null (only if a specific target hiring company was named),
   "location": string or null,
-  "skills": array of 3-6 short strings,
-  "min_experience_years": number or null (e.g. "6+ years" -> 6),
-  "domain": string or null (industry/vertical, e.g. "feed additives and acidifiers"),
-  "keywords": string or null (a distinctive phrase from the description worth searching on)
+  "skills": array of 2-5 short strings (most important technical/functional skills or product specializations),
+  "min_experience_years": number or null,
+  "domain": string or null (industry/vertical, e.g. "feed additives"),
+  "keywords": string or null
 }
-Never invent detail that isn't stated or clearly implied -- use null.`;
+CRITICAL EXTRACTION RULES:
+- "role_title": Use a clean, standard professional job title (e.g. "Sales Representative", "Account Executive", "Software Engineer").
+  NEVER include recruiter conversational filler words like "candidate", "candidates", "candidateds", "guy", "guys", "person", "people", "someone", "profile", "need", "looking for" (e.g. "sales candidateds" -> "Sales", "sales guy or business development guy" -> "Sales", "dev guy" -> "Developer").
+- Fix typos and informal phrasing (e.g., "seel" -> "sell" / ignore, "candidateds" -> ignore).
+- "location": Clean city, state, or country name only (e.g., "Mexico"). Strip conversational filler like "or around region", "remote or", etc.
+- Never invent details that aren't stated or clearly implied -- use null.`;
+
+export function cleanRoleTitle(title: string | null | undefined): string | null {
+  if (!title) return null;
+  const cleaned = String(title)
+    .replace(/\b(candidate|candidates|candidateds|guy|guys|person|people|someone|profile|profiles|individual|individuals)\b/gi, "")
+    .replace(/\b(or|and)\s*$/gi, "")
+    .replace(/^\s*(or|and)\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || null;
+}
+
+export function cleanLocation(loc: string | null | undefined): string | null {
+  if (!loc) return null;
+  const cleaned = String(loc)
+    .replace(/\b(or\s+around\s+region|and\s+surrounding|surrounding\s+region|or\s+nearby|area|region|anywhere\s+in)\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return cleaned || null;
+}
 
 export async function extractSearchCriteria(mode: "jd" | "describe", text: string): Promise<SearchCriteria> {
   const prompt = mode === "jd" ? JD_EXTRACT_PROMPT : DESCRIBE_EXTRACT_PROMPT;
   const raw = await callTextModel(`${prompt}\n\n--- Input text ---\n${text}`, 600);
   const parsed = parseJsonResponse(raw);
   return {
-    role_title: parsed.role_title ?? null,
+    role_title: cleanRoleTitle(parsed.role_title),
     company: parsed.company ?? null,
-    location: parsed.location ?? null,
-    skills: Array.isArray(parsed.skills) ? parsed.skills : [],
+    location: cleanLocation(parsed.location),
+    skills: Array.isArray(parsed.skills) ? parsed.skills.filter(Boolean) : [],
     min_experience_years: parsed.min_experience_years ?? null,
     domain: parsed.domain ?? null,
     keywords: parsed.keywords ?? null,
@@ -68,19 +96,18 @@ export async function extractSearchCriteria(mode: "jd" | "describe", text: strin
 
 // --- Stage 2: X-ray query builder ---------------------------------------
 // Fixed term order: company > role > location > skills > keywords/domain.
-// Quote a term if it's 4 words or fewer (exact phrase), otherwise truncate
-// to the first 4 words unquoted. Never shown/edited by the recruiter --
-// they see the plain-language "AI understood this as" summary instead.
+// Terms like skills or exact phrases (2-4 words) are quoted when specified.
+// Generic roles and locations remain unquoted so Google can do stemming and flexible ranking.
 
-function addTerm(parts: string[], term: string | null | undefined) {
+function addTerm(parts: string[], term: string | null | undefined, quoteMultiWord = false) {
   if (!term) return;
   const cleaned = String(term).replace(/^["']|["']$/g, "").trim();
   const words = cleaned.split(/\s+/).filter(Boolean);
   if (!words.length) return;
 
-  // Multi-word phrases (2-4 words) benefit from quotes to preserve the exact phrase ("feed additives")
-  // Single words should remain unquoted so Google can do stemming (sales vs selling)
-  const queryChunk = words.length > 1 && words.length <= 4
+  // Multi-word phrases (2-4 words) are quoted if quoteMultiWord is true (e.g. "feed additives")
+  // Single words and general roles remain unquoted so Google can match related terms and variations
+  const queryChunk = quoteMultiWord && words.length > 1 && words.length <= 4
     ? `"${words.join(" ")}"`
     : words.slice(0, 4).join(" ");
 
@@ -93,47 +120,77 @@ function addTerm(parts: string[], term: string | null | undefined) {
 export function buildSearchQuery(c: SearchCriteria): string {
   const parts = ["site:linkedin.com/in"];
   addTerm(parts, c.company);
-  addTerm(parts, c.role_title);
-  addTerm(parts, c.location);
-  (c.skills || []).slice(0, 3).forEach((s) => addTerm(parts, s));
-  addTerm(parts, c.keywords || c.domain);
+  addTerm(parts, c.role_title, false);
+  addTerm(parts, c.location, false);
+  (c.skills || []).slice(0, 2).forEach((s) => addTerm(parts, s, true));
+  if (c.domain && c.domain.toLowerCase() !== (c.role_title || "").toLowerCase()) {
+    addTerm(parts, c.domain, true);
+  }
   return parts.join(" ");
 }
 
 export function buildFallbackQueries(c: SearchCriteria): string[] {
   const queries: string[] = [];
-  const primaryTerm = c.company || c.role_title || (c.skills || [])[0];
-  if (!primaryTerm) return queries;
+  const primaryRole = c.role_title;
+  // Deduplicate and filter skills that are identical to role_title
+  const skills = (c.skills || []).filter(
+    (s) => s.toLowerCase() !== (primaryRole || "").toLowerCase()
+  );
+  const topSkill = skills[0] || c.domain;
+  const location = c.location;
+  const company = c.company;
 
   const candidates: string[] = [];
 
-  // Level 1: Role / Company + Location + top skill (drop domain/keywords)
-  const level1 = ["site:linkedin.com/in"];
-  addTerm(level1, c.company);
-  addTerm(level1, c.role_title);
-  addTerm(level1, c.location);
-  if (c.skills && c.skills.length > 0) {
-    addTerm(level1, c.skills[0]);
+  // Fallback 1: Company + Role + Location + top skill
+  if (skills.length > 1) {
+    const fb1 = ["site:linkedin.com/in"];
+    addTerm(fb1, company);
+    addTerm(fb1, primaryRole, false);
+    addTerm(fb1, location, false);
+    addTerm(fb1, topSkill, true);
+    if (fb1.length > 1) candidates.push(fb1.join(" "));
   }
-  if (level1.length > 1) candidates.push(level1.join(" "));
 
-  // Level 2: Company + Role + Location (drop all skills)
-  const level2 = ["site:linkedin.com/in"];
-  addTerm(level2, c.company);
-  addTerm(level2, c.role_title);
-  addTerm(level2, c.location);
-  if (level2.length > 1) candidates.push(level2.join(" "));
+  // Fallback 2: Role + top skill (drop location in case profiles don't state location explicitly)
+  if (primaryRole && topSkill) {
+    const fb2 = ["site:linkedin.com/in"];
+    addTerm(fb2, company);
+    addTerm(fb2, primaryRole, false);
+    addTerm(fb2, topSkill, true);
+    if (fb2.length > 1) candidates.push(fb2.join(" "));
+  }
 
-  // Level 3: Company + Role (drop location)
-  const level3 = ["site:linkedin.com/in"];
-  addTerm(level3, c.company);
-  addTerm(level3, c.role_title);
-  if (level3.length > 1) candidates.push(level3.join(" "));
+  // Fallback 3: Location + top skill (drop role -- captures domain specialists with varying job titles)
+  if (location && topSkill) {
+    const fb3 = ["site:linkedin.com/in"];
+    addTerm(fb3, location, false);
+    addTerm(fb3, topSkill, true);
+    if (fb3.length > 1) candidates.push(fb3.join(" "));
+  }
 
-  // Level 4: Just primary term (role or company or skill)
-  const level4 = ["site:linkedin.com/in"];
-  addTerm(level4, primaryTerm);
-  if (level4.length > 1) candidates.push(level4.join(" "));
+  // Fallback 4: Role + Location (drop all skills)
+  if (primaryRole && location) {
+    const fb4 = ["site:linkedin.com/in"];
+    addTerm(fb4, company);
+    addTerm(fb4, primaryRole, false);
+    addTerm(fb4, location, false);
+    if (fb4.length > 1) candidates.push(fb4.join(" "));
+  }
+
+  // Fallback 5: Top skill alone (niche domain specialists)
+  if (topSkill) {
+    const fb5 = ["site:linkedin.com/in"];
+    addTerm(fb5, topSkill, true);
+    if (fb5.length > 1) candidates.push(fb5.join(" "));
+  }
+
+  // Fallback 6: Role alone
+  if (primaryRole) {
+    const fb6 = ["site:linkedin.com/in"];
+    addTerm(fb6, primaryRole, false);
+    if (fb6.length > 1) candidates.push(fb6.join(" "));
+  }
 
   // Deduplicate queries
   const seen = new Set<string>();
@@ -171,7 +228,17 @@ async function searchSerpApi(query: string, { num = 100, start = 0 } = {}): Prom
   }
   const data = await res.json();
   if (data.error) {
-    return { ok: false, reason: "serpapi_request_failed", status: 200, detail: data.error, results: [] };
+    const errorStr = typeof data.error === "string" ? data.error : JSON.stringify(data.error);
+    // SerpApi returns "Google hasn't returned any results for this query." when Google finds 0 matches.
+    // This is a normal empty search result, NOT a fatal API failure.
+    if (
+      errorStr.toLowerCase().includes("hasn't returned any results") ||
+      errorStr.toLowerCase().includes("no results") ||
+      data.search_information?.organic_results_state === "Fully empty"
+    ) {
+      return { ok: true, results: [], rawCount: 0 };
+    }
+    return { ok: false, reason: "serpapi_request_failed", status: 200, detail: errorStr, results: [] };
   }
   const organicRaw = data.organic_results || [];
   const organic: RawResult[] = organicRaw
@@ -207,15 +274,14 @@ async function searchSerpApiMultiPage(query: string): Promise<SearchOutcome> {
 export async function searchWithFallback(criteria: SearchCriteria): Promise<SearchOutcome & { queryUsed?: string }> {
   const primaryQuery = buildSearchQuery(criteria);
   let result = await searchSerpApiMultiPage(primaryQuery);
-  if (!result.ok) return result;
-  if (result.results.length > 0) return { ...result, queryUsed: primaryQuery };
+  if (result.ok && result.results.length > 0) return { ...result, queryUsed: primaryQuery };
 
-  for (const q of buildFallbackQueries(criteria)) {
+  const fallbacks = buildFallbackQueries(criteria);
+  for (const q of fallbacks) {
     if (q === primaryQuery) continue;
     const attempt = await searchSerpApiMultiPage(q);
-    if (!attempt.ok) return attempt;
-    if (attempt.results.length > 0) return { ...attempt, queryUsed: q };
-    result = attempt;
+    if (attempt.ok && attempt.results.length > 0) return { ...attempt, queryUsed: q };
+    if (attempt.ok) result = attempt;
   }
   return { ...result, queryUsed: primaryQuery };
 }

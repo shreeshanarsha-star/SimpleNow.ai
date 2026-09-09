@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
 import {
   extractSearchCriteria,
+  cleanRoleTitle,
+  cleanLocation,
   searchWithFallback,
   scoreResults,
   crossMatchInternal,
@@ -44,10 +46,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Add a role title or at least one skill." }, { status: 400 });
       }
       criteria = {
-        role_title: m.role_title || null,
+        role_title: cleanRoleTitle(m.role_title),
         company: m.company || null,
-        location: m.location || null,
-        skills: Array.isArray(m.skills) ? m.skills : [],
+        location: cleanLocation(m.location),
+        skills: Array.isArray(m.skills) ? m.skills.filter(Boolean) : [],
         min_experience_years: typeof m.min_experience_years === "number" ? m.min_experience_years : null,
         domain: m.domain || null,
         keywords: m.keywords || null,
@@ -96,7 +98,7 @@ export async function POST(request: Request) {
 
   const { data: cached } = await cacheQuery.maybeSingle();
 
-  if (cached) {
+  if (cached && (cached.smart_source_candidates || []).length > 0) {
     return NextResponse.json({ search: cached, candidates: cached.smart_source_candidates, cached: true });
   }
 

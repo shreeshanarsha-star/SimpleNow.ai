@@ -899,8 +899,20 @@ export default function SmartSourceAiForm({
           </div>
 
           {candidates.length === 0 ? (
-            <div className="border border-border rounded-md bg-surface p-8 text-center text-[13px] text-ink-muted">
-              No matching profiles were indexed for this search. Try broadening the role, skills, or location.
+            <div className="border border-border rounded-md bg-surface p-10 text-center flex flex-col items-center gap-3 shadow-soft-sm">
+              <div className="w-10 h-10 rounded-full bg-page flex items-center justify-center text-ink-muted mb-1">
+                <Icon name="search" className="w-5 h-5" />
+              </div>
+              <div className="text-[14px] font-bold text-ink">No candidates found</div>
+              <p className="text-[13px] text-ink-muted max-w-md">
+                No matching public profiles were found for this query. Try adjusting the keywords, removing niche skill constraints, or broadening the location.
+              </p>
+              <button
+                onClick={reset}
+                className="mt-2 bg-brand text-white text-[12.5px] font-bold px-4 py-2 rounded-sm hover:opacity-90 transition-opacity"
+              >
+                Modify search criteria
+              </button>
             </div>
           ) : (
             <>
