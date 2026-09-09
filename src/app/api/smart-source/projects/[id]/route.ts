@@ -14,7 +14,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const { data: project, error: projectError } = await supabase
     .from("smart_source_projects")
-    .select("id, name, created_at")
+    .select("id, name, created_at, description, start_date, target_date, target_hires, status")
     .eq("id", id)
     .maybeSingle();
   if (projectError) return NextResponse.json({ error: projectError.message }, { status: 500 });
@@ -101,18 +101,43 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ ok: true, status: body.status, comments: body.comments });
   }
 
-  // Case 2: Renaming project
-  const name = typeof body?.name === "string" ? body.name.trim() : "";
+  // Case 2: Updating project details (name, description, timelines, target_hires, status)
+  const updates: Record<string, unknown> = {};
+  if (typeof body?.name === "string") {
+    const trimmed = body.name.trim();
+    if (!trimmed) {
+      return NextResponse.json({ error: "Please enter a project name." }, { status: 400 });
+    }
+    updates.name = trimmed;
+  }
+  if (typeof body?.description === "string") {
+    updates.description = body.description.trim();
+  }
+  if (body?.start_date !== undefined) {
+    updates.start_date = body.start_date ? String(body.start_date).slice(0, 10) : null;
+  }
+  if (body?.target_date !== undefined) {
+    updates.target_date = body.target_date ? String(body.target_date).slice(0, 10) : null;
+  }
+  if (body?.target_hires !== undefined) {
+    const hiresNum = Number(body.target_hires);
+    if (!isNaN(hiresNum) && hiresNum > 0) {
+      updates.target_hires = hiresNum;
+    }
+  }
+  if (typeof body?.status === "string" && body.status.trim()) {
+    updates.status = body.status.trim();
+  }
 
-  if (!name) {
-    return NextResponse.json({ error: "Please enter a project name." }, { status: 400 });
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "No fields to update." }, { status: 400 });
   }
 
   const { data: project, error } = await supabase
     .from("smart_source_projects")
-    .update({ name })
+    .update(updates)
     .eq("id", id)
-    .select("id, name, created_at")
+    .select("id, name, created_at, description, start_date, target_date, target_hires, status")
     .single();
 
   if (error) {

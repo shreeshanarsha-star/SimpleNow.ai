@@ -46,7 +46,26 @@ type Candidate = {
 
 type Requisition = { id: string; title: string };
 type ProjectList = { id: string; name: string };
-type ProjectSummary = { id: string; name: string; created_at: string; candidateCount: number };
+export type ProjectStageCounts = {
+  screened: number;
+  shortlisted: number;
+  offered: number;
+  joined: number;
+  inactive: number;
+};
+export type ProjectSummary = {
+  id: string;
+  name: string;
+  created_at: string;
+  description?: string;
+  start_date?: string | null;
+  target_date?: string | null;
+  target_hires?: number;
+  status?: string;
+  candidateCount: number;
+  stageCounts?: ProjectStageCounts;
+  completionPercentage?: number;
+};
 
 export const PIPELINE_STATUSES = [
   "CV Screened",
@@ -214,6 +233,27 @@ export default function SmartSourceAiForm({
   const [commentDraft, setCommentDraft] = useState("");
   const [commentSaving, setCommentSaving] = useState(false);
 
+  const [projectTableSearch, setProjectTableSearch] = useState("");
+  const [projectFilterTab, setProjectFilterTab] = useState<"All" | "Active" | "Due Soon" | "Completed" | "On Hold">("All");
+  const [projectSortBy, setProjectSortBy] = useState<"updated" | "deadline" | "candidates" | "name">("updated");
+  const [editingProjectModal, setEditingProjectModal] = useState<ProjectSummary | null>(null);
+  const [editProjectForm, setEditProjectForm] = useState<{
+    name: string;
+    description: string;
+    start_date: string;
+    target_date: string;
+    target_hires: number;
+    status: string;
+  }>({
+    name: "",
+    description: "",
+    start_date: "",
+    target_date: "",
+    target_hires: 1,
+    status: "Active",
+  });
+  const [editProjectSaving, setEditProjectSaving] = useState(false);
+
   const [manualTargetCompanies, setManualTargetCompanies] = useState("");
   const [manualExcludeCompanies, setManualExcludeCompanies] = useState("");
   const [describeTargetCompanies, setDescribeTargetCompanies] = useState("");
@@ -242,6 +282,71 @@ export default function SmartSourceAiForm({
     }
     return [];
   }, [search, mode, manualTargetCompanies, describeTargetCompanies]);
+
+  const projectsMetrics = useMemo(() => {
+    let activeCount = 0;
+    let totalCandidates = 0;
+    let totalShortlisted = 0;
+    let totalJoinedOrOffered = 0;
+
+    for (const p of projectsList) {
+      if (p.status === "Active") activeCount++;
+      totalCandidates += p.candidateCount || 0;
+      if (p.stageCounts) {
+        totalShortlisted += p.stageCounts.shortlisted || 0;
+        totalJoinedOrOffered += (p.stageCounts.offered || 0) + (p.stageCounts.joined || 0);
+      }
+    }
+
+    return {
+      activeCount,
+      totalCandidates,
+      totalShortlisted,
+      totalJoinedOrOffered,
+    };
+  }, [projectsList]);
+
+  const filteredProjects = useMemo(() => {
+    return projectsList
+      .filter((p) => {
+        if (projectFilterTab === "Active" && p.status !== "Active") return false;
+        if (projectFilterTab === "Completed" && p.status !== "Completed") return false;
+        if (projectFilterTab === "On Hold" && p.status !== "On Hold") return false;
+        if (projectFilterTab === "Due Soon") {
+          if (!p.target_date || p.status === "Completed") return false;
+          const now = new Date();
+          now.setHours(0, 0, 0, 0);
+          const target = new Date(p.target_date);
+          target.setHours(0, 0, 0, 0);
+          const diffDays = Math.round((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays > 5) return false;
+        }
+
+        if (projectTableSearch.trim()) {
+          const q = projectTableSearch.toLowerCase();
+          const matchName = p.name.toLowerCase().includes(q);
+          const matchDesc = (p.description || "").toLowerCase().includes(q);
+          if (!matchName && !matchDesc) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        if (projectSortBy === "name") {
+          return a.name.localeCompare(b.name);
+        }
+        if (projectSortBy === "candidates") {
+          return b.candidateCount - a.candidateCount;
+        }
+        if (projectSortBy === "deadline") {
+          if (!a.target_date && !b.target_date) return 0;
+          if (!a.target_date) return 1;
+          if (!b.target_date) return -1;
+          return new Date(a.target_date).getTime() - new Date(b.target_date).getTime();
+        }
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+  }, [projectsList, projectFilterTab, projectTableSearch, projectSortBy]);
 
   // Topbar's clickable "Smart Source.ai" title (ToolHomeContext) closes the
   // My Projects panel, returning to the search view underneath it.
@@ -726,6 +831,98 @@ export default function SmartSourceAiForm({
     }
   }
 
+  function openEditProjectModal(p: ProjectSummary) {
+    setEditingProjectModal(p);
+    setEditProjectForm({
+      name: p.name,
+      description: p.description || "",
+      start_date: p.start_date || (p.created_at ? p.created_at.slice(0, 10) : ""),
+      target_date: p.target_date || "",
+      target_hires: p.target_hires || 1,
+      status: p.status || "Active",
+    });
+  }
+
+  function closeEditProjectModal() {
+    setEditingProjectModal(null);
+    setEditProjectSaving(false);
+  }
+
+  async function saveProjectDetails() {
+    if (!editingProjectModal) return;
+    if (!editProjectForm.name.trim()) {
+      setProjectsError("Please enter a project name.");
+      return;
+    }
+    setEditProjectSaving(true);
+    try {
+      const res = await fetch(`/api/smart-source/projects/${editingProjectModal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editProjectForm.name.trim(),
+          description: editProjectForm.description.trim(),
+          start_date: editProjectForm.start_date || null,
+          target_date: editProjectForm.target_date || null,
+          target_hires: Number(editProjectForm.target_hires) || 1,
+          status: editProjectForm.status,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update project details.");
+
+      setProjectsList((prev) =>
+        prev.map((p) =>
+          p.id === editingProjectModal.id
+            ? {
+                ...p,
+                name: data.project.name,
+                description: data.project.description,
+                start_date: data.project.start_date,
+                target_date: data.project.target_date,
+                target_hires: data.project.target_hires,
+                status: data.project.status,
+              }
+            : p
+        )
+      );
+      if (activeProjectId === editingProjectModal.id) {
+        setActiveProjectName(data.project.name);
+      }
+      closeEditProjectModal();
+      setNotice(`Updated "${data.project.name}".`);
+      setTimeout(() => setNotice(null), 3000);
+    } catch (err) {
+      setProjectsError(err instanceof Error ? err.message : "Failed to update project details.");
+    } finally {
+      setEditProjectSaving(false);
+    }
+  }
+
+  function handleSourceMoreForProject(p: ProjectSummary) {
+    setShowProjectsPanel(false);
+    setMode("describe");
+    const brief = p.description ? ` Details: ${p.description}.` : "";
+    setDescribeText(`Find qualified talent for ${p.name}.${brief}`);
+    setNotice(`Ready to source more candidates for "${p.name}". Review criteria and click "Source candidates".`);
+  }
+
+  async function deleteProjectById(id: string, name: string) {
+    if (!window.confirm(`Delete project "${name}"? This will not delete candidates from the platform.`)) return;
+    setProjectsList((prev) => prev.filter((p) => p.id !== id));
+    setLists((prev) => prev.filter((l) => l.id !== id));
+    if (activeProjectId === id) {
+      setActiveProjectId(null);
+    }
+    try {
+      await fetch(`/api/smart-source/projects/${id}`, { method: "DELETE" });
+      setNotice(`Project "${name}" was deleted.`);
+      setTimeout(() => setNotice(null), 3000);
+    } catch {
+      // best-effort
+    }
+  }
+
   async function submitAddToProject() {
     const picked = candidateForProject && candidateForProject.length > 0 ? candidateForProject : selectedOrAllCandidates();
     if (!picked.length) {
@@ -955,38 +1152,274 @@ export default function SmartSourceAiForm({
                 No saved projects yet. Save candidates from a search using &ldquo;Add to Project&rdquo;.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {projectsList.map((p) => (
-                  <div
-                    key={p.id}
-                    className="border border-border rounded-md bg-surface p-3.5 shadow-soft-sm hover:border-brand transition-colors flex flex-col justify-between"
-                  >
-                    <button
-                      onClick={() => openProjectDetail(p.id, p.name)}
-                      className="text-left w-full cursor-pointer"
-                    >
-                      <div className="font-bold text-ink text-[13.5px] mb-1">{p.name}</div>
-                      <div className="text-[12px] text-ink-muted">
-                        {p.candidateCount} candidate{p.candidateCount === 1 ? "" : "s"}
-                      </div>
-                      <div className="text-[11px] text-ink-muted mt-1">
-                        Saved {new Date(p.created_at).toLocaleDateString()}
-                      </div>
-                    </button>
-                    <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-border">
+              <div className="flex flex-col gap-4">
+                {/* Executive TA Sourcing KPIs Strip */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="border border-border rounded-md bg-surface p-3.5 shadow-soft-sm flex flex-col justify-between">
+                    <div className="text-[11.5px] font-bold uppercase tracking-wider text-ink-muted">Active Mandates</div>
+                    <div className="text-2xl font-black text-ink mt-1">{projectsMetrics.activeCount}</div>
+                    <div className="text-[11px] text-ink-muted mt-1">{projectsList.length} total projects</div>
+                  </div>
+                  <div className="border border-border rounded-md bg-surface p-3.5 shadow-soft-sm flex flex-col justify-between">
+                    <div className="text-[11.5px] font-bold uppercase tracking-wider text-ink-muted">Talent Sourced</div>
+                    <div className="text-2xl font-black text-ink mt-1">{projectsMetrics.totalCandidates}</div>
+                    <div className="text-[11px] text-ink-muted mt-1">Across all pipelines</div>
+                  </div>
+                  <div className="border border-border rounded-md bg-surface p-3.5 shadow-soft-sm flex flex-col justify-between">
+                    <div className="text-[11.5px] font-bold uppercase tracking-wider text-ink-muted">In Interviews</div>
+                    <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">{projectsMetrics.totalShortlisted}</div>
+                    <div className="text-[11px] text-ink-muted mt-1">Shortlisted (L1/L2/HR)</div>
+                  </div>
+                  <div className="border border-border rounded-md bg-surface p-3.5 shadow-soft-sm flex flex-col justify-between">
+                    <div className="text-[11.5px] font-bold uppercase tracking-wider text-ink-muted">Offers & Hired</div>
+                    <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{projectsMetrics.totalJoinedOrOffered}</div>
+                    <div className="text-[11px] text-ink-muted mt-1">Advanced stage success</div>
+                  </div>
+                </div>
+
+                {/* Project Control Toolbar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-surface border border-border rounded-md p-2.5 shadow-soft-sm">
+                  {/* Status Filter Tabs */}
+                  <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-thin">
+                    {(["All", "Active", "Due Soon", "Completed", "On Hold"] as const).map((tab) => (
                       <button
+                        key={tab}
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openRenameModal(p.id, p.name);
-                        }}
-                        className="text-[11.5px] font-bold text-brand hover:underline"
+                        onClick={() => setProjectFilterTab(tab)}
+                        className={`px-3 py-1 rounded-sm text-[12px] font-bold transition-colors shrink-0 ${
+                          projectFilterTab === tab
+                            ? "bg-brand text-white shadow-soft-sm"
+                            : "bg-page/60 text-ink-2 hover:bg-page hover:text-ink"
+                        }`}
                       >
-                        Rename
+                        {tab}
+                        {tab === "All" && ` (${projectsList.length})`}
+                        {tab === "Active" && ` (${projectsMetrics.activeCount})`}
                       </button>
+                    ))}
+                  </div>
+
+                  {/* Search & Sort Controls */}
+                  <div className="flex items-center gap-2 flex-1 sm:flex-none justify-end">
+                    <div className="relative min-w-[220px] flex-1 sm:flex-none">
+                      <Icon name="search" className="w-3.5 h-3.5 text-ink-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Filter by mandate or note…"
+                        value={projectTableSearch}
+                        onChange={(e) => setProjectTableSearch(e.target.value)}
+                        className="w-full pl-8 pr-7 py-1 text-[12px] bg-page rounded border border-border focus:outline-none focus:border-brand"
+                      />
+                      {projectTableSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setProjectTableSearch("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink text-[11px]"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    <select
+                      value={projectSortBy}
+                      onChange={(e) => setProjectSortBy(e.target.value as any)}
+                      className="text-[12px] font-medium bg-page border border-border rounded px-2.5 py-1 text-ink focus:outline-none focus:border-brand"
+                    >
+                      <option value="updated">Sort: Recent</option>
+                      <option value="deadline">Sort: Deadline</option>
+                      <option value="candidates">Sort: Most Candidates</option>
+                      <option value="name">Sort: Name (A-Z)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Enterprise Project Table */}
+                {filteredProjects.length === 0 ? (
+                  <div className="text-[13px] text-ink-muted py-10 text-center border border-border rounded-md bg-surface flex flex-col items-center gap-2">
+                    <p>No projects match your current filters.</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProjectFilterTab("All");
+                        setProjectTableSearch("");
+                      }}
+                      className="text-[12px] font-bold text-brand hover:underline"
+                    >
+                      Reset filters
+                    </button>
+                  </div>
+                ) : (
+                  <div className="border border-border rounded-md bg-surface shadow-soft-sm overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse min-w-[1020px]">
+                        <thead>
+                          <tr className="bg-page border-b border-border text-[11px] font-bold text-ink-muted uppercase tracking-wider">
+                            <th className="py-2.5 px-3.5 w-[26%]">Project Mandate & Role</th>
+                            <th className="py-2.5 px-3 w-[16%]">Timeline & Deadline</th>
+                            <th className="py-2.5 px-3 w-[18%]">Stage Completion (Battery)</th>
+                            <th className="py-2.5 px-3 w-[14%]">Coverage & Target</th>
+                            <th className="py-2.5 px-3 w-[16%]">Recruiter Brief / Notes</th>
+                            <th className="py-2.5 px-3.5 w-[10%] text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border text-[12.5px]">
+                          {filteredProjects.map((p) => {
+                            const targetHires = p.target_hires && p.target_hires > 0 ? p.target_hires : 1;
+                            const coverage = (p.candidateCount / targetHires).toFixed(1);
+                            const isHealthyCoverage = Number(coverage) >= 4;
+
+                            return (
+                              <tr key={p.id} className="hover:bg-page/50 transition-colors group">
+                                {/* Mandate Name & Role */}
+                                <td className="py-3 px-3.5 align-top">
+                                  <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <button
+                                        type="button"
+                                        onClick={() => openProjectDetail(p.id, p.name)}
+                                        className="font-bold text-ink hover:text-brand text-[13.5px] text-left transition-colors cursor-pointer"
+                                        title="Open candidate pipeline"
+                                      >
+                                        {p.name}
+                                      </button>
+                                      <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                                        p.status === "Completed"
+                                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800"
+                                          : p.status === "On Hold"
+                                          ? "bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
+                                          : "bg-brand-wash text-brand-dark"
+                                      }`}>
+                                        {p.status || "Active"}
+                                      </span>
+                                    </div>
+                                    <div className="text-[11px] text-ink-muted">
+                                      Created {new Date(p.created_at).toLocaleDateString()}
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Timeline & SLA */}
+                                <td className="py-3 px-3 align-top">
+                                  <ProjectTimelineBadge
+                                    startDate={p.start_date}
+                                    targetDate={p.target_date}
+                                    status={p.status}
+                                  />
+                                </td>
+
+                                {/* Battery-Style Funnel Stage Completion */}
+                                <td className="py-3 px-3 align-top">
+                                  <ProjectBatteryGauge
+                                    candidateCount={p.candidateCount}
+                                    stageCounts={p.stageCounts}
+                                    completionPercentage={p.completionPercentage}
+                                    targetHires={p.target_hires}
+                                  />
+                                  <div className="text-[10.5px] text-ink-muted mt-1 flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{p.stageCounts?.joined || 0} joined</span>
+                                    <span>•</span>
+                                    <span className="text-amber-600 dark:text-amber-400 font-semibold">{p.stageCounts?.offered || 0} offered</span>
+                                    <span>•</span>
+                                    <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{p.stageCounts?.shortlisted || 0} shortlist</span>
+                                  </div>
+                                </td>
+
+                                {/* Coverage & Target */}
+                                <td className="py-3 px-3 align-top">
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="font-bold text-ink text-[12.5px]">
+                                      {p.candidateCount} candidate{p.candidateCount === 1 ? "" : "s"}
+                                    </div>
+                                    <div className="text-[11px] text-ink-muted">
+                                      Target: <span className="font-semibold text-ink-2">{targetHires} hire{targetHires > 1 ? "s" : ""}</span>
+                                    </div>
+                                    <div className="mt-0.5">
+                                      <span className={`inline-block text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                                        isHealthyCoverage
+                                          ? "bg-good-wash text-good-text"
+                                          : "bg-warning-wash text-ink"
+                                      }`}>
+                                        {coverage}x coverage
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Recruiter Notes / Comments */}
+                                <td className="py-3 px-3 align-top">
+                                  <div
+                                    onClick={() => openEditProjectModal(p)}
+                                    className="cursor-pointer group/note rounded p-1 -m-1 hover:bg-page hover:border hover:border-border transition-all flex flex-col gap-0.5"
+                                    title="Click to edit recruiter comments & mandate details"
+                                  >
+                                    {p.description ? (
+                                      <p className="text-[11.5px] text-ink line-clamp-3 leading-relaxed">
+                                        {p.description}
+                                      </p>
+                                    ) : (
+                                      <span className="text-[11.5px] text-ink-muted italic group-hover/note:text-brand flex items-center gap-1">
+                                        <Icon name="edit" className="w-3 h-3 opacity-60" /> Add brief/notes…
+                                      </span>
+                                    )}
+                                    {p.description && (
+                                      <span className="text-[10px] text-brand opacity-0 group-hover/note:opacity-100 transition-opacity font-bold">
+                                        Edit brief
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {/* Actions */}
+                                <td className="py-3 px-3.5 align-top text-right">
+                                  <div className="flex flex-col items-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => openProjectDetail(p.id, p.name)}
+                                      className="bg-brand text-white hover:bg-brand-hover text-[11.5px] font-bold px-2.5 py-1 rounded shadow-soft-sm inline-flex items-center gap-1 transition-colors"
+                                      title="Open candidate pipeline"
+                                    >
+                                      <span>Pipeline</span>
+                                      <Icon name="chevronRight" className="w-3 h-3" />
+                                    </button>
+                                    <div className="flex items-center gap-1 text-[11px]">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSourceMoreForProject(p)}
+                                        className="text-brand hover:underline font-bold"
+                                        title="Source more candidates for this project"
+                                      >
+                                        Source
+                                      </button>
+                                      <span className="text-ink-muted">•</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditProjectModal(p)}
+                                        className="text-ink-2 hover:text-brand font-semibold"
+                                        title="Edit timelines, target hires, and notes"
+                                      >
+                                        Edit
+                                      </button>
+                                      <span className="text-ink-muted">•</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => deleteProjectById(p.id, p.name)}
+                                        className="text-critical hover:underline"
+                                        title="Delete this project"
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
-                ))}
+                )}
               </div>
             )
           ) : (
@@ -2093,6 +2526,121 @@ export default function SmartSourceAiForm({
         </div>
       )}
 
+      {editingProjectModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
+          onClick={closeEditProjectModal}
+        >
+          <div
+            className="bg-surface border border-border rounded-lg shadow-soft-lg p-5 w-full max-w-lg flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="font-bold text-ink text-[15px]">Project Details & Timeline</h3>
+                <p className="text-[12px] text-ink-muted">Configure mandate schedule, headcount targets, and recruiter notes.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEditProjectModal}
+                className="text-ink-muted hover:text-ink p-1 rounded-sm"
+              >
+                <Icon name="x" className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <label className="block">
+                <span className="block text-[12px] font-bold text-ink mb-1">Project Name</span>
+                <input
+                  type="text"
+                  className="input text-[13px]"
+                  value={editProjectForm.name}
+                  onChange={(e) => setEditProjectForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Senior Backend Engineers"
+                />
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="block text-[12px] font-bold text-ink mb-1">Start Date</span>
+                  <input
+                    type="date"
+                    className="input text-[13px]"
+                    value={editProjectForm.start_date}
+                    onChange={(e) => setEditProjectForm((f) => ({ ...f, start_date: e.target.value }))}
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-[12px] font-bold text-ink mb-1">Target Deadline</span>
+                  <input
+                    type="date"
+                    className="input text-[13px]"
+                    value={editProjectForm.target_date}
+                    onChange={(e) => setEditProjectForm((f) => ({ ...f, target_date: e.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="block text-[12px] font-bold text-ink mb-1">Target Hires (Headcount)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    className="input text-[13px]"
+                    value={editProjectForm.target_hires}
+                    onChange={(e) => setEditProjectForm((f) => ({ ...f, target_hires: Math.max(1, Number(e.target.value)) }))}
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-[12px] font-bold text-ink mb-1">Project Status</span>
+                  <select
+                    className="input text-[13px]"
+                    value={editProjectForm.status}
+                    onChange={(e) => setEditProjectForm((f) => ({ ...f, status: e.target.value }))}
+                  >
+                    <option value="Active">Active</option>
+                    <option value="On Hold">On Hold</option>
+                    <option value="Completed">Completed</option>
+                  </select>
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="block text-[12px] font-bold text-ink mb-1">Recruiter Comments & Mandate Brief</span>
+                <textarea
+                  rows={4}
+                  className="input text-[12.5px] leading-relaxed resize-y font-sans"
+                  value={editProjectForm.description}
+                  onChange={(e) => setEditProjectForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Notes on hiring manager preferences, key skills, target competitor companies, or compensation range…"
+                />
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={closeEditProjectModal}
+                disabled={editProjectSaving}
+                className="border border-border text-[12.5px] font-bold px-3 py-1.5 rounded-sm bg-surface hover:bg-page transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveProjectDetails}
+                disabled={editProjectSaving || !editProjectForm.name.trim()}
+                className="bg-brand text-white text-[12.5px] font-bold px-4 py-1.5 rounded-sm shadow-soft-sm hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {editProjectSaving ? "Saving…" : "Save Details"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx global>{`
         .input {
           width: 100%;
@@ -2109,6 +2657,155 @@ export default function SmartSourceAiForm({
       `}</style>
     </div>
   );
+}
+
+function ProjectBatteryGauge({
+  candidateCount,
+  stageCounts,
+  completionPercentage = 0,
+  targetHires = 1,
+}: {
+  candidateCount: number;
+  stageCounts?: {
+    screened: number;
+    shortlisted: number;
+    offered: number;
+    joined: number;
+    inactive: number;
+  };
+  completionPercentage?: number;
+  targetHires?: number;
+}) {
+  const counts = stageCounts || { screened: 0, shortlisted: 0, offered: 0, joined: 0, inactive: 0 };
+  const total = candidateCount || 0;
+
+  const joinedPct = total > 0 ? (counts.joined / total) * 100 : 0;
+  const offeredPct = total > 0 ? (counts.offered / total) * 100 : 0;
+  const shortlistPct = total > 0 ? (counts.shortlisted / total) * 100 : 0;
+  const screenedPct = total > 0 ? (counts.screened / total) * 100 : 0;
+
+  return (
+    <div
+      className="flex items-center gap-2"
+      title={`Funnel: ${counts.joined} Joined, ${counts.offered} Offered, ${counts.shortlisted} Shortlisted, ${counts.screened} Screened (${completionPercentage}% completion score)`}
+    >
+      {/* Battery Body with Terminal Cap */}
+      <div className="relative flex items-center">
+        <div className="w-24 h-4 rounded-xs border border-ink/40 dark:border-ink/60 bg-page p-[1px] flex overflow-hidden shadow-xs">
+          {total === 0 ? (
+            <div className="w-full h-full bg-border/40 rounded-xs" />
+          ) : (
+            <>
+              {joinedPct > 0 && (
+                <div
+                  style={{ width: `${joinedPct}%` }}
+                  className="h-full bg-emerald-500 transition-all duration-300"
+                  title={`${counts.joined} Joined`}
+                />
+              )}
+              {offeredPct > 0 && (
+                <div
+                  style={{ width: `${offeredPct}%` }}
+                  className="h-full bg-amber-500 transition-all duration-300"
+                  title={`${counts.offered} Offered / To Join`}
+                />
+              )}
+              {shortlistPct > 0 && (
+                <div
+                  style={{ width: `${shortlistPct}%` }}
+                  className="h-full bg-indigo-500 transition-all duration-300"
+                  title={`${counts.shortlisted} Interview Shortlist`}
+                />
+              )}
+              {screenedPct > 0 && (
+                <div
+                  style={{ width: `${screenedPct}%` }}
+                  className="h-full bg-sky-400 transition-all duration-300"
+                  title={`${counts.screened} Screened`}
+                />
+              )}
+            </>
+          )}
+        </div>
+        {/* Terminal positive nipple */}
+        <div className="w-[3px] h-[7px] rounded-r-xs bg-ink/40 dark:bg-ink/60 -ml-[1px]" />
+      </div>
+
+      <span className="text-[11.5px] font-bold text-ink shrink-0">
+        {completionPercentage}%
+      </span>
+    </div>
+  );
+}
+
+function ProjectTimelineBadge({
+  startDate,
+  targetDate,
+  status,
+}: {
+  startDate?: string | null;
+  targetDate?: string | null;
+  status?: string;
+}) {
+  if (status === "Completed") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800">
+        ✓ Completed
+      </span>
+    );
+  }
+
+  if (!targetDate) {
+    return (
+      <span className="text-[11.5px] text-ink-muted">
+        {startDate ? `Started ${new Date(startDate).toLocaleDateString()}` : "No deadline set"}
+      </span>
+    );
+  }
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const target = new Date(targetDate);
+  target.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return (
+      <div className="flex flex-col">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800 w-fit">
+          Overdue by {Math.abs(diffDays)}d
+        </span>
+        <span className="text-[10px] text-ink-muted mt-0.5">Target: {target.toLocaleDateString()}</span>
+      </div>
+    );
+  } else if (diffDays === 0) {
+    return (
+      <div className="flex flex-col">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800 w-fit">
+          Due today
+        </span>
+        <span className="text-[10px] text-ink-muted mt-0.5">Target: {target.toLocaleDateString()}</span>
+      </div>
+    );
+  } else if (diffDays <= 3) {
+    return (
+      <div className="flex flex-col">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800 w-fit">
+          {diffDays}d remaining
+        </span>
+        <span className="text-[10px] text-ink-muted mt-0.5">Target: {target.toLocaleDateString()}</span>
+      </div>
+    );
+  } else {
+    return (
+      <div className="flex flex-col">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold bg-page text-ink-2 border border-border w-fit">
+          {diffDays}d left
+        </span>
+        <span className="text-[10px] text-ink-muted mt-0.5">Target: {target.toLocaleDateString()}</span>
+      </div>
+    );
+  }
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
