@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import Link from "next/link";
 import Icon from "@/components/Icon";
 import { useRegisterToolHome } from "@/components/ToolHomeContext";
 
@@ -132,11 +133,23 @@ export default function SmartScreenAiForm() {
 
   return (
     <div className="max-w-2xl">
-      <p className="text-[13px] text-ink-2 mb-5">
+      <p className="text-[13px] text-ink-2 mb-3">
         Paste a JD, let AI turn it into screening criteria, add up to {MAX_CANDIDATES} candidates&rsquo;
         resume text, then run — each gets an honest fit score, red flags, and tailored interview
         questions.
       </p>
+
+      <div className="flex items-center justify-between bg-surface border border-border rounded-md px-3.5 py-2.5 mb-5 text-[12.5px]">
+        <div className="text-ink-2">
+          Looking to search and source fresh candidates on LinkedIn?
+        </div>
+        <Link
+          href="/tools/smart-source-ai"
+          className="text-brand font-bold shrink-0 ml-3 hover:underline inline-flex items-center gap-1"
+        >
+          Open Smart Source.ai &rarr;
+        </Link>
+      </div>
 
       {error && (
         <div className="bg-critical-wash text-critical text-[12.5px] rounded-sm px-3 py-2 mb-4">

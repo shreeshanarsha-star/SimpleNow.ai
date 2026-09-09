@@ -67,7 +67,7 @@ export async function POST(request: Request) {
   if (!targetProjectId && newListName) {
     const { data: project, error: projectError } = await supabase
       .from("smart_source_projects")
-      .insert({ name: newListName, created_by: user.id, org_id: orgId })
+      .insert({ name: newListName, created_by: user.id, org_id: orgId || null })
       .select()
       .single();
     if (projectError) return NextResponse.json({ error: projectError.message }, { status: 500 });
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
           const { data: person, error: personError } = await supabase
             .from("talent_people")
             .insert({
-              org_id: orgId,
+              org_id: orgId || null,
               name: c.name || "Unnamed candidate",
               current_company: c.company,
               current_location: c.location,

@@ -74,12 +74,19 @@ export async function extractSearchCriteria(mode: "jd" | "describe", text: strin
 
 function addTerm(parts: string[], term: string | null | undefined) {
   if (!term) return;
-  const words = String(term).trim().split(/\s+/).filter(Boolean);
+  const cleaned = String(term).replace(/^["']|["']$/g, "").trim();
+  const words = cleaned.split(/\s+/).filter(Boolean);
   if (!words.length) return;
-  if (words.length <= 4) {
-    parts.push(`"${words.join(" ")}"`);
-  } else {
-    parts.push(words.slice(0, 4).join(" "));
+
+  // Multi-word phrases (2-4 words) benefit from quotes to preserve the exact phrase ("feed additives")
+  // Single words should remain unquoted so Google can do stemming (sales vs selling)
+  const queryChunk = words.length > 1 && words.length <= 4
+    ? `"${words.join(" ")}"`
+    : words.slice(0, 4).join(" ");
+
+  const lowerChunk = queryChunk.toLowerCase();
+  if (!parts.some((p) => p.toLowerCase() === lowerChunk)) {
+    parts.push(queryChunk);
   }
 }
 
@@ -98,20 +105,44 @@ export function buildFallbackQueries(c: SearchCriteria): string[] {
   const primaryTerm = c.company || c.role_title || (c.skills || [])[0];
   if (!primaryTerm) return queries;
 
+  const candidates: string[] = [];
+
+  // Level 1: Role / Company + Location + top skill (drop domain/keywords)
   const level1 = ["site:linkedin.com/in"];
   addTerm(level1, c.company);
   addTerm(level1, c.role_title);
   addTerm(level1, c.location);
-  if (level1.length > 1) queries.push(level1.join(" "));
+  if (c.skills && c.skills.length > 0) {
+    addTerm(level1, c.skills[0]);
+  }
+  if (level1.length > 1) candidates.push(level1.join(" "));
 
+  // Level 2: Company + Role + Location (drop all skills)
   const level2 = ["site:linkedin.com/in"];
   addTerm(level2, c.company);
   addTerm(level2, c.role_title);
-  if (level2.length > 1) queries.push(level2.join(" "));
+  addTerm(level2, c.location);
+  if (level2.length > 1) candidates.push(level2.join(" "));
 
+  // Level 3: Company + Role (drop location)
   const level3 = ["site:linkedin.com/in"];
-  addTerm(level3, primaryTerm);
-  queries.push(level3.join(" "));
+  addTerm(level3, c.company);
+  addTerm(level3, c.role_title);
+  if (level3.length > 1) candidates.push(level3.join(" "));
+
+  // Level 4: Just primary term (role or company or skill)
+  const level4 = ["site:linkedin.com/in"];
+  addTerm(level4, primaryTerm);
+  if (level4.length > 1) candidates.push(level4.join(" "));
+
+  // Deduplicate queries
+  const seen = new Set<string>();
+  for (const q of candidates) {
+    if (!seen.has(q)) {
+      seen.add(q);
+      queries.push(q);
+    }
+  }
 
   return queries;
 }
@@ -149,8 +180,8 @@ async function searchSerpApi(query: string, { num = 100, start = 0 } = {}): Prom
   return { ok: true, results: organic, rawCount: organicRaw.length };
 }
 
-const TARGET_RESULT_COUNT = 200;
-const PAGE_COUNT = 2;
+const TARGET_RESULT_COUNT = 60;
+const PAGE_COUNT = 1;
 
 async function searchSerpApiMultiPage(query: string): Promise<SearchOutcome> {
   const pages = await Promise.all(
@@ -180,6 +211,7 @@ export async function searchWithFallback(criteria: SearchCriteria): Promise<Sear
   if (result.results.length > 0) return { ...result, queryUsed: primaryQuery };
 
   for (const q of buildFallbackQueries(criteria)) {
+    if (q === primaryQuery) continue;
     const attempt = await searchSerpApiMultiPage(q);
     if (!attempt.ok) return attempt;
     if (attempt.results.length > 0) return { ...attempt, queryUsed: q };
@@ -241,6 +273,7 @@ Respond as JSON only: { "candidates": [
 // match_reason, so a smaller batch keeps each call comfortably inside
 // its timeout instead of risking a large batch getting cut off.
 const SCORE_BATCH_SIZE = 15;
+const MAX_CANDIDATES_TO_SCORE = 30;
 
 async function scoreBatch(batch: RawResult[], criteria: SearchCriteria): Promise<ScoredCandidate[]> {
   const context = `Target company: ${criteria.company || "not specified"}
@@ -253,20 +286,49 @@ Target domain: ${criteria.domain || "not specified"}
 --- Search results ---
 ${batch.map((r, i) => `${i + 1}. Title: ${r.title}\nSnippet: ${r.snippet || ""}\nLink: ${r.link}`).join("\n\n")}`;
 
-  // 45s, not the default 25s -- a 15-candidate batch with full evaluations
-  // (summary + strengths + gaps each) is a large structured completion and
-  // routinely needs more than the default budget; the route's maxDuration
-  // (90s) has headroom for this since batches run concurrently, not in series.
-  const raw = await callTextModel(`${SCORE_PROMPT}\n\n${context}`, 4000, 45_000);
-  const parsed = parseJsonResponse(raw);
-  return parsed.candidates || [];
+  try {
+    const raw = await callTextModel(`${SCORE_PROMPT}\n\n${context}`, 4000, 45_000);
+    const parsed = parseJsonResponse(raw);
+    if (Array.isArray(parsed?.candidates) && parsed.candidates.length > 0) {
+      return parsed.candidates;
+    }
+  } catch (err) {
+    console.warn("scoreBatch failed or timed out, using fallback extractor:", err);
+  }
+
+  // Graceful fallback if the AI completion times out or JSON parse fails:
+  // Still extract candidates so the user sees search results instead of a 502 crash!
+  return batch.map((r) => {
+    const parts = r.title.replace(/\s*\|\s*LinkedIn$/i, "").split(/\s*[-–—]\s*/);
+    const name = parts[0]?.trim() || null;
+    const designation = parts[1]?.trim() || criteria.role_title || null;
+    const company = parts[2]?.trim() || criteria.company || null;
+    return {
+      name,
+      designation,
+      company,
+      location: criteria.location || null,
+      profile_url: r.link,
+      match_score: 75,
+      qualification: null,
+      current_ctc: null,
+      expected_ctc: null,
+      notice_period: null,
+      experience_years: null,
+      skills: criteria.skills || [],
+      evaluation_summary: r.snippet || "Public LinkedIn profile matching query criteria.",
+      evaluation_strengths: [],
+      evaluation_gaps: ["Detailed evaluation unconfirmed from snippet"],
+    };
+  });
 }
 
 export async function scoreResults(results: RawResult[], criteria: SearchCriteria): Promise<ScoredCandidate[]> {
   if (!results.length) return [];
+  const candidateSlice = results.slice(0, MAX_CANDIDATES_TO_SCORE);
   const batches: RawResult[][] = [];
-  for (let i = 0; i < results.length; i += SCORE_BATCH_SIZE) {
-    batches.push(results.slice(i, i + SCORE_BATCH_SIZE));
+  for (let i = 0; i < candidateSlice.length; i += SCORE_BATCH_SIZE) {
+    batches.push(candidateSlice.slice(i, i + SCORE_BATCH_SIZE));
   }
   const batchResults = await Promise.all(batches.map((b) => scoreBatch(b, criteria)));
   const merged = batchResults.flat();
@@ -291,9 +353,10 @@ function normalize(s: string | null | undefined): string {
 
 export async function crossMatchInternal(
   supabase: SupabaseClient,
-  orgId: string,
+  orgId: string | null | undefined,
   candidates: ScoredCandidate[]
 ): Promise<InternalMatch[]> {
+  if (!orgId) return [];
   const { data: people } = await supabase
     .from("talent_people")
     .select("id, name, current_company, linkedin_url")

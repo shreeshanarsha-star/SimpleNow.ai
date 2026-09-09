@@ -50,15 +50,20 @@ export default async function SmartSourceAiPage() {
   // system yet (SerpApi is billed on the org's own account), so this is
   // informational usage tracking rather than a hard quota gate.
   let monthlySearchCount: number | undefined;
-  if (hasAccess && profile?.is_admin && profile?.org_id) {
+  if (hasAccess && profile?.is_admin) {
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
-    const { count } = await supabase
+    let countQuery = supabase
       .from("smart_source_searches")
       .select("id", { count: "exact", head: true })
-      .eq("org_id", profile.org_id)
       .gte("created_at", startOfMonth.toISOString());
+    if (profile.org_id) {
+      countQuery = countQuery.eq("org_id", profile.org_id);
+    } else {
+      countQuery = countQuery.or(`org_id.is.null,created_by.eq.${user.id}`);
+    }
+    const { count } = await countQuery;
     monthlySearchCount = count ?? 0;
   }
 

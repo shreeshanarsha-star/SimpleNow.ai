@@ -79,16 +79,22 @@ export async function POST(request: Request) {
   // Cache check: reuse a recent identical search for this org instead of
   // re-spending SerpApi/model calls.
   const since = new Date(Date.now() - CACHE_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
-  const { data: cached } = await supabase
+  let cacheQuery = supabase
     .from("smart_source_searches")
     .select("*, smart_source_candidates(*)")
-    .eq("org_id", orgId)
     .eq("query_text", queryText)
     .eq("status", "completed")
     .gte("created_at", since)
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  if (orgId) {
+    cacheQuery = cacheQuery.eq("org_id", orgId);
+  } else {
+    cacheQuery = cacheQuery.is("org_id", null);
+  }
+
+  const { data: cached } = await cacheQuery.maybeSingle();
 
   if (cached) {
     return NextResponse.json({ search: cached, candidates: cached.smart_source_candidates, cached: true });
@@ -97,7 +103,7 @@ export async function POST(request: Request) {
   const { data: search, error: searchError } = await supabase
     .from("smart_source_searches")
     .insert({
-      org_id: orgId,
+      org_id: orgId || null,
       created_by: user.id,
       input_mode: mode,
       query_text: queryText,
@@ -150,7 +156,7 @@ export async function POST(request: Request) {
     const match = matchByUrl.get(c.profile_url);
     return {
       search_id: search.id,
-      org_id: orgId,
+      org_id: orgId || null,
       name: c.name,
       designation: c.designation,
       company: c.company,
@@ -170,14 +176,18 @@ export async function POST(request: Request) {
     };
   });
 
-  const { data: candidates, error: candError } = await supabase
-    .from("smart_source_candidates")
-    .insert(rows)
-    .select();
+  let candidates: unknown[] = [];
+  if (rows.length > 0) {
+    const { data: inserted, error: candError } = await supabase
+      .from("smart_source_candidates")
+      .insert(rows)
+      .select();
 
-  if (candError) {
-    await supabase.from("smart_source_searches").update({ status: "failed" }).eq("id", search.id);
-    return NextResponse.json({ error: candError.message }, { status: 500 });
+    if (candError) {
+      await supabase.from("smart_source_searches").update({ status: "failed" }).eq("id", search.id);
+      return NextResponse.json({ error: candError.message }, { status: 500 });
+    }
+    candidates = inserted || [];
   }
 
   const { data: updatedSearch } = await supabase

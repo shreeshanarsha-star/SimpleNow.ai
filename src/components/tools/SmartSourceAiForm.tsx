@@ -365,6 +365,20 @@ export default function SmartSourceAiForm({
     }
   }
 
+  async function deleteActiveProject() {
+    if (!activeProjectId) return;
+    if (!window.confirm(`Delete project "${activeProjectName}"? This will not delete the candidates from searches.`)) return;
+    const toDelete = activeProjectId;
+    setActiveProjectId(null);
+    setProjectsList((prev) => prev.filter((p) => p.id !== toDelete));
+    setLists((prev) => prev.filter((l) => l.id !== toDelete));
+    try {
+      await fetch(`/api/smart-source/projects/${toDelete}`, { method: "DELETE" });
+    } catch {
+      // best-effort
+    }
+  }
+
   async function submitAddToProject() {
     const picked = selectedOrAllCandidates();
     if (!picked.length) {
@@ -416,6 +430,7 @@ export default function SmartSourceAiForm({
       setPickedRequisition("");
       setPickedList("");
       setNewListName("");
+      loadProjectSources();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add these candidates.");
     } finally {
@@ -575,7 +590,15 @@ export default function SmartSourceAiForm({
                 >
                   <Icon name="chevronLeft" className="w-3.5 h-3.5" /> All projects
                 </button>
-                <div className="text-[13px] font-bold">{activeProjectName}</div>
+                <div className="flex items-center gap-3">
+                  <div className="text-[13px] font-bold">{activeProjectName}</div>
+                  <button
+                    onClick={deleteActiveProject}
+                    className="text-[11.5px] font-bold text-critical hover:underline"
+                  >
+                    Delete project
+                  </button>
+                </div>
               </div>
               {projectDetailLoading ? (
                 <div className="text-[13px] text-ink-muted py-10 text-center">Loading candidates…</div>
@@ -624,9 +647,9 @@ export default function SmartSourceAiForm({
         <div className="flex flex-col gap-4">
           <div className="inline-flex bg-page rounded-sm p-1 self-start">
             {([
-              { key: "jd", label: "Upload a JD" },
+              { key: "jd", label: "Drop/browse JD" },
               { key: "describe", label: "Describe what you need" },
-              { key: "manual", label: "Manual skills" },
+              { key: "manual", label: "Manual Source" },
             ] as { key: Mode; label: string }[]).map((t) => (
               <button
                 key={t.key}
@@ -642,7 +665,7 @@ export default function SmartSourceAiForm({
 
           {mode === "jd" && (
             <div className="flex flex-col gap-3">
-              <div
+              <label
                 onDragOver={(e) => {
                   e.preventDefault();
                   setJdDragOver(true);
@@ -653,60 +676,49 @@ export default function SmartSourceAiForm({
                   setJdDragOver(false);
                   extractJdFile(e.dataTransfer.files?.[0]);
                 }}
-                className={`border-2 border-dashed rounded-md p-4 flex flex-col gap-3 transition-colors ${
-                  jdDragOver ? "border-brand bg-brand-wash" : "border-border bg-page"
+                className={`border-2 border-dashed rounded-md p-7 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors text-center ${
+                  jdDragOver ? "border-brand bg-brand-wash" : "border-border bg-page hover:border-ink-muted hover:bg-surface"
                 }`}
               >
-                <div>
-                  <div className="text-[13px] font-bold">Attach a job description</div>
-                  <div className="text-[11.5px] text-ink-muted mt-0.5">
-                    Drag a JD file in, or paste the text — we&apos;ll pull out the role, skills, and location.
-                  </div>
-                </div>
-                <div className="flex items-center gap-4 text-[12px]">
-                  <label className="flex items-center gap-1.5">
-                    <input type="radio" checked={jdInputMode === "file"} onChange={() => setJdInputMode("file")} /> Upload file
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    <input type="radio" checked={jdInputMode === "paste"} onChange={() => setJdInputMode("paste")} /> Paste text
-                  </label>
-                </div>
-                {jdInputMode === "file" ? (
-                  <div className="flex flex-col items-center justify-center gap-2 border border-border rounded-sm bg-surface py-6 px-4 text-center">
-                    <Icon name="upload" className="w-5 h-5 text-ink-muted" />
-                    {jdExtracting ? (
-                      <div className="text-[12.5px] font-bold">Reading {jdFile?.name}…</div>
-                    ) : jdFile ? (
-                      <div className="text-[12.5px] font-bold">{jdFile.name}</div>
-                    ) : (
-                      <>
-                        <div className="text-[12.5px]">
-                          <span className="font-bold text-brand">Drag &amp; drop</span> a JD file here
-                        </div>
-                        <div className="text-[11px] text-ink-muted">or</div>
-                      </>
-                    )}
-                    <label className="border border-border text-[12px] font-bold px-3 py-1.5 rounded-sm bg-page cursor-pointer">
-                      {jdFile ? "Choose a different file" : "Browse files"}
-                      <input
-                        type="file"
-                        accept=".pdf,.docx,.txt"
-                        onChange={(e) => extractJdFile(e.target.files?.[0] || null)}
-                        className="hidden"
-                      />
-                    </label>
-                    <div className="text-[10.5px] text-ink-muted">PDF, DOCX, or TXT</div>
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.txt"
+                  onChange={(e) => extractJdFile(e.target.files?.[0] || null)}
+                  className="hidden"
+                />
+                <Icon name="upload" className="w-5 h-5 text-ink-muted" />
+                {jdExtracting ? (
+                  <div className="text-[13px] font-bold text-ink">Reading {jdFile?.name}…</div>
+                ) : jdFile ? (
+                  <div className="flex items-center gap-2">
+                    <Icon name="check" className="w-4 h-4 text-good" />
+                    <span className="text-[13px] font-bold text-brand">{jdFile.name}</span>
+                    <span className="text-[11.5px] text-ink-muted underline ml-1">Change file</span>
                   </div>
                 ) : (
-                  <textarea
-                    className="input min-h-[160px]"
-                    placeholder="Paste the full JD text here…"
-                    value={jdText}
-                    onChange={(e) => setJdText(e.target.value)}
-                  />
+                  <div className="text-[13px] font-bold text-ink">Drop/browse JD</div>
                 )}
-                {jdExtractError && <div className="text-[12px] text-critical">{jdExtractError}</div>}
+              </label>
+              {jdExtractError && <div className="text-[12px] text-critical">{jdExtractError}</div>}
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setJdInputMode((m) => (m === "paste" ? "file" : "paste"))}
+                  className="text-[11.5px] text-ink-muted hover:text-ink underline"
+                >
+                  {jdInputMode === "paste" ? "Hide text box" : "or paste JD text"}
+                </button>
               </div>
+
+              {jdInputMode === "paste" && (
+                <textarea
+                  className="input min-h-[140px]"
+                  placeholder="Paste the full JD text here…"
+                  value={jdText}
+                  onChange={(e) => setJdText(e.target.value)}
+                />
+              )}
 
               {jdInputMode === "file" && jdText && !jdExtracting && (
                 <Field label="Extracted text (edit if needed)">

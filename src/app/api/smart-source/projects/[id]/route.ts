@@ -44,15 +44,21 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { id } = await params;
   const { searchParams } = new URL(request.url);
   const candidateId = searchParams.get("candidateId");
-  if (!candidateId) {
-    return NextResponse.json({ error: "Missing candidateId." }, { status: 400 });
+
+  if (candidateId) {
+    const { error } = await supabase
+      .from("smart_source_project_members")
+      .delete()
+      .eq("project_id", id)
+      .eq("candidate_id", candidateId);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
   }
 
   const { error } = await supabase
-    .from("smart_source_project_members")
+    .from("smart_source_projects")
     .delete()
-    .eq("project_id", id)
-    .eq("candidate_id", candidateId);
+    .eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });

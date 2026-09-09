@@ -9,18 +9,25 @@ const FEATURE_KEY = "Smart Source.ai";
 // straight against smart_source_candidates, so an org without any ATS
 // subscription can still keep a running shortlist of sourced candidates.
 export async function GET() {
-  let supabase, orgId;
+  let user, supabase, orgId;
   try {
-    ({ supabase, orgId } = await requireFeatureAccess(FEATURE_KEY));
+    ({ user, supabase, orgId } = await requireFeatureAccess(FEATURE_KEY));
   } catch (res) {
     return res as Response;
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("smart_source_projects")
     .select("id, name, created_at, smart_source_project_members(count)")
-    .eq("org_id", orgId)
     .order("created_at", { ascending: false });
+
+  if (orgId) {
+    query = query.eq("org_id", orgId);
+  } else {
+    query = query.or(`org_id.is.null,created_by.eq.${user.id}`);
+  }
+
+  const { data, error } = await query;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
