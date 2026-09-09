@@ -22,13 +22,22 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const { data: rows, error: membersError } = await supabase
     .from("smart_source_project_members")
-    .select("added_at, smart_source_candidates(*)")
+    .select("id, added_at, status, comments, smart_source_candidates(*)")
     .eq("project_id", id)
     .order("added_at", { ascending: false });
   if (membersError) return NextResponse.json({ error: membersError.message }, { status: 500 });
 
   const candidates = (rows || [])
-    .map((r: { smart_source_candidates: unknown }) => r.smart_source_candidates)
+    .map((r: { id: string; added_at: string; status: string | null; comments: string | null; smart_source_candidates: unknown }) => {
+      if (!r.smart_source_candidates || typeof r.smart_source_candidates !== "object") return null;
+      return {
+        ...(r.smart_source_candidates as Record<string, unknown>),
+        project_member_id: r.id,
+        project_status: r.status || "CV Screened",
+        project_comments: r.comments || "",
+        added_at: r.added_at,
+      };
+    })
     .filter(Boolean);
 
   return NextResponse.json({ project, candidates });
@@ -73,6 +82,26 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   const { id } = await params;
   const body = await request.json().catch(() => null);
+
+  // Case 1: Updating candidate member status or comments in this project
+  if (body?.candidateId) {
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (typeof body.status === "string") updateData.status = body.status;
+    if (typeof body.comments === "string") updateData.comments = body.comments;
+
+    const { error } = await supabase
+      .from("smart_source_project_members")
+      .update(updateData)
+      .eq("project_id", id)
+      .eq("candidate_id", body.candidateId);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, status: body.status, comments: body.comments });
+  }
+
+  // Case 2: Renaming project
   const name = typeof body?.name === "string" ? body.name.trim() : "";
 
   if (!name) {

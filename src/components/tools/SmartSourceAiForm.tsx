@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import { useRegisterToolHome } from "@/components/ToolHomeContext";
 
@@ -33,11 +33,63 @@ type Candidate = {
   evaluation_gaps: string[] | null;
   internal_person_id: string | null;
   already_in_pipeline: boolean;
+  project_member_id?: string;
+  project_status?: string;
+  project_comments?: string;
+  added_at?: string;
 };
 
 type Requisition = { id: string; title: string };
 type ProjectList = { id: string; name: string };
 type ProjectSummary = { id: string; name: string; created_at: string; candidateCount: number };
+
+export const PIPELINE_STATUSES = [
+  "CV Screened",
+  "CV Shared",
+  "L1 Interview Shortlist",
+  "L2 Interview Shortlist",
+  "HR Interview Shortlist",
+  "Offered",
+  "To Join",
+  "Joined",
+  "Hold",
+  "Rejected",
+  "Offer Drop",
+  "Backout",
+] as const;
+
+export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
+
+function statusBadgeClass(status: string | null | undefined): string {
+  switch (status) {
+    case "CV Screened":
+      return "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800";
+    case "CV Shared":
+      return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800";
+    case "L1 Interview Shortlist":
+      return "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800";
+    case "L2 Interview Shortlist":
+      return "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800";
+    case "HR Interview Shortlist":
+      return "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-950/60 dark:text-fuchsia-300 dark:border-fuchsia-800";
+    case "Offered":
+      return "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-800";
+    case "To Join":
+      return "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800";
+    case "Joined":
+      return "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800";
+    case "Hold":
+      return "bg-yellow-50 text-yellow-800 border-yellow-200 dark:bg-yellow-950/60 dark:text-yellow-400 dark:border-yellow-800";
+    case "Rejected":
+      return "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800";
+    case "Offer Drop":
+      return "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800";
+    case "Backout":
+      return "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/60 dark:text-red-300 dark:border-red-800";
+    default:
+      return "bg-page text-ink-muted border-border";
+  }
+}
 
 const STATUS_STEPS = [
   "Reading the input",
@@ -151,6 +203,11 @@ export default function SmartSourceAiForm({
   const [renamingProject, setRenamingProject] = useState<{ id: string; name: string } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renamingBusy, setRenamingBusy] = useState(false);
+  const [projectStatusFilter, setProjectStatusFilter] = useState<string>("All");
+  const [projectSearchQuery, setProjectSearchQuery] = useState<string>("");
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentSaving, setCommentSaving] = useState(false);
 
   // Topbar's clickable "Smart Source.ai" title (ToolHomeContext) closes the
   // My Projects panel, returning to the search view underneath it.
@@ -320,11 +377,15 @@ export default function SmartSourceAiForm({
   }
 
   async function openProjectsPanel() {
+    setError(null);
     setShowProjectsPanel(true);
     setActiveProjectId(null);
     setActiveProjectName("");
     setActiveProjectCandidates([]);
     setProjectsError(null);
+    setProjectStatusFilter("All");
+    setProjectSearchQuery("");
+    setEditingCommentId(null);
     setProjectsLoading(true);
     try {
       const res = await fetch("/api/smart-source/projects");
@@ -343,8 +404,12 @@ export default function SmartSourceAiForm({
   }
 
   async function openProjectDetail(id: string, name: string) {
+    setError(null);
     setActiveProjectId(id);
     setActiveProjectName(name);
+    setProjectStatusFilter("All");
+    setProjectSearchQuery("");
+    setEditingCommentId(null);
     setProjectExpanded(null);
     setProjectsError(null);
     setProjectDetailLoading(true);
@@ -358,6 +423,86 @@ export default function SmartSourceAiForm({
     } finally {
       setProjectDetailLoading(false);
     }
+  }
+
+  async function updateCandidateStatus(candidateId: string, status: string) {
+    if (!activeProjectId) return;
+    setActiveProjectCandidates((prev) =>
+      prev.map((c) => (c.id === candidateId ? { ...c, project_status: status } : c))
+    );
+    try {
+      const res = await fetch(`/api/smart-source/projects/${activeProjectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidateId, status }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to update status");
+      }
+    } catch (err) {
+      console.error("Could not update candidate status:", err);
+    }
+  }
+
+  function startEditingComment(c: Candidate) {
+    setEditingCommentId(c.id);
+    setCommentDraft(c.project_comments || "");
+  }
+
+  function cancelEditingComment() {
+    setEditingCommentId(null);
+    setCommentDraft("");
+  }
+
+  async function saveCandidateComment(candidateId: string) {
+    if (!activeProjectId) return;
+    const finalComment = commentDraft.trim();
+    setCommentSaving(true);
+    setActiveProjectCandidates((prev) =>
+      prev.map((c) => (c.id === candidateId ? { ...c, project_comments: finalComment } : c))
+    );
+    setEditingCommentId(null);
+    try {
+      await fetch(`/api/smart-source/projects/${activeProjectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidateId, comments: finalComment }),
+      });
+    } catch (err) {
+      console.error("Could not save comment:", err);
+    } finally {
+      setCommentSaving(false);
+    }
+  }
+
+  function exportProjectCsv() {
+    if (!activeProjectCandidates.length) return;
+    const headers = [
+      "Name",
+      "Score",
+      "Current Role",
+      "Company",
+      "Location",
+      "Experience Years",
+      "Pipeline Status",
+      "Recruiter Comments",
+      "LinkedIn URL",
+    ];
+    const rows = activeProjectCandidates.map((c) => [
+      csvEscape(c.name || ""),
+      csvEscape(c.match_score ?? ""),
+      csvEscape(c.designation || ""),
+      csvEscape(c.company || ""),
+      csvEscape(c.location || ""),
+      csvEscape(c.experience_years ?? ""),
+      csvEscape(c.project_status || "CV Screened"),
+      csvEscape(c.project_comments || ""),
+      csvEscape(c.profile_url || ""),
+    ]);
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const fileName = `${(activeProjectName || "project").replace(/[^a-z0-9]/gi, "_")}_candidates.csv`;
+    downloadBlob(csvContent, fileName, "text/csv;charset=utf-8");
   }
 
   async function removeFromActiveProject(candidateId: string) {
@@ -416,7 +561,7 @@ export default function SmartSourceAiForm({
       setNotice(`Project renamed to "${newName}".`);
       setRenamingProject(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not rename the project.");
+      setProjectsError(err instanceof Error ? err.message : "Could not rename the project.");
     } finally {
       setRenamingBusy(false);
     }
@@ -576,6 +721,39 @@ export default function SmartSourceAiForm({
     }
   }
 
+  const stageCounts = useMemo(() => {
+    const counts: Record<string, number> = { All: activeProjectCandidates.length };
+    for (const status of PIPELINE_STATUSES) {
+      counts[status] = 0;
+    }
+    for (const c of activeProjectCandidates) {
+      const st = c.project_status || "CV Screened";
+      counts[st] = (counts[st] || 0) + 1;
+    }
+    return counts;
+  }, [activeProjectCandidates]);
+
+  const filteredProjectCandidates = useMemo(() => {
+    return activeProjectCandidates.filter((c) => {
+      if (projectStatusFilter !== "All") {
+        const st = c.project_status || "CV Screened";
+        if (st !== projectStatusFilter) return false;
+      }
+      if (projectSearchQuery.trim()) {
+        const q = projectSearchQuery.trim().toLowerCase();
+        const matchesName = (c.name || "").toLowerCase().includes(q);
+        const matchesDesignation = (c.designation || "").toLowerCase().includes(q);
+        const matchesCompany = (c.company || "").toLowerCase().includes(q);
+        const matchesLocation = (c.location || "").toLowerCase().includes(q);
+        const matchesComments = (c.project_comments || "").toLowerCase().includes(q);
+        if (!matchesName && !matchesDesignation && !matchesCompany && !matchesLocation && !matchesComments) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [activeProjectCandidates, projectStatusFilter, projectSearchQuery]);
+
   const pageCount = Math.max(1, Math.ceil(candidates.length / PAGE_SIZE));
   const pageRows = candidates.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
   const activeCandidate = candidates.find((c) => c.id === activeId) || candidates[0] || null;
@@ -596,7 +774,7 @@ export default function SmartSourceAiForm({
         </button>
       </div>
 
-      {error && (
+      {error && !showProjectsPanel && (
         <div className="bg-critical-wash text-critical text-[12.5px] rounded-sm px-3 py-2 mb-4">{error}</div>
       )}
       {notice && (
@@ -653,66 +831,399 @@ export default function SmartSourceAiForm({
               </div>
             )
           ) : (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <button
-                  onClick={() => setActiveProjectId(null)}
-                  className="text-[12.5px] font-bold text-ink-muted inline-flex items-center gap-1"
-                >
-                  <Icon name="chevronLeft" className="w-3.5 h-3.5" /> All projects
-                </button>
+            <div className="flex flex-col gap-4">
+              {/* Workday Context Bar & Header */}
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="text-[13px] font-bold">{activeProjectName}</div>
+                  <button
+                    onClick={() => setActiveProjectId(null)}
+                    className="text-[12.5px] font-bold text-ink-muted hover:text-ink inline-flex items-center gap-1 transition-colors"
+                  >
+                    <Icon name="chevronLeft" className="w-3.5 h-3.5" /> All projects
+                  </button>
+                  <span className="text-ink-muted">/</span>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-ink">{activeProjectName}</h2>
+                    <span className="text-[11.5px] font-semibold bg-page text-ink-muted px-2 py-0.5 rounded-full border border-border">
+                      {activeProjectCandidates.length} candidate{activeProjectCandidates.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={exportProjectCsv}
+                    disabled={activeProjectCandidates.length === 0}
+                    className="border border-border text-[12px] font-bold px-2.5 py-1.5 rounded-sm bg-surface hover:bg-page transition-colors inline-flex items-center gap-1.5 disabled:opacity-50"
+                    title="Export candidate pipeline as CSV"
+                  >
+                    <Icon name="download" className="w-3.5 h-3.5 text-ink-muted" />
+                    <span>Export CSV</span>
+                  </button>
                   <button
                     onClick={() => openRenameModal(activeProjectId, activeProjectName)}
-                    className="text-[11.5px] font-bold text-brand hover:underline"
+                    className="border border-border text-[12px] font-bold px-2.5 py-1.5 rounded-sm bg-surface hover:bg-page transition-colors inline-flex items-center gap-1.5 text-ink"
                   >
-                    Rename
+                    <Icon name="edit" className="w-3.5 h-3.5 text-ink-muted" />
+                    <span>Rename</span>
                   </button>
                   <button
                     onClick={deleteActiveProject}
-                    className="text-[11.5px] font-bold text-critical hover:underline"
+                    className="border border-rose-200 dark:border-rose-900 text-[12px] font-bold px-2.5 py-1.5 rounded-sm bg-surface hover:bg-rose-50 dark:hover:bg-rose-950/40 text-critical transition-colors inline-flex items-center gap-1.5"
                   >
-                    Delete project
+                    <Icon name="trash" className="w-3.5 h-3.5" />
+                    <span>Delete</span>
                   </button>
                 </div>
               </div>
+
+              {/* Workday Pipeline Stages Metric Strip / Filter Ribbon */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin">
+                <button
+                  onClick={() => setProjectStatusFilter("All")}
+                  className={`shrink-0 text-[12px] font-bold px-2.5 py-1 rounded-full border transition-all inline-flex items-center gap-1.5 ${
+                    projectStatusFilter === "All"
+                      ? "bg-brand text-white border-brand shadow-soft-sm"
+                      : "bg-surface text-ink-2 border-border hover:border-brand/40"
+                  }`}
+                >
+                  <span>All Stages</span>
+                  <span
+                    className={`text-[10.5px] px-1.5 py-0.2 rounded-full ${
+                      projectStatusFilter === "All"
+                        ? "bg-white/20 text-white font-bold"
+                        : "bg-page text-ink-muted"
+                    }`}
+                  >
+                    {activeProjectCandidates.length}
+                  </span>
+                </button>
+
+                {PIPELINE_STATUSES.map((status) => {
+                  const count = stageCounts[status] || 0;
+                  const isSelected = projectStatusFilter === status;
+                  return (
+                    <button
+                      key={status}
+                      onClick={() => setProjectStatusFilter(isSelected ? "All" : status)}
+                      className={`shrink-0 text-[11.5px] font-semibold px-2.5 py-1 rounded-full border transition-all inline-flex items-center gap-1.5 ${
+                        isSelected
+                          ? "bg-ink text-surface border-ink shadow-soft-sm font-bold"
+                          : count > 0
+                          ? "bg-surface text-ink border-border hover:border-ink-muted"
+                          : "bg-page/60 text-ink-muted border-transparent hover:border-border"
+                      }`}
+                    >
+                      <span>{status}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                          isSelected
+                            ? "bg-surface/25 text-surface font-bold"
+                            : count > 0
+                            ? "bg-brand-wash text-brand font-bold"
+                            : "bg-border/60 text-ink-muted"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Quick Search & Filter Status */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-surface p-2.5 rounded-md border border-border">
+                <div className="relative flex-1 min-w-[240px]">
+                  <Icon
+                    name="search"
+                    className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-muted pointer-events-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search candidate name, role, company, location, or recruiter comments…"
+                    value={projectSearchQuery}
+                    onChange={(e) => setProjectSearchQuery(e.target.value)}
+                    className="w-full text-[12.5px] bg-page border border-border rounded-sm pl-8 pr-7 py-1.5 text-ink placeholder:text-ink-muted focus:outline-none focus:border-brand"
+                  />
+                  {projectSearchQuery && (
+                    <button
+                      onClick={() => setProjectSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink text-[11px]"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <div className="text-[12px] text-ink-muted flex items-center gap-2">
+                  <span>
+                    Showing <strong className="text-ink">{filteredProjectCandidates.length}</strong> of{" "}
+                    {activeProjectCandidates.length} candidates
+                  </span>
+                  {(projectStatusFilter !== "All" || projectSearchQuery) && (
+                    <button
+                      onClick={() => {
+                        setProjectStatusFilter("All");
+                        setProjectSearchQuery("");
+                      }}
+                      className="text-[11.5px] font-bold text-brand hover:underline ml-1"
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Candidate Pipeline Table */}
               {projectDetailLoading ? (
-                <div className="text-[13px] text-ink-muted py-10 text-center">Loading candidates…</div>
+                <div className="text-[13px] text-ink-muted py-12 text-center flex flex-col items-center gap-2">
+                  <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                  <span>Loading candidate pipeline…</span>
+                </div>
               ) : activeProjectCandidates.length === 0 ? (
-                <div className="text-[13px] text-ink-muted py-10 text-center">No candidates in this project yet.</div>
+                <div className="text-[13px] text-ink-muted py-12 text-center border border-dashed border-border rounded-md bg-surface">
+                  No candidates in this project yet. Find candidates via search and click &ldquo;Add to Project&rdquo;.
+                </div>
+              ) : filteredProjectCandidates.length === 0 ? (
+                <div className="text-[13px] text-ink-muted py-10 text-center border border-border rounded-md bg-surface flex flex-col items-center gap-2">
+                  <p>No candidates match your current stage or search filters.</p>
+                  <button
+                    onClick={() => {
+                      setProjectStatusFilter("All");
+                      setProjectSearchQuery("");
+                    }}
+                    className="text-[12px] font-bold text-brand hover:underline"
+                  >
+                    Reset filters
+                  </button>
+                </div>
               ) : (
-                <div className="flex flex-col gap-2">
-                  {activeProjectCandidates.map((c) => (
-                    <div key={c.id} className="border border-border rounded-md bg-surface p-3 shadow-soft-sm flex flex-col gap-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="font-bold text-ink text-[13.5px]">{c.name || "—"}</div>
-                          <div className="text-ink-muted text-[12px]">{c.designation || "—"}</div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${scoreClass(c.match_score)}`}>
-                            {c.match_score ?? "—"}
-                          </span>
-                          <button
-                            onClick={() => removeFromActiveProject(c.id)}
-                            className="text-[11px] font-bold text-critical"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                      <div className="text-[12.5px] text-ink-2">{[c.company, c.location].filter(Boolean).join(" • ") || "—"}</div>
-                      <div className="pt-1 border-t border-border">
-                        <LinksRow c={c} expanded={projectExpanded} setExpanded={setProjectExpanded} />
-                      </div>
-                      {projectExpanded === c.id && (
-                        <div className="pt-2 border-t border-border">
-                          <EvaluationPanel c={c} />
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                <div className="border border-border rounded-md bg-surface shadow-soft-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[980px]">
+                      <thead>
+                        <tr className="bg-page border-b border-border text-[11.5px] font-bold text-ink-muted uppercase tracking-wider">
+                          <th className="py-2.5 px-3.5 w-[30%]">Candidate & Role</th>
+                          <th className="py-2.5 px-3 w-[16%]">Location & Exp</th>
+                          <th className="py-2.5 px-3 w-[8%] text-center">Score</th>
+                          <th className="py-2.5 px-3 w-[18%]">Pipeline Status</th>
+                          <th className="py-2.5 px-3 w-[20%]">Recruiter Comments</th>
+                          <th className="py-2.5 px-3 w-[8%] text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border text-[12.5px]">
+                        {filteredProjectCandidates.map((c) => {
+                          const isEditingComment = editingCommentId === c.id;
+                          const currentStatus = c.project_status || "CV Screened";
+                          const isExpanded = projectExpanded === c.id;
+
+                          return (
+                            <Fragment key={c.id}>
+                              <tr className="hover:bg-page/50 transition-colors group">
+                                {/* Candidate & Role */}
+                                <td className="py-3 px-3.5 align-top">
+                                  <div className="flex items-start gap-2.5">
+                                    <div className="w-8 h-8 rounded-full bg-brand/10 text-brand font-bold text-[12px] flex items-center justify-center shrink-0 border border-brand/20">
+                                      {(c.name || "C").slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-bold text-ink text-[13.5px]">
+                                          {c.name || "Unnamed Candidate"}
+                                        </span>
+                                        {c.profile_url && (
+                                          <a
+                                            href={c.profile_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-brand hover:text-brand-hover inline-flex items-center"
+                                            title="Open LinkedIn / profile in new tab"
+                                          >
+                                            <Icon name="externalLink" className="w-3.5 h-3.5" />
+                                          </a>
+                                        )}
+                                      </div>
+                                      <div className="text-[12px] text-ink-2 font-medium truncate max-w-sm">
+                                        {c.designation || "—"}
+                                      </div>
+                                      {c.company && (
+                                        <div className="text-[11.5px] text-ink-muted truncate max-w-sm">
+                                          at <span className="text-ink">{c.company}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Location & Exp */}
+                                <td className="py-3 px-3 align-top text-ink-2">
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="truncate max-w-[170px]" title={c.location || ""}>
+                                      {c.location || "—"}
+                                    </div>
+                                    <div className="text-[11.5px] text-ink-muted">
+                                      {c.experience_years != null ? `${c.experience_years} yrs exp` : "—"}
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Score */}
+                                <td className="py-3 px-3 align-top text-center">
+                                  <span
+                                    className={`inline-block text-[11.5px] font-bold px-2 py-0.5 rounded-full ${scoreClass(
+                                      c.match_score
+                                    )}`}
+                                  >
+                                    {c.match_score ?? "—"}
+                                  </span>
+                                </td>
+
+                                {/* Pipeline Status Dropdown */}
+                                <td className="py-3 px-3 align-top">
+                                  <div className="flex flex-col gap-1">
+                                    <div className="relative inline-block">
+                                      <select
+                                        value={currentStatus}
+                                        onChange={(e) => updateCandidateStatus(c.id, e.target.value)}
+                                        className={`text-[11.5px] font-bold py-1 px-2.5 pr-6 rounded-md border appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-brand ${statusBadgeClass(
+                                          currentStatus
+                                        )}`}
+                                      >
+                                        {PIPELINE_STATUSES.map((st) => (
+                                          <option
+                                            key={st}
+                                            value={st}
+                                            className="bg-surface text-ink font-medium"
+                                          >
+                                            {st}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-current opacity-70">
+                                        <Icon name="chevronDown" className="w-3 h-3" />
+                                      </div>
+                                    </div>
+                                    {c.added_at && (
+                                      <span className="text-[10.5px] text-ink-muted">
+                                        Added {new Date(c.added_at).toLocaleDateString()}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {/* Recruiter Comments */}
+                                <td className="py-3 px-3 align-top">
+                                  {isEditingComment ? (
+                                    <div className="flex flex-col gap-1.5 bg-page p-2 rounded border border-brand/40 shadow-soft-sm">
+                                      <textarea
+                                        rows={3}
+                                        value={commentDraft}
+                                        onChange={(e) => setCommentDraft(e.target.value)}
+                                        placeholder="Add screening feedback, interview notes, or candidate status details…"
+                                        className="w-full text-[12px] bg-surface text-ink p-1.5 rounded border border-border focus:outline-none focus:border-brand resize-y"
+                                        autoFocus
+                                      />
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={cancelEditingComment}
+                                          className="text-[11px] font-bold px-2 py-0.5 rounded text-ink-muted hover:text-ink hover:bg-surface border border-transparent"
+                                        >
+                                          Cancel
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => saveCandidateComment(c.id)}
+                                          disabled={commentSaving}
+                                          className="text-[11px] font-bold px-2.5 py-0.5 rounded bg-brand text-white hover:bg-brand-hover shadow-soft-sm disabled:opacity-50"
+                                        >
+                                          {commentSaving ? "Saving…" : "Save Comment"}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div
+                                      onClick={() => startEditingComment(c)}
+                                      className="group/comment cursor-pointer rounded p-1 -m-1 hover:bg-page hover:border hover:border-border transition-all flex flex-col gap-0.5"
+                                      title="Click to edit recruiter comment"
+                                    >
+                                      {c.project_comments ? (
+                                        <p className="text-[12px] text-ink line-clamp-3 whitespace-pre-wrap">
+                                          {c.project_comments}
+                                        </p>
+                                      ) : (
+                                        <span className="text-[11.5px] text-ink-muted italic group-hover/comment:text-brand flex items-center gap-1">
+                                          <Icon name="edit" className="w-3 h-3 opacity-60" /> Add comment…
+                                        </span>
+                                      )}
+                                      {c.project_comments && (
+                                        <span className="text-[10.5px] text-brand opacity-0 group-hover/comment:opacity-100 transition-opacity font-bold">
+                                          Edit note
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+
+                                {/* Actions */}
+                                <td className="py-3 px-3 align-top text-right">
+                                  <div className="flex flex-col items-end gap-1.5">
+                                    <button
+                                      onClick={() =>
+                                        setProjectExpanded((prev) => (prev === c.id ? null : c.id))
+                                      }
+                                      className={`text-[11.5px] font-bold px-2 py-1 rounded transition-colors inline-flex items-center gap-1 ${
+                                        isExpanded
+                                          ? "bg-brand/10 text-brand"
+                                          : "text-ink-muted hover:text-ink hover:bg-page"
+                                      }`}
+                                      title="Toggle AI Fit Evaluation drawer"
+                                    >
+                                      <span>Fit</span>
+                                      <Icon
+                                        name={isExpanded ? "chevronUp" : "chevronDown"}
+                                        className="w-3 h-3"
+                                      />
+                                    </button>
+                                    <button
+                                      onClick={() => removeFromActiveProject(c.id)}
+                                      className="text-[11px] font-bold text-critical hover:underline opacity-80 hover:opacity-100"
+                                      title="Remove candidate from this project"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+
+                              {/* Evaluation Panel Drawer */}
+                              {isExpanded && (
+                                <tr className="bg-page/70 border-b border-border">
+                                  <td colSpan={6} className="p-3.5">
+                                    <div className="bg-surface rounded-md border border-border p-3 shadow-soft-sm">
+                                      <div className="flex items-center justify-between mb-2">
+                                        <div className="text-[12px] font-bold text-ink flex items-center gap-1.5">
+                                          <Icon name="sparkle" className="w-3.5 h-3.5 text-brand" />
+                                          <span>AI Fit Evaluation for {c.name || "Candidate"}</span>
+                                        </div>
+                                        <button
+                                          onClick={() => setProjectExpanded(null)}
+                                          className="text-[11px] font-bold text-ink-muted hover:text-ink"
+                                        >
+                                          Close
+                                        </button>
+                                      </div>
+                                      <EvaluationPanel c={c} />
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
