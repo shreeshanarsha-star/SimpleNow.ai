@@ -14,6 +14,11 @@ type SearchRow = {
   extracted_skills: string[] | null;
   extracted_location: string | null;
   search_query: string;
+  extracted_criteria?: {
+    target_companies?: string[] | null;
+    exclude_companies?: string[] | null;
+    lookalike_source?: string | null;
+  } | null;
 };
 
 type Candidate = {
@@ -209,6 +214,35 @@ export default function SmartSourceAiForm({
   const [commentDraft, setCommentDraft] = useState("");
   const [commentSaving, setCommentSaving] = useState(false);
 
+  const [manualTargetCompanies, setManualTargetCompanies] = useState("");
+  const [manualExcludeCompanies, setManualExcludeCompanies] = useState("");
+  const [describeTargetCompanies, setDescribeTargetCompanies] = useState("");
+  const [describeExcludeCompanies, setDescribeExcludeCompanies] = useState("");
+  const [showTargetCompaniesInDescribe, setShowTargetCompaniesInDescribe] = useState(false);
+
+  const [lookalikeSource, setLookalikeSource] = useState<{
+    name: string;
+    designation?: string | null;
+    company?: string | null;
+  } | null>(null);
+
+  const [whatsAppModalCandidate, setWhatsAppModalCandidate] = useState<Candidate | null>(null);
+  const [whatsAppPhone, setWhatsAppPhone] = useState("");
+  const [whatsAppMessage, setWhatsAppMessage] = useState("");
+  const [whatsAppCopied, setWhatsAppCopied] = useState(false);
+
+  const activeTargetCompanies = useMemo(() => {
+    const list = search?.extracted_criteria?.target_companies;
+    if (list && Array.isArray(list) && list.length > 0) return list;
+    if (mode === "manual" && manualTargetCompanies.trim()) {
+      return manualTargetCompanies.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+    }
+    if (mode === "describe" && describeTargetCompanies.trim()) {
+      return describeTargetCompanies.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+    }
+    return [];
+  }, [search, mode, manualTargetCompanies, describeTargetCompanies]);
+
   // Topbar's clickable "Smart Source.ai" title (ToolHomeContext) closes the
   // My Projects panel, returning to the search view underneath it.
   useRegisterToolHome(useCallback(() => setShowProjectsPanel(false), []));
@@ -257,6 +291,122 @@ export default function SmartSourceAiForm({
     }
   }
 
+  function openWhatsAppModal(c: Candidate) {
+    setWhatsAppModalCandidate(c);
+    setWhatsAppPhone("");
+    setWhatsAppCopied(false);
+
+    const firstName = (c.name || "there").split(" ")[0];
+    const roleHiring = search?.extracted_role || c.designation || "this opportunity";
+    const currentRole = c.designation || "";
+    const company = c.company ? `at ${c.company}` : "";
+    const topSkills = (c.skills || []).slice(0, 2).join(" & ") || (c.evaluation_strengths || [])[0] || "your background";
+
+    let msg = `Hi ${firstName}! I came across your impressive profile`;
+    if (currentRole) {
+      msg += ` as ${currentRole} ${company}`.trimEnd();
+    }
+    msg += `.\n\nWe are currently sourcing for a ${roleHiring} and your experience in ${topSkills} really caught our eye.\n\nWould you be open to a brief 5-minute confidential chat this week?`;
+
+    setWhatsAppMessage(msg);
+  }
+
+  function closeWhatsAppModal() {
+    setWhatsAppModalCandidate(null);
+    setWhatsAppPhone("");
+    setWhatsAppMessage("");
+    setWhatsAppCopied(false);
+  }
+
+  function copyWhatsAppMessage() {
+    if (!whatsAppMessage) return;
+    navigator.clipboard.writeText(whatsAppMessage);
+    setWhatsAppCopied(true);
+    setTimeout(() => setWhatsAppCopied(false), 2500);
+  }
+
+  function launchWhatsApp() {
+    const textEncoded = encodeURIComponent(whatsAppMessage);
+    const cleanPhone = whatsAppPhone.replace(/[^0-9+]/g, "").replace(/^\+/, "");
+    const url = cleanPhone
+      ? `https://wa.me/${cleanPhone}?text=${textEncoded}`
+      : `https://wa.me/?text=${textEncoded}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  async function handleFindLookalikes(c: Candidate) {
+    if (showProjectsPanel) {
+      setShowProjectsPanel(false);
+    }
+    const name = c.name || "Candidate";
+    const role = c.designation || "";
+    const comp = c.company || "";
+    const loc = c.location || "";
+    const skillsList = (c.skills && c.skills.length > 0)
+      ? c.skills.slice(0, 3).join(", ")
+      : (c.evaluation_strengths || []).slice(0, 2).join(", ");
+
+    const query = [
+      `Find candidates similar to ${name}`,
+      role ? `Role: ${role}` : "",
+      comp ? `at ${comp} or peer companies` : "",
+      skillsList ? `with skills in ${skillsList}` : "",
+      loc ? `in ${loc}` : "",
+    ].filter(Boolean).join(", ");
+
+    setMode("describe");
+    setDescribeText(query);
+    setLookalikeSource({
+      name,
+      designation: role,
+      company: comp,
+    });
+    setError(null);
+    setNotice(null);
+
+    const body: Record<string, unknown> = {
+      mode: "describe",
+      text: query,
+      lookalike_source: name,
+    };
+    if (comp) {
+      body.target_companies = comp;
+    }
+
+    setStep("running");
+    setStatusIdx(0);
+    if (statusTimer.current) clearInterval(statusTimer.current);
+    statusTimer.current = setInterval(() => {
+      setStatusIdx((i) => (i < STATUS_STEPS.length - 1 ? i + 1 : i));
+    }, 1800);
+
+    try {
+      const res = await fetch("/api/smart-source/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "The lookalike search failed.");
+      setSearch(data.search);
+      setCandidates(data.candidates || []);
+      setPage(0);
+      setSelected(new Set());
+      setActiveId((data.candidates || [])[0]?.id || null);
+      setStep("results");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The lookalike search failed.");
+      setStep("input");
+    } finally {
+      if (statusTimer.current) clearInterval(statusTimer.current);
+    }
+  }
+
+  function clearLookalikeSearch() {
+    setLookalikeSource(null);
+    reset();
+  }
+
   async function handleSearch() {
     setError(null);
     setNotice(null);
@@ -267,8 +417,8 @@ export default function SmartSourceAiForm({
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      if (!manualRole.trim() && !skills.length) {
-        setError("Add a role title or at least one skill.");
+      if (!manualRole.trim() && !skills.length && !manualTargetCompanies.trim()) {
+        setError("Add a role title, target company, or at least one skill.");
         return;
       }
       body = {
@@ -276,6 +426,8 @@ export default function SmartSourceAiForm({
         manual: {
           role_title: manualRole.trim() || null,
           company: manualCompany.trim() || null,
+          target_companies: manualTargetCompanies.trim() || null,
+          exclude_companies: manualExcludeCompanies.trim() || null,
           location: manualLocation.trim() || null,
           skills,
           min_experience_years: manualExperience ? Number(manualExperience) : null,
@@ -287,7 +439,13 @@ export default function SmartSourceAiForm({
         setError(mode === "jd" ? "Paste a job description first." : "Describe who you're looking for first.");
         return;
       }
-      body = { mode, text: text.trim() };
+      body = {
+        mode,
+        text: text.trim(),
+        target_companies: describeTargetCompanies.trim() || undefined,
+        exclude_companies: describeExcludeCompanies.trim() || undefined,
+        lookalike_source: lookalikeSource?.name || undefined,
+      };
     }
 
     setStep("running");
@@ -322,6 +480,7 @@ export default function SmartSourceAiForm({
     setStep("input");
     setSearch(null);
     setCandidates([]);
+    setLookalikeSource(null);
     setError(null);
     setNotice(null);
     setExpanded(null);
@@ -1168,30 +1327,52 @@ export default function SmartSourceAiForm({
                                 {/* Actions */}
                                 <td className="py-3 px-3 align-top text-right">
                                   <div className="flex flex-col items-end gap-1.5">
-                                    <button
-                                      onClick={() =>
-                                        setProjectExpanded((prev) => (prev === c.id ? null : c.id))
-                                      }
-                                      className={`text-[11.5px] font-bold px-2 py-1 rounded transition-colors inline-flex items-center gap-1 ${
-                                        isExpanded
-                                          ? "bg-brand/10 text-brand"
-                                          : "text-ink-muted hover:text-ink hover:bg-page"
-                                      }`}
-                                      title="Toggle AI Fit Evaluation drawer"
-                                    >
-                                      <span>Fit</span>
-                                      <Icon
-                                        name={isExpanded ? "chevronUp" : "chevronDown"}
-                                        className="w-3 h-3"
-                                      />
-                                    </button>
-                                    <button
-                                      onClick={() => removeFromActiveProject(c.id)}
-                                      className="text-[11px] font-bold text-critical hover:underline opacity-80 hover:opacity-100"
-                                      title="Remove candidate from this project"
-                                    >
-                                      Remove
-                                    </button>
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => openWhatsAppModal(c)}
+                                        className="text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 text-[11.5px] font-bold px-1.5 py-0.5 rounded hover:bg-emerald-50 dark:hover:bg-emerald-950/40 inline-flex items-center gap-1 transition-colors"
+                                        title="Quick outreach via WhatsApp"
+                                      >
+                                        <Icon name="whatsapp" className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                        <span>WhatsApp</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleFindLookalikes(c)}
+                                        className="text-brand hover:text-brand-hover text-[11.5px] font-bold px-1.5 py-0.5 rounded hover:bg-brand-wash inline-flex items-center gap-1 transition-colors"
+                                        title="Find lookalike candidates"
+                                      >
+                                        <Icon name="users" className="w-3 h-3 text-brand" />
+                                        <span>Lookalikes</span>
+                                      </button>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        onClick={() =>
+                                          setProjectExpanded((prev) => (prev === c.id ? null : c.id))
+                                        }
+                                        className={`text-[11.5px] font-bold px-2 py-0.5 rounded transition-colors inline-flex items-center gap-1 ${
+                                          isExpanded
+                                            ? "bg-brand/10 text-brand"
+                                            : "text-ink-muted hover:text-ink hover:bg-page"
+                                        }`}
+                                        title="Toggle AI Fit Evaluation drawer"
+                                      >
+                                        <span>Fit</span>
+                                        <Icon
+                                          name={isExpanded ? "chevronUp" : "chevronDown"}
+                                          className="w-3 h-3"
+                                        />
+                                      </button>
+                                      <button
+                                        onClick={() => removeFromActiveProject(c.id)}
+                                        className="text-[11px] font-bold text-critical hover:underline opacity-80 hover:opacity-100"
+                                        title="Remove candidate from this project"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
                                   </div>
                                 </td>
                               </tr>
@@ -1213,7 +1394,7 @@ export default function SmartSourceAiForm({
                                           Close
                                         </button>
                                       </div>
-                                      <EvaluationPanel c={c} />
+                                      <EvaluationPanel c={c} onWhatsApp={openWhatsAppModal} onFindLookalikes={handleFindLookalikes} />
                                     </div>
                                   </td>
                                 </tr>
@@ -1321,14 +1502,46 @@ export default function SmartSourceAiForm({
           )}
 
           {mode === "describe" && (
-            <Field label="Describe who you're looking for">
-              <textarea
-                className="input min-h-[140px]"
-                placeholder='e.g. "Senior sales manager in Mexico with experience in feed additives", or search for a specific person like "Riddhi Ramesh from Google"'
-                value={describeText}
-                onChange={(e) => setDescribeText(e.target.value)}
-              />
-            </Field>
+            <div className="flex flex-col gap-2.5">
+              <Field label="Describe who you're looking for">
+                <textarea
+                  className="input min-h-[140px]"
+                  placeholder='e.g. "Senior sales manager in Mexico with experience in feed additives from Cargill or Nutreco", or search for a specific person like "Riddhi Ramesh from Google"'
+                  value={describeText}
+                  onChange={(e) => setDescribeText(e.target.value)}
+                />
+              </Field>
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setShowTargetCompaniesInDescribe((prev) => !prev)}
+                  className="text-[11.5px] font-bold text-brand hover:underline inline-flex items-center gap-1"
+                >
+                  <Icon name="tag" className="w-3 h-3" />
+                  {showTargetCompaniesInDescribe ? "Hide company filters" : "+ Target / Exclude specific companies"}
+                </button>
+              </div>
+              {showTargetCompaniesInDescribe && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-page p-3 rounded-md border border-border">
+                  <Field label="Target Companies (optional, comma-separated)">
+                    <input
+                      className="input"
+                      value={describeTargetCompanies}
+                      onChange={(e) => setDescribeTargetCompanies(e.target.value)}
+                      placeholder="e.g. Razorpay, Swiggy, CRED, Zepto"
+                    />
+                  </Field>
+                  <Field label="Exclude Companies (optional, comma-separated)">
+                    <input
+                      className="input"
+                      value={describeExcludeCompanies}
+                      onChange={(e) => setDescribeExcludeCompanies(e.target.value)}
+                      placeholder="e.g. Current Employer, Client X"
+                    />
+                  </Field>
+                </div>
+              )}
+            </div>
           )}
 
           {mode === "manual" && (
@@ -1336,14 +1549,30 @@ export default function SmartSourceAiForm({
               <Field label="Role title">
                 <input className="input" value={manualRole} onChange={(e) => setManualRole(e.target.value)} placeholder="e.g. Sales Manager" />
               </Field>
-              <Field label="Company (optional)">
-                <input className="input" value={manualCompany} onChange={(e) => setManualCompany(e.target.value)} placeholder="e.g. Cargill" />
-              </Field>
               <Field label="Location (optional)">
                 <input className="input" value={manualLocation} onChange={(e) => setManualLocation(e.target.value)} placeholder="e.g. Mexico City" />
               </Field>
+              <Field label="Target Companies (optional, comma-separated)">
+                <input
+                  className="input"
+                  value={manualTargetCompanies}
+                  onChange={(e) => setManualTargetCompanies(e.target.value)}
+                  placeholder="e.g. Google, Microsoft, Stripe, Razorpay"
+                />
+              </Field>
+              <Field label="Exclude Companies (optional, comma-separated)">
+                <input
+                  className="input"
+                  value={manualExcludeCompanies}
+                  onChange={(e) => setManualExcludeCompanies(e.target.value)}
+                  placeholder="e.g. Current employer, Client X"
+                />
+              </Field>
               <Field label="Minimum experience (years, optional)">
                 <input className="input" type="number" min={0} value={manualExperience} onChange={(e) => setManualExperience(e.target.value)} placeholder="e.g. 6" />
+              </Field>
+              <Field label="Specific Company (optional)">
+                <input className="input" value={manualCompany} onChange={(e) => setManualCompany(e.target.value)} placeholder="e.g. Cargill" />
               </Field>
               <div className="col-span-2">
                 <Field label="Skills (comma-separated)">
@@ -1382,6 +1611,29 @@ export default function SmartSourceAiForm({
 
       {!showProjectsPanel && step === "results" && (
         <div className="flex flex-col gap-4">
+          {lookalikeSource && (
+            <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 dark:bg-indigo-950/40 dark:border-indigo-800 rounded-md p-3 text-[13px] text-indigo-900 dark:text-indigo-200">
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                  <Icon name="users" className="w-4 h-4" />
+                </span>
+                <div>
+                  <span className="font-bold">Lookalike Discovery Active:</span> Sourcing profiles similar to{" "}
+                  <span className="font-semibold underline">{lookalikeSource.name}</span>
+                  {lookalikeSource.company ? ` (${lookalikeSource.company})` : ""}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={clearLookalikeSearch}
+                className="text-[12px] font-bold text-indigo-700 dark:text-indigo-300 hover:underline inline-flex items-center gap-1"
+              >
+                <Icon name="x" className="w-3.5 h-3.5" />
+                Clear lookalikes
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 flex-wrap">
               {search?.extracted_role && (
@@ -1393,6 +1645,11 @@ export default function SmartSourceAiForm({
               {search?.extracted_location && (
                 <span className="bg-page text-ink-2 rounded-full px-3 py-1 text-[12px] font-medium">
                   {search.extracted_location}
+                </span>
+              )}
+              {activeTargetCompanies.length > 0 && (
+                <span className="bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800 rounded-full px-3 py-1 text-[12px] font-medium inline-flex items-center gap-1">
+                  🎯 Targets: {activeTargetCompanies.join(", ")}
                 </span>
               )}
               {(search?.extracted_skills || []).slice(0, 5).map((s) => (
@@ -1509,6 +1766,9 @@ export default function SmartSourceAiForm({
                   expanded={expanded}
                   setExpanded={setExpanded}
                   onAddToProject={openAddToProject}
+                  targetCompanies={activeTargetCompanies}
+                  onWhatsApp={openWhatsAppModal}
+                  onFindLookalikes={handleFindLookalikes}
                 />
               )}
               {view === "compact" && (
@@ -1519,6 +1779,9 @@ export default function SmartSourceAiForm({
                   expanded={expanded}
                   setExpanded={setExpanded}
                   onAddToProject={openAddToProject}
+                  targetCompanies={activeTargetCompanies}
+                  onWhatsApp={openWhatsAppModal}
+                  onFindLookalikes={handleFindLookalikes}
                 />
               )}
               {view === "split" && (
@@ -1530,6 +1793,9 @@ export default function SmartSourceAiForm({
                   setActiveId={setActiveId}
                   active={activeCandidate}
                   onAddToProject={openAddToProject}
+                  targetCompanies={activeTargetCompanies}
+                  onWhatsApp={openWhatsAppModal}
+                  onFindLookalikes={handleFindLookalikes}
                 />
               )}
 
@@ -1731,6 +1997,102 @@ export default function SmartSourceAiForm({
         </div>
       )}
 
+      {whatsAppModalCandidate && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
+          onClick={closeWhatsAppModal}
+        >
+          <div
+            className="bg-surface border border-border rounded-lg shadow-soft-lg p-5 w-full max-w-lg flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="w-9 h-9 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                  <Icon name="whatsapp" className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="font-bold text-ink text-[15px]">WhatsApp Outreach</h3>
+                  <p className="text-[12px] text-ink-muted">
+                    Reach out to <span className="font-bold text-ink-2">{whatsAppModalCandidate.name}</span>
+                    {whatsAppModalCandidate.company ? ` (${whatsAppModalCandidate.company})` : ""}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={closeWhatsAppModal}
+                className="text-ink-muted hover:text-ink p-1 rounded-sm"
+              >
+                <Icon name="x" className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-bold text-ink">Candidate Phone Number (optional)</label>
+              <input
+                className="input text-[13px]"
+                type="tel"
+                placeholder="e.g. +91 98765 43210 or 9876543210"
+                value={whatsAppPhone}
+                onChange={(e) => setWhatsAppPhone(e.target.value)}
+              />
+              <span className="text-[11px] text-ink-muted">
+                If omitted, WhatsApp will open and let you select from your contacts or chat list.
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-[12px] font-bold text-ink">Personalized Pitch Message</label>
+                <button
+                  type="button"
+                  onClick={copyWhatsAppMessage}
+                  className="text-[11.5px] font-bold text-brand hover:underline inline-flex items-center gap-1"
+                >
+                  <Icon name={whatsAppCopied ? "check" : "share"} className="w-3 h-3" />
+                  {whatsAppCopied ? "Copied!" : "Copy message"}
+                </button>
+              </div>
+              <textarea
+                className="input min-h-[140px] text-[12.5px] leading-relaxed resize-y font-sans"
+                value={whatsAppMessage}
+                onChange={(e) => setWhatsAppMessage(e.target.value)}
+                placeholder="Write your WhatsApp message..."
+              />
+              <span className="text-[11px] text-ink-muted">
+                Edit the draft directly before launching or copying.
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={closeWhatsAppModal}
+                className="border border-border text-[12.5px] font-bold px-3 py-1.5 rounded-sm bg-surface hover:bg-page transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={copyWhatsAppMessage}
+                className="border border-border text-[12.5px] font-bold px-3.5 py-1.5 rounded-sm bg-surface hover:bg-page inline-flex items-center gap-1.5 transition-colors"
+              >
+                <Icon name={whatsAppCopied ? "check" : "share"} className="w-3.5 h-3.5" />
+                {whatsAppCopied ? "Copied" : "Copy text"}
+              </button>
+              <button
+                type="button"
+                onClick={launchWhatsApp}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-[12.5px] font-bold px-4 py-1.5 rounded-sm shadow-soft-sm inline-flex items-center gap-1.5 transition-colors"
+              >
+                <Icon name="whatsapp" className="w-4 h-4" />
+                Open WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx global>{`
         .input {
           width: 100%;
@@ -1758,16 +2120,26 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function isTargetCompany(company: string | null | undefined, targetCompanies?: string[]): boolean {
+  if (!company || !targetCompanies || targetCompanies.length === 0) return false;
+  const compLower = company.toLowerCase();
+  return targetCompanies.some((tc) => compLower.includes(tc.toLowerCase().trim()));
+}
+
 function LinksRow({
   c,
   expanded,
   setExpanded,
   onAddToProject,
+  onWhatsApp,
+  onFindLookalikes,
 }: {
   c: Candidate;
   expanded: string | null;
   setExpanded: (id: string | null) => void;
   onAddToProject?: (c: Candidate) => void;
+  onWhatsApp?: (c: Candidate) => void;
+  onFindLookalikes?: (c: Candidate) => void;
 }) {
   return (
     <div className="flex items-center gap-2.5 flex-wrap">
@@ -1784,9 +2156,28 @@ function LinksRow({
           View CV
         </span>
       )}
-      <span className="text-ink-muted" title="SignalHire contact reveal — coming soon">
-        Contact
-      </span>
+      {onWhatsApp && (
+        <button
+          type="button"
+          onClick={() => onWhatsApp(c)}
+          className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline inline-flex items-center gap-1"
+          title="Send personalized WhatsApp pitch"
+        >
+          <Icon name="whatsapp" className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+          WhatsApp
+        </button>
+      )}
+      {onFindLookalikes && (
+        <button
+          type="button"
+          onClick={() => onFindLookalikes(c)}
+          className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline inline-flex items-center gap-1"
+          title="Find similar candidate profiles"
+        >
+          <Icon name="users" className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+          Lookalikes
+        </button>
+      )}
       <button onClick={() => setExpanded(expanded === c.id ? null : c.id)} className="text-ink-2 font-bold inline-flex items-center gap-0.5">
         Evaluation
         <Icon name={expanded === c.id ? "chevronUp" : "chevronDown"} className="w-3 h-3" />
@@ -1809,10 +2200,14 @@ function EvaluationPanel({
   c,
   cols,
   onAddToProject,
+  onWhatsApp,
+  onFindLookalikes,
 }: {
   c: Candidate;
   cols?: number;
   onAddToProject?: (c: Candidate) => void;
+  onWhatsApp?: (c: Candidate) => void;
+  onFindLookalikes?: (c: Candidate) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -1852,8 +2247,30 @@ function EvaluationPanel({
           )}
         </div>
       </div>
-      {onAddToProject && (
-        <div className="flex items-center justify-end pt-2.5 border-t border-border/80">
+      <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-border/80 flex-wrap">
+        {onWhatsApp && (
+          <button
+            type="button"
+            onClick={() => onWhatsApp(c)}
+            className="border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[12px] font-bold px-3 py-1.5 rounded-sm shadow-soft-sm hover:opacity-90 inline-flex items-center gap-1.5 transition-opacity"
+            title="Generate personalized WhatsApp outreach"
+          >
+            <Icon name="whatsapp" className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            WhatsApp Outreach
+          </button>
+        )}
+        {onFindLookalikes && (
+          <button
+            type="button"
+            onClick={() => onFindLookalikes(c)}
+            className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[12px] font-bold px-3 py-1.5 rounded-sm shadow-soft-sm hover:opacity-90 inline-flex items-center gap-1.5 transition-opacity"
+            title="Find lookalike candidates with similar background"
+          >
+            <Icon name="users" className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            Find Lookalikes
+          </button>
+        )}
+        {onAddToProject && (
           <button
             type="button"
             onClick={() => onAddToProject(c)}
@@ -1862,8 +2279,8 @@ function EvaluationPanel({
             <Icon name="briefcase" className="w-3.5 h-3.5 text-brand" />
             Add to project
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -1875,6 +2292,9 @@ function TableView({
   expanded,
   setExpanded,
   onAddToProject,
+  targetCompanies,
+  onWhatsApp,
+  onFindLookalikes,
 }: {
   rows: Candidate[];
   selected: Set<string>;
@@ -1882,6 +2302,9 @@ function TableView({
   expanded: string | null;
   setExpanded: (id: string | null) => void;
   onAddToProject: (c: Candidate) => void;
+  targetCompanies?: string[];
+  onWhatsApp?: (c: Candidate) => void;
+  onFindLookalikes?: (c: Candidate) => void;
 }) {
   return (
     <div className="border border-border rounded-md bg-surface overflow-x-auto">
@@ -1901,39 +2324,63 @@ function TableView({
           </tr>
         </thead>
         <tbody>
-          {rows.map((c) => (
-            <Fragment key={c.id}>
-              <tr className="border-b border-border last:border-0 hover:bg-page/50">
-                <td className="px-3 py-2.5">
-                  <input type="checkbox" checked={selected.has(c.id)} onChange={() => onToggle(c.id)} />
-                </td>
-                <td className="px-3 py-2.5 font-bold text-ink">{c.name || "—"}</td>
-                <td className="px-3 py-2.5">
-                  <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-full ${scoreClass(c.match_score)}`}>
-                    {c.match_score ?? "—"}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 text-ink-2">{c.company || "—"}</td>
-                <td className="px-3 py-2.5 text-ink-2">{c.location || "—"}</td>
-                <td className="px-3 py-2.5 text-ink-2">{c.experience_years ?? "—"}</td>
-                <td className="px-3 py-2.5 text-ink-2">{c.compensation || "—"}</td>
-                <td className="px-3 py-2.5 text-ink-2 max-w-[180px] truncate" title={(c.skills || []).join(", ")}>
-                  {(c.skills || []).slice(0, 3).join(", ") || "—"}
-                </td>
-                <td className="px-3 py-2.5 text-ink-2">{c.qualification || "—"}</td>
-                <td className="px-3 py-2.5">
-                  <LinksRow c={c} expanded={expanded} setExpanded={setExpanded} onAddToProject={onAddToProject} />
-                </td>
-              </tr>
-              {expanded === c.id && (
-                <tr className="border-b border-border bg-page/40">
-                  <td colSpan={10} className="px-4 py-3.5">
-                    <EvaluationPanel c={c} onAddToProject={onAddToProject} />
+          {rows.map((c) => {
+            const isTarget = isTargetCompany(c.company, targetCompanies);
+            return (
+              <Fragment key={c.id}>
+                <tr className="border-b border-border last:border-0 hover:bg-page/50">
+                  <td className="px-3 py-2.5">
+                    <input type="checkbox" checked={selected.has(c.id)} onChange={() => onToggle(c.id)} />
+                  </td>
+                  <td className="px-3 py-2.5 font-bold text-ink">{c.name || "—"}</td>
+                  <td className="px-3 py-2.5">
+                    <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-full ${scoreClass(c.match_score)}`}>
+                      {c.match_score ?? "—"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 text-ink-2">
+                    <div className="flex items-center gap-1.5">
+                      <span>{c.company || "—"}</span>
+                      {isTarget && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800 shrink-0" title="Target company candidate">
+                          🎯 Target
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5 text-ink-2">{c.location || "—"}</td>
+                  <td className="px-3 py-2.5 text-ink-2">{c.experience_years ?? "—"}</td>
+                  <td className="px-3 py-2.5 text-ink-2">{c.compensation || "—"}</td>
+                  <td className="px-3 py-2.5 text-ink-2 max-w-[180px] truncate" title={(c.skills || []).join(", ")}>
+                    {(c.skills || []).slice(0, 3).join(", ") || "—"}
+                  </td>
+                  <td className="px-3 py-2.5 text-ink-2">{c.qualification || "—"}</td>
+                  <td className="px-3 py-2.5">
+                    <LinksRow
+                      c={c}
+                      expanded={expanded}
+                      setExpanded={setExpanded}
+                      onAddToProject={onAddToProject}
+                      onWhatsApp={onWhatsApp}
+                      onFindLookalikes={onFindLookalikes}
+                    />
                   </td>
                 </tr>
-              )}
-            </Fragment>
-          ))}
+                {expanded === c.id && (
+                  <tr className="border-b border-border bg-page/40">
+                    <td colSpan={10} className="px-4 py-3.5">
+                      <EvaluationPanel
+                        c={c}
+                        onAddToProject={onAddToProject}
+                        onWhatsApp={onWhatsApp}
+                        onFindLookalikes={onFindLookalikes}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -1947,6 +2394,9 @@ function CompactView({
   expanded,
   setExpanded,
   onAddToProject,
+  targetCompanies,
+  onWhatsApp,
+  onFindLookalikes,
 }: {
   rows: Candidate[];
   selected: Set<string>;
@@ -1954,30 +2404,55 @@ function CompactView({
   expanded: string | null;
   setExpanded: (id: string | null) => void;
   onAddToProject: (c: Candidate) => void;
+  targetCompanies?: string[];
+  onWhatsApp?: (c: Candidate) => void;
+  onFindLookalikes?: (c: Candidate) => void;
 }) {
   return (
     <div className="border border-border rounded-md bg-surface divide-y divide-border">
-      {rows.map((c) => (
-        <div key={c.id}>
-          <div className="flex items-center gap-3 px-3.5 py-2.5 text-[12.5px]">
-            <input type="checkbox" checked={selected.has(c.id)} onChange={() => onToggle(c.id)} />
-            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${scoreClass(c.match_score)} shrink-0`}>{c.match_score ?? "—"}</span>
-            <span className="font-bold text-ink w-[160px] truncate">{c.name || "—"}</span>
-            <span className="text-ink-2 w-[140px] truncate">{c.company || "—"}</span>
-            <span className="text-ink-2 w-[120px] truncate">{c.location || "—"}</span>
-            <span className="text-ink-muted w-[80px] shrink-0">{c.experience_years != null ? `${c.experience_years} yrs` : "—"}</span>
-            <span className="text-ink-2 flex-1 truncate">{(c.skills || []).slice(0, 3).join(", ") || "—"}</span>
-            <div className="shrink-0">
-              <LinksRow c={c} expanded={expanded} setExpanded={setExpanded} onAddToProject={onAddToProject} />
+      {rows.map((c) => {
+        const isTarget = isTargetCompany(c.company, targetCompanies);
+        return (
+          <div key={c.id}>
+            <div className="flex items-center gap-3 px-3.5 py-2.5 text-[12.5px]">
+              <input type="checkbox" checked={selected.has(c.id)} onChange={() => onToggle(c.id)} />
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${scoreClass(c.match_score)} shrink-0`}>{c.match_score ?? "—"}</span>
+              <span className="font-bold text-ink w-[160px] truncate">{c.name || "—"}</span>
+              <div className="text-ink-2 w-[140px] truncate flex items-center gap-1">
+                <span className="truncate">{c.company || "—"}</span>
+                {isTarget && (
+                  <span className="shrink-0 px-1 py-0.2 rounded text-[9.5px] font-bold bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800" title="Target company candidate">
+                    🎯
+                  </span>
+                )}
+              </div>
+              <span className="text-ink-2 w-[120px] truncate">{c.location || "—"}</span>
+              <span className="text-ink-muted w-[80px] shrink-0">{c.experience_years != null ? `${c.experience_years} yrs` : "—"}</span>
+              <span className="text-ink-2 flex-1 truncate">{(c.skills || []).slice(0, 3).join(", ") || "—"}</span>
+              <div className="shrink-0">
+                <LinksRow
+                  c={c}
+                  expanded={expanded}
+                  setExpanded={setExpanded}
+                  onAddToProject={onAddToProject}
+                  onWhatsApp={onWhatsApp}
+                  onFindLookalikes={onFindLookalikes}
+                />
+              </div>
             </div>
+            {expanded === c.id && (
+              <div className="px-4 py-3.5 bg-page/40">
+                <EvaluationPanel
+                  c={c}
+                  onAddToProject={onAddToProject}
+                  onWhatsApp={onWhatsApp}
+                  onFindLookalikes={onFindLookalikes}
+                />
+              </div>
+            )}
           </div>
-          {expanded === c.id && (
-            <div className="px-4 py-3.5 bg-page/40">
-              <EvaluationPanel c={c} onAddToProject={onAddToProject} />
-            </div>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1990,6 +2465,9 @@ function SplitView({
   setActiveId,
   active,
   onAddToProject,
+  targetCompanies,
+  onWhatsApp,
+  onFindLookalikes,
 }: {
   rows: Candidate[];
   selected: Set<string>;
@@ -1998,31 +2476,49 @@ function SplitView({
   setActiveId: (id: string) => void;
   active: Candidate | null;
   onAddToProject: (c: Candidate) => void;
+  targetCompanies?: string[];
+  onWhatsApp?: (c: Candidate) => void;
+  onFindLookalikes?: (c: Candidate) => void;
 }) {
+  const activeIsTarget = active ? isTargetCompany(active.company, targetCompanies) : false;
+
   return (
     <div className="grid grid-cols-[280px_1fr] gap-3 border border-border rounded-md bg-surface overflow-hidden" style={{ minHeight: 360 }}>
       <div className="border-r border-border overflow-y-auto max-h-[520px] divide-y divide-border">
-        {rows.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setActiveId(c.id)}
-            className={`w-full text-left px-3 py-2.5 flex items-center gap-2 ${activeId === c.id ? "bg-page" : "hover:bg-page/60"}`}
-          >
-            <input type="checkbox" checked={selected.has(c.id)} onChange={(e) => { e.stopPropagation(); onToggle(c.id); }} />
-            <span className={`text-[10.5px] font-bold px-1.5 py-0.5 rounded-full ${scoreClass(c.match_score)} shrink-0`}>{c.match_score ?? "—"}</span>
-            <div className="min-w-0">
-              <div className="font-bold text-ink text-[12.5px] truncate">{c.name || "—"}</div>
-              <div className="text-ink-muted text-[11px] truncate">{c.company || "—"}</div>
-            </div>
-          </button>
-        ))}
+        {rows.map((c) => {
+          const isTarget = isTargetCompany(c.company, targetCompanies);
+          return (
+            <button
+              key={c.id}
+              onClick={() => setActiveId(c.id)}
+              className={`w-full text-left px-3 py-2.5 flex items-center gap-2 ${activeId === c.id ? "bg-page" : "hover:bg-page/60"}`}
+            >
+              <input type="checkbox" checked={selected.has(c.id)} onChange={(e) => { e.stopPropagation(); onToggle(c.id); }} />
+              <span className={`text-[10.5px] font-bold px-1.5 py-0.5 rounded-full ${scoreClass(c.match_score)} shrink-0`}>{c.match_score ?? "—"}</span>
+              <div className="min-w-0 flex-1">
+                <div className="font-bold text-ink text-[12.5px] truncate">{c.name || "—"}</div>
+                <div className="text-ink-muted text-[11px] truncate flex items-center gap-1">
+                  <span className="truncate">{c.company || "—"}</span>
+                  {isTarget && <span title="Target company candidate">🎯</span>}
+                </div>
+              </div>
+            </button>
+          );
+        })}
       </div>
       <div className="p-4 overflow-y-auto max-h-[520px]">
         {active ? (
           <div className="flex flex-col gap-3">
             <div className="flex items-start justify-between">
               <div>
-                <div className="font-bold text-ink text-[16px]">{active.name || "—"}</div>
+                <div className="font-bold text-ink text-[16px] flex items-center gap-2">
+                  <span>{active.name || "—"}</span>
+                  {activeIsTarget && (
+                    <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800">
+                      🎯 Target Company
+                    </span>
+                  )}
+                </div>
                 <div className="text-ink-2 text-[13px]">{active.designation || "—"}</div>
                 <div className="text-ink-muted text-[12.5px]">{[active.company, active.location].filter(Boolean).join(" • ")}</div>
               </div>
@@ -2050,7 +2546,28 @@ function SplitView({
               ) : (
                 <span className="text-ink-muted">View CV</span>
               )}
-              <span className="text-ink-muted">Contact</span>
+              {onWhatsApp && (
+                <button
+                  type="button"
+                  onClick={() => onWhatsApp(active)}
+                  className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline inline-flex items-center gap-1"
+                  title="Send personalized WhatsApp pitch"
+                >
+                  <Icon name="whatsapp" className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  WhatsApp
+                </button>
+              )}
+              {onFindLookalikes && (
+                <button
+                  type="button"
+                  onClick={() => onFindLookalikes(active)}
+                  className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline inline-flex items-center gap-1"
+                  title="Find similar candidate profiles"
+                >
+                  <Icon name="users" className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  Lookalikes
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onAddToProject(active)}
@@ -2061,7 +2578,13 @@ function SplitView({
               </button>
             </div>
             <div className="pt-2 border-t border-border">
-              <EvaluationPanel c={active} cols={1} onAddToProject={onAddToProject} />
+              <EvaluationPanel
+                c={active}
+                cols={1}
+                onAddToProject={onAddToProject}
+                onWhatsApp={onWhatsApp}
+                onFindLookalikes={onFindLookalikes}
+              />
             </div>
           </div>
         ) : (

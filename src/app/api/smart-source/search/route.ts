@@ -39,20 +39,32 @@ export async function POST(request: Request) {
   let queryText: string;
 
   try {
+    const parseCompanyList = (v: unknown): string[] | null => {
+      if (Array.isArray(v)) return v.map(String).map((s) => s.trim()).filter(Boolean);
+      if (typeof v === "string") return v.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
+      return null;
+    };
+
     if (mode === "manual") {
       const m = body?.manual || {};
       queryText = [m.role_title, m.location, (m.skills || []).join(", ")].filter(Boolean).join(" | ");
-      if (!m.role_title && !(m.skills || []).length) {
-        return NextResponse.json({ error: "Add a role title or at least one skill." }, { status: 400 });
+      if (!m.role_title && !(m.skills || []).length && !m.target_companies) {
+        return NextResponse.json({ error: "Add a role title, company, or at least one skill." }, { status: 400 });
       }
+      const targetCompanies = parseCompanyList(m.target_companies);
+      const excludeCompanies = parseCompanyList(m.exclude_companies);
+
       criteria = {
         role_title: cleanRoleTitle(m.role_title),
         company: m.company || null,
+        target_companies: targetCompanies && targetCompanies.length ? targetCompanies : null,
+        exclude_companies: excludeCompanies && excludeCompanies.length ? excludeCompanies : null,
         location: cleanLocation(m.location),
         skills: Array.isArray(m.skills) ? m.skills.filter(Boolean) : [],
         min_experience_years: typeof m.min_experience_years === "number" ? m.min_experience_years : null,
         domain: m.domain || null,
         keywords: m.keywords || null,
+        lookalike_source: body?.lookalike_source || null,
       };
     } else {
       queryText = typeof body?.text === "string" ? body.text.trim() : "";
@@ -63,6 +75,22 @@ export async function POST(request: Request) {
         );
       }
       criteria = await extractSearchCriteria(mode, queryText);
+
+      if (body?.target_companies) {
+        const explicitTargets = parseCompanyList(body.target_companies);
+        if (explicitTargets?.length) {
+          criteria.target_companies = Array.from(new Set([...(criteria.target_companies || []), ...explicitTargets]));
+        }
+      }
+      if (body?.exclude_companies) {
+        const explicitExcludes = parseCompanyList(body.exclude_companies);
+        if (explicitExcludes?.length) {
+          criteria.exclude_companies = Array.from(new Set([...(criteria.exclude_companies || []), ...explicitExcludes]));
+        }
+      }
+      if (body?.lookalike_source) {
+        criteria.lookalike_source = body.lookalike_source;
+      }
     }
   } catch (err) {
     return NextResponse.json(
@@ -75,6 +103,7 @@ export async function POST(request: Request) {
     !criteria.candidate_name &&
     !criteria.role_title &&
     !criteria.company &&
+    !(criteria.target_companies || []).length &&
     !(criteria.skills || []).length &&
     !criteria.keywords &&
     !criteria.domain
