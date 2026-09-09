@@ -6,7 +6,7 @@ import { useRegisterToolHome } from "@/components/ToolHomeContext";
 
 type Mode = "jd" | "describe" | "manual";
 type Step = "input" | "running" | "results";
-type ViewMode = "table" | "cards" | "compact" | "split";
+type ViewMode = "table" | "compact" | "split";
 
 type SearchRow = {
   id: string;
@@ -49,9 +49,8 @@ const STATUS_STEPS = [
 
 const VIEWS: { key: ViewMode; label: string; icon: string }[] = [
   { key: "table", label: "Table", icon: "grid" },
-  { key: "cards", label: "Cards", icon: "grid" },
   { key: "compact", label: "Compact", icon: "menu" },
-  { key: "split", label: "Split", icon: "chevronRight" },
+  { key: "split", label: "Split", icon: "columns" },
 ];
 
 const PAGE_SIZE = 20;
@@ -128,6 +127,7 @@ export default function SmartSourceAiForm({
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const [showAddToProject, setShowAddToProject] = useState(false);
+  const [candidateForProject, setCandidateForProject] = useState<Candidate[] | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [showEmail, setShowEmail] = useState(false);
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
@@ -158,7 +158,9 @@ export default function SmartSourceAiForm({
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? window.localStorage.getItem(VIEW_STORAGE_KEY) : null;
-    if (saved) setView(saved as ViewMode);
+    if (saved && (saved === "table" || saved === "compact" || saved === "split")) {
+      setView(saved as ViewMode);
+    }
   }, []);
 
   useEffect(() => {
@@ -305,10 +307,15 @@ export default function SmartSourceAiForm({
     setSourcesLoaded(true);
   }
 
-  function openAddToProject() {
+  function openAddToProject(target?: Candidate | Candidate[]) {
     setShowExport(false);
     setShowEmail(false);
-    setShowAddToProject((v) => !v);
+    if (target) {
+      setCandidateForProject(Array.isArray(target) ? target : [target]);
+    } else {
+      setCandidateForProject(null);
+    }
+    setShowAddToProject(true);
     if (!sourcesLoaded) loadProjectSources();
   }
 
@@ -416,7 +423,7 @@ export default function SmartSourceAiForm({
   }
 
   async function submitAddToProject() {
-    const picked = selectedOrAllCandidates();
+    const picked = candidateForProject && candidateForProject.length > 0 ? candidateForProject : selectedOrAllCandidates();
     if (!picked.length) {
       setError("Select at least one candidate first.");
       return;
@@ -472,6 +479,7 @@ export default function SmartSourceAiForm({
           : `Added ${picked.length} candidate${picked.length === 1 ? "" : "s"} to ${destination} "${targetName}".`
       );
       setShowAddToProject(false);
+      setCandidateForProject(null);
       setPickedRequisition("");
       setPickedList("");
       setNewListName("");
@@ -897,17 +905,18 @@ export default function SmartSourceAiForm({
           ) : (
             <>
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="inline-flex bg-page rounded-sm p-1">
+                <div className="inline-flex bg-page rounded-sm p-1 gap-0.5">
                   {VIEWS.map((v) => (
                     <button
                       key={v.key}
                       onClick={() => setView(v.key)}
-                      className={`text-[12px] font-bold px-3 py-1.5 rounded-sm transition-colors inline-flex items-center gap-1.5 ${
-                        view === v.key ? "bg-surface text-ink shadow-soft-sm" : "text-ink-muted"
+                      title={v.label}
+                      aria-label={v.label}
+                      className={`p-1.5 rounded-xs transition-colors inline-flex items-center justify-center ${
+                        view === v.key ? "bg-surface text-ink shadow-soft-sm" : "text-ink-muted hover:text-ink"
                       }`}
                     >
                       <Icon name={v.icon} className="w-3.5 h-3.5" />
-                      {v.label}
                     </button>
                   ))}
                 </div>
@@ -919,15 +928,7 @@ export default function SmartSourceAiForm({
                   </label>
 
                   <button
-                    onClick={openAddToProject}
-                    className="border border-border text-[12px] font-bold px-3 py-1.5 rounded-sm bg-surface inline-flex items-center gap-1.5"
-                  >
-                    <Icon name="briefcase" className="w-3.5 h-3.5" />
-                    Add to Project
-                  </button>
-                  <button
                     onClick={() => {
-                      setShowAddToProject(false);
                       setShowEmail(false);
                       setShowExport((v) => !v);
                     }}
@@ -938,7 +939,6 @@ export default function SmartSourceAiForm({
                   </button>
                   <button
                     onClick={() => {
-                      setShowAddToProject(false);
                       setShowExport(false);
                       setShowEmail((v) => !v);
                     }}
@@ -975,55 +975,6 @@ export default function SmartSourceAiForm({
                       </button>
                     </div>
                   )}
-
-                  {showAddToProject && (
-                    <div className="absolute right-0 top-[calc(100%+6px)] z-20 bg-surface border border-border rounded-md shadow-soft p-3 flex flex-col gap-2.5 w-[300px]">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Add to Project</span>
-                      <label className="block">
-                        <span className="block text-[11.5px] font-bold mb-1">Link to a requisition (optional)</span>
-                        <select className="input" value={pickedRequisition} onChange={(e) => setPickedRequisition(e.target.value)}>
-                          <option value="">None</option>
-                          {requisitions.map((r) => (
-                            <option key={r.id} value={r.id}>{r.title}</option>
-                          ))}
-                        </select>
-                        {!requisitions.length && (
-                          <span className="block text-[10.5px] text-ink-muted mt-1">
-                            No requisitions available — you can still save these to a project below.
-                          </span>
-                        )}
-                      </label>
-                      <label className="block">
-                        <span className="block text-[11.5px] font-bold mb-1">Existing project</span>
-                        <select
-                          className="input"
-                          value={pickedList}
-                          onChange={(e) => {
-                            setPickedList(e.target.value);
-                            if (e.target.value) setNewListName("");
-                          }}
-                        >
-                          <option value="">None</option>
-                          {lists.map((l) => (
-                            <option key={l.id} value={l.id}>{l.name}</option>
-                          ))}
-                        </select>
-                      </label>
-                      {!pickedList && (
-                        <label className="block">
-                          <span className="block text-[11.5px] font-bold mb-1">Or new project name (optional)</span>
-                          <input className="input" value={newListName} onChange={(e) => setNewListName(e.target.value)} placeholder="e.g. Q3 Sales pipeline" />
-                        </label>
-                      )}
-                      <button
-                        onClick={submitAddToProject}
-                        disabled={busyAction}
-                        className="bg-brand text-white text-[12.5px] font-bold px-3 py-1.5 rounded-sm disabled:opacity-50"
-                      >
-                        {busyAction ? "Adding…" : `Add ${selectedOrAllCandidates().length} candidate(s)`}
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -1034,16 +985,29 @@ export default function SmartSourceAiForm({
                   onToggle={toggleSelected}
                   expanded={expanded}
                   setExpanded={setExpanded}
+                  onAddToProject={openAddToProject}
                 />
               )}
-              {view === "cards" && (
-                <CardsView rows={pageRows} selected={selected} onToggle={toggleSelected} expanded={expanded} setExpanded={setExpanded} />
-              )}
               {view === "compact" && (
-                <CompactView rows={pageRows} selected={selected} onToggle={toggleSelected} expanded={expanded} setExpanded={setExpanded} />
+                <CompactView
+                  rows={pageRows}
+                  selected={selected}
+                  onToggle={toggleSelected}
+                  expanded={expanded}
+                  setExpanded={setExpanded}
+                  onAddToProject={openAddToProject}
+                />
               )}
               {view === "split" && (
-                <SplitView rows={pageRows} selected={selected} onToggle={toggleSelected} activeId={activeCandidate?.id || null} setActiveId={setActiveId} active={activeCandidate} />
+                <SplitView
+                  rows={pageRows}
+                  selected={selected}
+                  onToggle={toggleSelected}
+                  activeId={activeCandidate?.id || null}
+                  setActiveId={setActiveId}
+                  active={activeCandidate}
+                  onAddToProject={openAddToProject}
+                />
               )}
 
               {pageCount > 1 && (
@@ -1069,6 +1033,114 @@ export default function SmartSourceAiForm({
               )}
             </>
           )}
+        </div>
+      )}
+
+      {showAddToProject && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
+          onClick={() => {
+            if (!busyAction) {
+              setShowAddToProject(false);
+              setCandidateForProject(null);
+            }
+          }}
+        >
+          <div
+            className="bg-surface border border-border rounded-lg shadow-soft-lg p-5 w-full max-w-md flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-ink text-[15px]">Add to Project</h3>
+                <p className="text-[12px] text-ink-muted mt-0.5">
+                  {(candidateForProject || selectedOrAllCandidates()).length === 1
+                    ? (candidateForProject || selectedOrAllCandidates())[0]?.name || "1 candidate"
+                    : `${(candidateForProject || selectedOrAllCandidates()).length} candidates selected`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddToProject(false);
+                  setCandidateForProject(null);
+                }}
+                disabled={busyAction}
+                className="text-ink-muted hover:text-ink text-[18px] leading-none"
+              >
+                &times;
+              </button>
+            </div>
+
+            <label className="block">
+              <span className="block text-[11.5px] font-bold mb-1">Link to a requisition (optional)</span>
+              <select className="input" value={pickedRequisition} onChange={(e) => setPickedRequisition(e.target.value)}>
+                <option value="">None</option>
+                {requisitions.map((r) => (
+                  <option key={r.id} value={r.id}>{r.title}</option>
+                ))}
+              </select>
+              {!requisitions.length && (
+                <span className="block text-[10.5px] text-ink-muted mt-1">
+                  No requisitions available — you can still save these to a project below.
+                </span>
+              )}
+            </label>
+
+            <label className="block">
+              <span className="block text-[11.5px] font-bold mb-1">Existing project</span>
+              <select
+                className="input"
+                value={pickedList}
+                onChange={(e) => {
+                  setPickedList(e.target.value);
+                  if (e.target.value) setNewListName("");
+                }}
+              >
+                <option value="">None</option>
+                {lists.map((l) => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
+            </label>
+
+            {!pickedList && (
+              <label className="block">
+                <span className="block text-[11.5px] font-bold mb-1">Or new project name (optional)</span>
+                <input
+                  className="input"
+                  value={newListName}
+                  onChange={(e) => setNewListName(e.target.value)}
+                  placeholder="e.g. Q3 Sales pipeline"
+                />
+              </label>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddToProject(false);
+                  setCandidateForProject(null);
+                }}
+                disabled={busyAction}
+                className="text-[12.5px] font-bold text-ink-2 px-3 py-1.5 rounded-sm hover:bg-page transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitAddToProject}
+                disabled={busyAction}
+                className="bg-brand text-white text-[12.5px] font-bold px-4 py-1.5 rounded-sm shadow-soft-sm hover:opacity-90 transition-opacity disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                <Icon name="briefcase" className="w-3.5 h-3.5" />
+                {busyAction
+                  ? "Adding…"
+                  : `Add ${(candidateForProject || selectedOrAllCandidates()).length} candidate(s)`}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1163,7 +1235,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function LinksRow({ c, expanded, setExpanded }: { c: Candidate; expanded: string | null; setExpanded: (id: string | null) => void }) {
+function LinksRow({
+  c,
+  expanded,
+  setExpanded,
+  onAddToProject,
+}: {
+  c: Candidate;
+  expanded: string | null;
+  setExpanded: (id: string | null) => void;
+  onAddToProject?: (c: Candidate) => void;
+}) {
   return (
     <div className="flex items-center gap-2.5 flex-wrap">
       <a href={c.profile_url} target="_blank" rel="noreferrer" className="text-brand-dark font-bold hover:underline">
@@ -1186,47 +1268,79 @@ function LinksRow({ c, expanded, setExpanded }: { c: Candidate; expanded: string
         Evaluation
         <Icon name={expanded === c.id ? "chevronUp" : "chevronDown"} className="w-3 h-3" />
       </button>
+      {onAddToProject && (
+        <button
+          type="button"
+          onClick={() => onAddToProject(c)}
+          className="text-brand-dark font-bold hover:underline inline-flex items-center gap-1"
+        >
+          <Icon name="briefcase" className="w-3 h-3" />
+          Add to project
+        </button>
+      )}
     </div>
   );
 }
 
-function EvaluationPanel({ c, cols }: { c: Candidate; cols?: number }) {
+function EvaluationPanel({
+  c,
+  cols,
+  onAddToProject,
+}: {
+  c: Candidate;
+  cols?: number;
+  onAddToProject?: (c: Candidate) => void;
+}) {
   return (
-    <div className={`grid grid-cols-${cols || 3} gap-4`}>
-      <div>
-        <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1">Summary</div>
-        <p className="text-ink-2 leading-relaxed">{c.evaluation_summary || "No evaluation available."}</p>
-        {c.already_in_pipeline && (
-          <span className="inline-flex items-center gap-1 mt-2 bg-brand-wash text-brand-dark rounded-full px-2 py-0.5 text-[11px] font-bold">
-            <Icon name="check" className="w-3 h-3" />
-            Already in a pipeline
-          </span>
-        )}
+    <div className="flex flex-col gap-3">
+      <div className={`grid grid-cols-${cols || 3} gap-4`}>
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1">Summary</div>
+          <p className="text-ink-2 leading-relaxed">{c.evaluation_summary || "No evaluation available."}</p>
+          {c.already_in_pipeline && (
+            <span className="inline-flex items-center gap-1 mt-2 bg-brand-wash text-brand-dark rounded-full px-2 py-0.5 text-[11px] font-bold">
+              <Icon name="check" className="w-3 h-3" />
+              Already in a pipeline
+            </span>
+          )}
+        </div>
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1">Strengths</div>
+          {(c.evaluation_strengths || []).length ? (
+            <ul className="list-disc list-inside text-ink-2 space-y-0.5">
+              {(c.evaluation_strengths || []).map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-ink-muted">None noted.</p>
+          )}
+        </div>
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1">Unconfirmed</div>
+          {(c.evaluation_gaps || []).length ? (
+            <ul className="list-disc list-inside text-ink-2 space-y-0.5">
+              {(c.evaluation_gaps || []).map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-ink-muted">None noted.</p>
+          )}
+        </div>
       </div>
-      <div>
-        <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1">Strengths</div>
-        {(c.evaluation_strengths || []).length ? (
-          <ul className="list-disc list-inside text-ink-2 space-y-0.5">
-            {(c.evaluation_strengths || []).map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-ink-muted">None noted.</p>
-        )}
-      </div>
-      <div>
-        <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1">Unconfirmed</div>
-        {(c.evaluation_gaps || []).length ? (
-          <ul className="list-disc list-inside text-ink-2 space-y-0.5">
-            {(c.evaluation_gaps || []).map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-ink-muted">None noted.</p>
-        )}
-      </div>
+      {onAddToProject && (
+        <div className="flex items-center justify-end pt-2.5 border-t border-border/80">
+          <button
+            type="button"
+            onClick={() => onAddToProject(c)}
+            className="border border-border bg-surface text-ink text-[12px] font-bold px-3 py-1.5 rounded-sm shadow-soft-sm hover:border-brand hover:text-brand inline-flex items-center gap-1.5 transition-colors"
+          >
+            <Icon name="briefcase" className="w-3.5 h-3.5 text-brand" />
+            Add to project
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1237,12 +1351,14 @@ function TableView({
   onToggle,
   expanded,
   setExpanded,
+  onAddToProject,
 }: {
   rows: Candidate[];
   selected: Set<string>;
   onToggle: (id: string) => void;
   expanded: string | null;
   setExpanded: (id: string | null) => void;
+  onAddToProject: (c: Candidate) => void;
 }) {
   return (
     <div className="border border-border rounded-md bg-surface overflow-x-auto">
@@ -1283,13 +1399,13 @@ function TableView({
                 </td>
                 <td className="px-3 py-2.5 text-ink-2">{c.qualification || "—"}</td>
                 <td className="px-3 py-2.5">
-                  <LinksRow c={c} expanded={expanded} setExpanded={setExpanded} />
+                  <LinksRow c={c} expanded={expanded} setExpanded={setExpanded} onAddToProject={onAddToProject} />
                 </td>
               </tr>
               {expanded === c.id && (
                 <tr className="border-b border-border bg-page/40">
                   <td colSpan={10} className="px-4 py-3.5">
-                    <EvaluationPanel c={c} />
+                    <EvaluationPanel c={c} onAddToProject={onAddToProject} />
                   </td>
                 </tr>
               )}
@@ -1301,68 +1417,20 @@ function TableView({
   );
 }
 
-function CardsView({
-  rows,
-  selected,
-  onToggle,
-  expanded,
-  setExpanded,
-}: {
-  rows: Candidate[];
-  selected: Set<string>;
-  onToggle: (id: string) => void;
-  expanded: string | null;
-  setExpanded: (id: string | null) => void;
-}) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      {rows.map((c) => (
-        <div key={c.id} className="border border-border rounded-md bg-surface p-3.5 shadow-soft-sm flex flex-col gap-2">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-start gap-2">
-              <input type="checkbox" checked={selected.has(c.id)} onChange={() => onToggle(c.id)} className="mt-1" />
-              <div>
-                <div className="font-bold text-ink text-[13.5px]">{c.name || "—"}</div>
-                <div className="text-ink-muted text-[12px]">{c.designation || "—"}</div>
-              </div>
-            </div>
-            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${scoreClass(c.match_score)}`}>{c.match_score ?? "—"}</span>
-          </div>
-          <div className="text-[12.5px] text-ink-2">{[c.company, c.location].filter(Boolean).join(" • ") || "—"}</div>
-          <div className="text-[12px] text-ink-muted">{c.experience_years != null ? `${c.experience_years} yrs experience` : "Experience unknown"}</div>
-          {(c.skills || []).length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {(c.skills || []).slice(0, 4).map((s) => (
-                <span key={s} className="bg-page text-ink-2 rounded-full px-2 py-0.5 text-[11px]">{s}</span>
-              ))}
-            </div>
-          )}
-          <div className="pt-1 border-t border-border">
-            <LinksRow c={c} expanded={expanded} setExpanded={setExpanded} />
-          </div>
-          {expanded === c.id && (
-            <div className="pt-2 border-t border-border">
-              <EvaluationPanel c={c} cols={1} />
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function CompactView({
   rows,
   selected,
   onToggle,
   expanded,
   setExpanded,
+  onAddToProject,
 }: {
   rows: Candidate[];
   selected: Set<string>;
   onToggle: (id: string) => void;
   expanded: string | null;
   setExpanded: (id: string | null) => void;
+  onAddToProject: (c: Candidate) => void;
 }) {
   return (
     <div className="border border-border rounded-md bg-surface divide-y divide-border">
@@ -1377,12 +1445,12 @@ function CompactView({
             <span className="text-ink-muted w-[80px] shrink-0">{c.experience_years != null ? `${c.experience_years} yrs` : "—"}</span>
             <span className="text-ink-2 flex-1 truncate">{(c.skills || []).slice(0, 3).join(", ") || "—"}</span>
             <div className="shrink-0">
-              <LinksRow c={c} expanded={expanded} setExpanded={setExpanded} />
+              <LinksRow c={c} expanded={expanded} setExpanded={setExpanded} onAddToProject={onAddToProject} />
             </div>
           </div>
           {expanded === c.id && (
             <div className="px-4 py-3.5 bg-page/40">
-              <EvaluationPanel c={c} />
+              <EvaluationPanel c={c} onAddToProject={onAddToProject} />
             </div>
           )}
         </div>
@@ -1398,6 +1466,7 @@ function SplitView({
   activeId,
   setActiveId,
   active,
+  onAddToProject,
 }: {
   rows: Candidate[];
   selected: Set<string>;
@@ -1405,6 +1474,7 @@ function SplitView({
   activeId: string | null;
   setActiveId: (id: string) => void;
   active: Candidate | null;
+  onAddToProject: (c: Candidate) => void;
 }) {
   return (
     <div className="grid grid-cols-[280px_1fr] gap-3 border border-border rounded-md bg-surface overflow-hidden" style={{ minHeight: 360 }}>
@@ -1458,9 +1528,17 @@ function SplitView({
                 <span className="text-ink-muted">View CV</span>
               )}
               <span className="text-ink-muted">Contact</span>
+              <button
+                type="button"
+                onClick={() => onAddToProject(active)}
+                className="text-brand-dark font-bold hover:underline inline-flex items-center gap-1"
+              >
+                <Icon name="briefcase" className="w-3 h-3" />
+                Add to project
+              </button>
             </div>
             <div className="pt-2 border-t border-border">
-              <EvaluationPanel c={active} cols={1} />
+              <EvaluationPanel c={active} cols={1} onAddToProject={onAddToProject} />
             </div>
           </div>
         ) : (
