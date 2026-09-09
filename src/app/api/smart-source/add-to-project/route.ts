@@ -52,15 +52,17 @@ export async function POST(request: Request) {
     );
   }
 
+  let reqOrgId: string | null = null;
   if (requisitionId) {
     const { data: requisition } = await supabase
       .from("talent_requisitions")
-      .select("id")
+      .select("id, org_id")
       .eq("id", requisitionId)
       .maybeSingle();
     if (!requisition) {
       return NextResponse.json({ error: "That requisition couldn't be found." }, { status: 404 });
     }
+    reqOrgId = requisition.org_id || null;
   }
 
   let targetProjectId = listId;
@@ -93,7 +95,7 @@ export async function POST(request: Request) {
           const { data: person, error: personError } = await supabase
             .from("talent_people")
             .insert({
-              org_id: orgId || null,
+              org_id: orgId || reqOrgId || null,
               name: c.name || "Unnamed candidate",
               current_company: c.company,
               current_location: c.location,
@@ -132,7 +134,7 @@ export async function POST(request: Request) {
           .from("smart_source_project_members")
           .upsert(
             { project_id: targetProjectId, candidate_id: c.id, added_by: user.id },
-            { onConflict: "project_id,candidate_id" }
+            { onConflict: "project_id,candidate_id", ignoreDuplicates: true }
           );
         if (memberError) throw new Error(memberError.message);
       }

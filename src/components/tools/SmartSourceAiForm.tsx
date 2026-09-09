@@ -148,7 +148,6 @@ export default function SmartSourceAiForm({
   const [activeProjectCandidates, setActiveProjectCandidates] = useState<Candidate[]>([]);
   const [projectDetailLoading, setProjectDetailLoading] = useState(false);
   const [projectExpanded, setProjectExpanded] = useState<string | null>(null);
-  const [lastSavedProject, setLastSavedProject] = useState<{ id: string; name: string } | null>(null);
   const [renamingProject, setRenamingProject] = useState<{ id: string; name: string } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renamingBusy, setRenamingBusy] = useState(false);
@@ -270,7 +269,6 @@ export default function SmartSourceAiForm({
     setSelected(new Set());
     setJdFile(null);
     setJdExtractError(null);
-    setLastSavedProject(null);
   }
 
   function toggleSelected(id: string) {
@@ -408,9 +406,6 @@ export default function SmartSourceAiForm({
       if (activeProjectId === id) {
         setActiveProjectName(newName);
       }
-      if (lastSavedProject?.id === id) {
-        setLastSavedProject({ id, name: newName });
-      }
       setNotice(`Project renamed to "${newName}".`);
       setRenamingProject(null);
     } catch (err) {
@@ -469,13 +464,11 @@ export default function SmartSourceAiForm({
         lists.find((l) => l.id === pickedList)?.name ||
         "Project";
 
-      if (data.projectId) {
-        setLastSavedProject({ id: data.projectId, name: targetName });
-      }
+      const firstError = (data.results || []).find((r: { ok: boolean; error?: string }) => !r.ok)?.error;
 
       setNotice(
         failed
-          ? `Added ${picked.length - failed} of ${picked.length} candidates (${failed} failed).`
+          ? `Added ${picked.length - failed} of ${picked.length} candidates (${failed} failed${firstError ? `: ${firstError}` : ""}).`
           : `Added ${picked.length} candidate${picked.length === 1 ? "" : "s"} to ${destination} "${targetName}".`
       );
       setShowAddToProject(false);
@@ -599,29 +592,8 @@ export default function SmartSourceAiForm({
         <div className="bg-critical-wash text-critical text-[12.5px] rounded-sm px-3 py-2 mb-4">{error}</div>
       )}
       {notice && (
-        <div className="bg-good-wash text-good-text text-[12.5px] rounded-sm px-3.5 py-2.5 mb-4 flex items-center justify-between flex-wrap gap-2">
-          <span>{notice}</span>
-          {lastSavedProject && (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => openRenameModal(lastSavedProject.id, lastSavedProject.name)}
-                className="bg-surface text-ink border border-border text-[11.5px] font-bold px-2.5 py-1 rounded-sm shadow-soft-sm hover:bg-page transition-colors"
-              >
-                Rename project
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  openProjectsPanel();
-                  openProjectDetail(lastSavedProject.id, lastSavedProject.name);
-                }}
-                className="bg-brand text-white text-[11.5px] font-bold px-2.5 py-1 rounded-sm shadow-soft-sm hover:opacity-90 transition-opacity"
-              >
-                View project
-              </button>
-            </div>
-          )}
+        <div className="bg-good-wash text-good-text text-[12.5px] rounded-sm px-3.5 py-2.5 mb-4">
+          {notice}
         </div>
       )}
       {showProjectsPanel && projectsError && (
