@@ -64,6 +64,7 @@ export async function POST(request: Request) {
   }
 
   let targetProjectId = listId;
+  let targetProjectName: string | null = null;
   if (!targetProjectId && newListName) {
     const { data: project, error: projectError } = await supabase
       .from("smart_source_projects")
@@ -72,6 +73,14 @@ export async function POST(request: Request) {
       .single();
     if (projectError) return NextResponse.json({ error: projectError.message }, { status: 500 });
     targetProjectId = project.id;
+    targetProjectName = project.name;
+  } else if (targetProjectId) {
+    const { data: existingProject } = await supabase
+      .from("smart_source_projects")
+      .select("name")
+      .eq("id", targetProjectId)
+      .maybeSingle();
+    if (existingProject) targetProjectName = existingProject.name;
   }
 
   const results: { profile_url: string; ok: boolean; error?: string }[] = [];
@@ -135,5 +144,8 @@ export async function POST(request: Request) {
   }
 
   const anyFailed = results.some((r) => !r.ok);
-  return NextResponse.json({ results, projectId: targetProjectId }, { status: anyFailed ? 207 : 200 });
+  return NextResponse.json(
+    { results, projectId: targetProjectId, projectName: targetProjectName },
+    { status: anyFailed ? 207 : 200 }
+  );
 }

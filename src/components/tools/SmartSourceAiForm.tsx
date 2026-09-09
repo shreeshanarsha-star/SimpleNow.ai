@@ -148,6 +148,10 @@ export default function SmartSourceAiForm({
   const [activeProjectCandidates, setActiveProjectCandidates] = useState<Candidate[]>([]);
   const [projectDetailLoading, setProjectDetailLoading] = useState(false);
   const [projectExpanded, setProjectExpanded] = useState<string | null>(null);
+  const [lastSavedProject, setLastSavedProject] = useState<{ id: string; name: string } | null>(null);
+  const [renamingProject, setRenamingProject] = useState<{ id: string; name: string } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renamingBusy, setRenamingBusy] = useState(false);
 
   // Topbar's clickable "Smart Source.ai" title (ToolHomeContext) closes the
   // My Projects panel, returning to the search view underneath it.
@@ -266,6 +270,7 @@ export default function SmartSourceAiForm({
     setSelected(new Set());
     setJdFile(null);
     setJdExtractError(null);
+    setLastSavedProject(null);
   }
 
   function toggleSelected(id: string) {
@@ -379,6 +384,42 @@ export default function SmartSourceAiForm({
     }
   }
 
+  function openRenameModal(id: string, currentName: string) {
+    setRenamingProject({ id, name: currentName });
+    setRenameValue(currentName);
+  }
+
+  async function submitRenameProject() {
+    if (!renamingProject || !renameValue.trim()) return;
+    const newName = renameValue.trim();
+    const id = renamingProject.id;
+    setRenamingBusy(true);
+    try {
+      const res = await fetch(`/api/smart-source/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not rename the project.");
+
+      setProjectsList((prev) => prev.map((p) => (p.id === id ? { ...p, name: newName } : p)));
+      setLists((prev) => prev.map((l) => (l.id === id ? { ...l, name: newName } : l)));
+      if (activeProjectId === id) {
+        setActiveProjectName(newName);
+      }
+      if (lastSavedProject?.id === id) {
+        setLastSavedProject({ id, name: newName });
+      }
+      setNotice(`Project renamed to "${newName}".`);
+      setRenamingProject(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not rename the project.");
+    } finally {
+      setRenamingBusy(false);
+    }
+  }
+
   async function submitAddToProject() {
     const picked = selectedOrAllCandidates();
     if (!picked.length) {
@@ -421,10 +462,21 @@ export default function SmartSourceAiForm({
         : pickedRequisition
         ? "the requisition"
         : "the project";
+
+      const targetName =
+        data.projectName ||
+        newListName.trim() ||
+        lists.find((l) => l.id === pickedList)?.name ||
+        "Project";
+
+      if (data.projectId) {
+        setLastSavedProject({ id: data.projectId, name: targetName });
+      }
+
       setNotice(
         failed
           ? `Added ${picked.length - failed} of ${picked.length} candidates (${failed} failed).`
-          : `Added ${picked.length} candidate${picked.length === 1 ? "" : "s"} to ${destination}.`
+          : `Added ${picked.length} candidate${picked.length === 1 ? "" : "s"} to ${destination} "${targetName}".`
       );
       setShowAddToProject(false);
       setPickedRequisition("");
@@ -547,7 +599,30 @@ export default function SmartSourceAiForm({
         <div className="bg-critical-wash text-critical text-[12.5px] rounded-sm px-3 py-2 mb-4">{error}</div>
       )}
       {notice && (
-        <div className="bg-good-wash text-good-text text-[12.5px] rounded-sm px-3 py-2 mb-4">{notice}</div>
+        <div className="bg-good-wash text-good-text text-[12.5px] rounded-sm px-3.5 py-2.5 mb-4 flex items-center justify-between flex-wrap gap-2">
+          <span>{notice}</span>
+          {lastSavedProject && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => openRenameModal(lastSavedProject.id, lastSavedProject.name)}
+                className="bg-surface text-ink border border-border text-[11.5px] font-bold px-2.5 py-1 rounded-sm shadow-soft-sm hover:bg-page transition-colors"
+              >
+                Rename project
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  openProjectsPanel();
+                  openProjectDetail(lastSavedProject.id, lastSavedProject.name);
+                }}
+                className="bg-brand text-white text-[11.5px] font-bold px-2.5 py-1 rounded-sm shadow-soft-sm hover:opacity-90 transition-opacity"
+              >
+                View project
+              </button>
+            </div>
+          )}
+        </div>
       )}
       {showProjectsPanel && projectsError && (
         <div className="bg-critical-wash text-critical text-[12.5px] rounded-sm px-3 py-2 mb-4">{projectsError}</div>
@@ -565,19 +640,35 @@ export default function SmartSourceAiForm({
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {projectsList.map((p) => (
-                  <button
+                  <div
                     key={p.id}
-                    onClick={() => openProjectDetail(p.id, p.name)}
-                    className="text-left border border-border rounded-md bg-surface p-3.5 shadow-soft-sm hover:border-brand transition-colors"
+                    className="border border-border rounded-md bg-surface p-3.5 shadow-soft-sm hover:border-brand transition-colors flex flex-col justify-between"
                   >
-                    <div className="font-bold text-ink text-[13.5px] mb-1">{p.name}</div>
-                    <div className="text-[12px] text-ink-muted">
-                      {p.candidateCount} candidate{p.candidateCount === 1 ? "" : "s"}
+                    <button
+                      onClick={() => openProjectDetail(p.id, p.name)}
+                      className="text-left w-full cursor-pointer"
+                    >
+                      <div className="font-bold text-ink text-[13.5px] mb-1">{p.name}</div>
+                      <div className="text-[12px] text-ink-muted">
+                        {p.candidateCount} candidate{p.candidateCount === 1 ? "" : "s"}
+                      </div>
+                      <div className="text-[11px] text-ink-muted mt-1">
+                        Saved {new Date(p.created_at).toLocaleDateString()}
+                      </div>
+                    </button>
+                    <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-border">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRenameModal(p.id, p.name);
+                        }}
+                        className="text-[11.5px] font-bold text-brand hover:underline"
+                      >
+                        Rename
+                      </button>
                     </div>
-                    <div className="text-[11px] text-ink-muted mt-1">
-                      Saved {new Date(p.created_at).toLocaleDateString()}
-                    </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             )
@@ -592,6 +683,12 @@ export default function SmartSourceAiForm({
                 </button>
                 <div className="flex items-center gap-3">
                   <div className="text-[13px] font-bold">{activeProjectName}</div>
+                  <button
+                    onClick={() => openRenameModal(activeProjectId, activeProjectName)}
+                    className="text-[11.5px] font-bold text-brand hover:underline"
+                  >
+                    Rename
+                  </button>
                   <button
                     onClick={deleteActiveProject}
                     className="text-[11.5px] font-bold text-critical hover:underline"
@@ -1000,6 +1097,70 @@ export default function SmartSourceAiForm({
               )}
             </>
           )}
+        </div>
+      )}
+
+      {renamingProject && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
+          onClick={() => {
+            if (!renamingBusy) setRenamingProject(null);
+          }}
+        >
+          <div
+            className="bg-surface border border-border rounded-lg shadow-soft-lg p-5 w-full max-w-md flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-ink text-[15px]">Rename Project</h3>
+              <button
+                type="button"
+                onClick={() => setRenamingProject(null)}
+                disabled={renamingBusy}
+                className="text-ink-muted hover:text-ink text-[18px] leading-none"
+              >
+                &times;
+              </button>
+            </div>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[12px] font-bold text-ink-2">Project Name</span>
+              <input
+                type="text"
+                autoFocus
+                className="input"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && renameValue.trim() && !renamingBusy) {
+                    e.preventDefault();
+                    submitRenameProject();
+                  } else if (e.key === "Escape" && !renamingBusy) {
+                    setRenamingProject(null);
+                  }
+                }}
+                disabled={renamingBusy}
+                placeholder="e.g. Senior Frontend Engineers"
+              />
+            </label>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setRenamingProject(null)}
+                disabled={renamingBusy}
+                className="text-[12.5px] font-bold text-ink-2 px-3 py-1.5 rounded-sm hover:bg-page transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitRenameProject}
+                disabled={renamingBusy || !renameValue.trim()}
+                className="bg-brand text-white text-[12.5px] font-bold px-4 py-1.5 rounded-sm shadow-soft-sm hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {renamingBusy ? "Saving…" : "Save Name"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

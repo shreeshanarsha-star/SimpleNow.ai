@@ -63,3 +63,32 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
   return NextResponse.json({ ok: true });
 }
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  let supabase;
+  try {
+    ({ supabase } = await requireFeatureAccess(FEATURE_KEY));
+  } catch (res) {
+    return res as Response;
+  }
+  const { id } = await params;
+  const body = await request.json().catch(() => null);
+  const name = typeof body?.name === "string" ? body.name.trim() : "";
+
+  if (!name) {
+    return NextResponse.json({ error: "Please enter a project name." }, { status: 400 });
+  }
+
+  const { data: project, error } = await supabase
+    .from("smart_source_projects")
+    .update({ name })
+    .eq("id", id)
+    .select("id, name, created_at")
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ project });
+}
