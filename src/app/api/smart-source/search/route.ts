@@ -71,9 +71,16 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!criteria.role_title && !criteria.company && !(criteria.skills || []).length) {
+  if (
+    !criteria.candidate_name &&
+    !criteria.role_title &&
+    !criteria.company &&
+    !(criteria.skills || []).length &&
+    !criteria.keywords &&
+    !criteria.domain
+  ) {
     return NextResponse.json(
-      { error: "Couldn't identify a role, company, or skills from that -- try adding more detail." },
+      { error: "Couldn't identify a person, role, company, or skills from that -- try adding more detail." },
       { status: 400 }
     );
   }
@@ -109,7 +116,9 @@ export async function POST(request: Request) {
       created_by: user.id,
       input_mode: mode,
       query_text: queryText,
-      extracted_role: criteria.role_title,
+      extracted_role: criteria.role_title
+        ? criteria.role_title
+        : (criteria.candidate_name || null),
       extracted_skills: criteria.skills,
       extracted_location: criteria.location,
       extracted_min_experience: criteria.min_experience_years,

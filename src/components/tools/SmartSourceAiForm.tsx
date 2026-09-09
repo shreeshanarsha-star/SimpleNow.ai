@@ -813,7 +813,7 @@ export default function SmartSourceAiForm({
             <Field label="Describe who you're looking for">
               <textarea
                 className="input min-h-[140px]"
-                placeholder='e.g. "Search me a sales candidate who has experience selling feed additives and acidifiers in Mexico with 6+ years of experience"'
+                placeholder='e.g. "Senior sales manager in Mexico with experience in feed additives", or search for a specific person like "Riddhi Ramesh from Google"'
                 value={describeText}
                 onChange={(e) => setDescribeText(e.target.value)}
               />

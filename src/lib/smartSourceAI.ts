@@ -10,6 +10,7 @@ function parseJsonResponse(text: string) {
 export type InputMode = "jd" | "describe" | "manual";
 
 export type SearchCriteria = {
+  candidate_name?: string | null;
   role_title: string | null;
   company: string | null;
   location: string | null;
@@ -41,20 +42,22 @@ CRITICAL RULES:
 - "location": Clean city, state, or country name only.
 - Never invent a company, location, or experience figure that isn't stated -- use null.`;
 
-const DESCRIBE_EXTRACT_PROMPT = `A recruiter described, in their own words, the kind of candidate they're
-looking for (not a formal job description). Read it, understand their intent, correct any obvious typos or informal spelling, and extract, as JSON only (no markdown fences, no prose):
+const DESCRIBE_EXTRACT_PROMPT = `A recruiter described who or what they're looking for on LinkedIn.
+Read it, understand their intent, correct any obvious typos or informal spelling, and extract, as JSON only (no markdown fences, no prose):
 {
-  "role_title": string or null,
-  "company": string or null (only if a specific target hiring company was named),
-  "location": string or null,
-  "skills": array of 2-5 short strings (most important technical/functional skills or product specializations),
+  "candidate_name": string or null (if the query searches for or mentions a specific person's name, e.g. "search for riddhi ramesh from linkedin" -> "Riddhi Ramesh", "find John Doe" -> "John Doe", "riddhi ramesh" -> "Riddhi Ramesh", otherwise null),
+  "role_title": string or null (clean standard professional job title e.g. "Sales Representative", "Software Engineer"),
+  "company": string or null (target hiring or current company if named),
+  "location": string or null (clean city/country/region),
+  "skills": array of 2-5 short strings (skills or product specialties),
   "min_experience_years": number or null,
   "domain": string or null (industry/vertical, e.g. "feed additives"),
   "keywords": string or null
 }
 CRITICAL EXTRACTION RULES:
-- "role_title": Use a clean, standard professional job title (e.g. "Sales Representative", "Account Executive", "Software Engineer").
-  NEVER include recruiter conversational filler words like "candidate", "candidates", "candidateds", "guy", "guys", "person", "people", "someone", "profile", "need", "looking for" (e.g. "sales candidateds" -> "Sales", "sales guy or business development guy" -> "Sales", "dev guy" -> "Developer").
+- "candidate_name": If the user query is or contains a specific person's name (e.g. "search for riddhi ramesh from linkedin" -> "Riddhi Ramesh", "find John Doe" -> "John Doe", "riddhi ramesh" -> "Riddhi Ramesh"), extract that name!
+- "role_title": Use a clean, standard professional job title. NEVER include conversational filler words like "candidate", "candidates", "candidateds", "guy", "guys", "person", "people", "someone", "profile", "need", "looking for", "search for".
+- Strip platform references like "from linkedin", "on linkedin", "in linkedin", "profiles".
 - Fix typos and informal phrasing (e.g., "seel" -> "sell" / ignore, "candidateds" -> ignore).
 - "location": Clean city, state, or country name only (e.g., "Mexico"). Strip conversational filler like "or around region", "remote or", etc.
 - Never invent details that aren't stated or clearly implied -- use null.`;
@@ -79,15 +82,40 @@ export function cleanLocation(loc: string | null | undefined): string | null {
   return cleaned || null;
 }
 
+export function extractCandidateNameFallback(text: string): string | null {
+  if (!text) return null;
+  const cleaned = text
+    .replace(/\b(search\s+for|find|look\s+for|show\s+me|get\s+me)\b/gi, "")
+    .replace(/\b(from\s+linkedin|on\s+linkedin|in\s+linkedin|profiles?|linkedin)\b/gi, "")
+    .trim();
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length >= 1 && words.length <= 4 && !/[,;:|]/.test(cleaned)) {
+    return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  }
+  return null;
+}
+
 export async function extractSearchCriteria(mode: "jd" | "describe", text: string): Promise<SearchCriteria> {
   const prompt = mode === "jd" ? JD_EXTRACT_PROMPT : DESCRIBE_EXTRACT_PROMPT;
   const raw = await callTextModel(`${prompt}\n\n--- Input text ---\n${text}`, 600);
   const parsed = parseJsonResponse(raw);
+
+  let candidateName = parsed.candidate_name ? String(parsed.candidate_name).trim() : null;
+  const roleTitle = cleanRoleTitle(parsed.role_title);
+  const company = parsed.company ?? null;
+  const skills = Array.isArray(parsed.skills) ? parsed.skills.filter(Boolean) : [];
+
+  // Fallback: if no name, role, company or skills were extracted, check if the input is a direct name query
+  if (!candidateName && !roleTitle && !company && skills.length === 0 && mode === "describe") {
+    candidateName = extractCandidateNameFallback(text);
+  }
+
   return {
-    role_title: cleanRoleTitle(parsed.role_title),
-    company: parsed.company ?? null,
+    candidate_name: candidateName,
+    role_title: roleTitle,
+    company,
     location: cleanLocation(parsed.location),
-    skills: Array.isArray(parsed.skills) ? parsed.skills.filter(Boolean) : [],
+    skills,
     min_experience_years: parsed.min_experience_years ?? null,
     domain: parsed.domain ?? null,
     keywords: parsed.keywords ?? null,
@@ -95,7 +123,7 @@ export async function extractSearchCriteria(mode: "jd" | "describe", text: strin
 }
 
 // --- Stage 2: X-ray query builder ---------------------------------------
-// Fixed term order: company > role > location > skills > keywords/domain.
+// Fixed term order: name > company > role > location > skills > keywords/domain.
 // Terms like skills or exact phrases (2-4 words) are quoted when specified.
 // Generic roles and locations remain unquoted so Google can do stemming and flexible ranking.
 
@@ -119,6 +147,9 @@ function addTerm(parts: string[], term: string | null | undefined, quoteMultiWor
 
 export function buildSearchQuery(c: SearchCriteria): string {
   const parts = ["site:linkedin.com/in"];
+  if (c.candidate_name) {
+    addTerm(parts, c.candidate_name, true);
+  }
   addTerm(parts, c.company);
   addTerm(parts, c.role_title, false);
   addTerm(parts, c.location, false);
@@ -132,6 +163,7 @@ export function buildSearchQuery(c: SearchCriteria): string {
 export function buildFallbackQueries(c: SearchCriteria): string[] {
   const queries: string[] = [];
   const primaryRole = c.role_title;
+  const name = c.candidate_name;
   // Deduplicate and filter skills that are identical to role_title
   const skills = (c.skills || []).filter(
     (s) => s.toLowerCase() !== (primaryRole || "").toLowerCase()
@@ -142,54 +174,74 @@ export function buildFallbackQueries(c: SearchCriteria): string[] {
 
   const candidates: string[] = [];
 
-  // Fallback 1: Company + Role + Location + top skill
-  if (skills.length > 1) {
-    const fb1 = ["site:linkedin.com/in"];
-    addTerm(fb1, company);
-    addTerm(fb1, primaryRole, false);
-    addTerm(fb1, location, false);
-    addTerm(fb1, topSkill, true);
-    if (fb1.length > 1) candidates.push(fb1.join(" "));
-  }
+  // When searching for a specific candidate by name:
+  if (name) {
+    if (company || primaryRole || location) {
+      const fb1 = ["site:linkedin.com/in"];
+      addTerm(fb1, name, true);
+      addTerm(fb1, company);
+      addTerm(fb1, location, false);
+      if (fb1.length > 1) candidates.push(fb1.join(" "));
+    }
+    // Name alone (exact phrase)
+    const fbNameExact = ["site:linkedin.com/in"];
+    addTerm(fbNameExact, name, true);
+    candidates.push(fbNameExact.join(" "));
 
-  // Fallback 2: Role + top skill (drop location in case profiles don't state location explicitly)
-  if (primaryRole && topSkill) {
-    const fb2 = ["site:linkedin.com/in"];
-    addTerm(fb2, company);
-    addTerm(fb2, primaryRole, false);
-    addTerm(fb2, topSkill, true);
-    if (fb2.length > 1) candidates.push(fb2.join(" "));
-  }
+    // Name unquoted (allows middle names / initial variations)
+    const fbNameFlex = ["site:linkedin.com/in"];
+    addTerm(fbNameFlex, name, false);
+    candidates.push(fbNameFlex.join(" "));
+  } else {
+    // Fallback 1: Company + Role + Location + top skill
+    if (skills.length > 1) {
+      const fb1 = ["site:linkedin.com/in"];
+      addTerm(fb1, company);
+      addTerm(fb1, primaryRole, false);
+      addTerm(fb1, location, false);
+      addTerm(fb1, topSkill, true);
+      if (fb1.length > 1) candidates.push(fb1.join(" "));
+    }
 
-  // Fallback 3: Location + top skill (drop role -- captures domain specialists with varying job titles)
-  if (location && topSkill) {
-    const fb3 = ["site:linkedin.com/in"];
-    addTerm(fb3, location, false);
-    addTerm(fb3, topSkill, true);
-    if (fb3.length > 1) candidates.push(fb3.join(" "));
-  }
+    // Fallback 2: Role + top skill (drop location in case profiles don't state location explicitly)
+    if (primaryRole && topSkill) {
+      const fb2 = ["site:linkedin.com/in"];
+      addTerm(fb2, company);
+      addTerm(fb2, primaryRole, false);
+      addTerm(fb2, topSkill, true);
+      if (fb2.length > 1) candidates.push(fb2.join(" "));
+    }
 
-  // Fallback 4: Role + Location (drop all skills)
-  if (primaryRole && location) {
-    const fb4 = ["site:linkedin.com/in"];
-    addTerm(fb4, company);
-    addTerm(fb4, primaryRole, false);
-    addTerm(fb4, location, false);
-    if (fb4.length > 1) candidates.push(fb4.join(" "));
-  }
+    // Fallback 3: Location + top skill (drop role -- captures domain specialists with varying job titles)
+    if (location && topSkill) {
+      const fb3 = ["site:linkedin.com/in"];
+      addTerm(fb3, location, false);
+      addTerm(fb3, topSkill, true);
+      if (fb3.length > 1) candidates.push(fb3.join(" "));
+    }
 
-  // Fallback 5: Top skill alone (niche domain specialists)
-  if (topSkill) {
-    const fb5 = ["site:linkedin.com/in"];
-    addTerm(fb5, topSkill, true);
-    if (fb5.length > 1) candidates.push(fb5.join(" "));
-  }
+    // Fallback 4: Role + Location (drop all skills)
+    if (primaryRole && location) {
+      const fb4 = ["site:linkedin.com/in"];
+      addTerm(fb4, company);
+      addTerm(fb4, primaryRole, false);
+      addTerm(fb4, location, false);
+      if (fb4.length > 1) candidates.push(fb4.join(" "));
+    }
 
-  // Fallback 6: Role alone
-  if (primaryRole) {
-    const fb6 = ["site:linkedin.com/in"];
-    addTerm(fb6, primaryRole, false);
-    if (fb6.length > 1) candidates.push(fb6.join(" "));
+    // Fallback 5: Top skill alone (niche domain specialists)
+    if (topSkill) {
+      const fb5 = ["site:linkedin.com/in"];
+      addTerm(fb5, topSkill, true);
+      if (fb5.length > 1) candidates.push(fb5.join(" "));
+    }
+
+    // Fallback 6: Role alone
+    if (primaryRole) {
+      const fb6 = ["site:linkedin.com/in"];
+      addTerm(fb6, primaryRole, false);
+      if (fb6.length > 1) candidates.push(fb6.join(" "));
+    }
   }
 
   // Deduplicate queries
@@ -311,8 +363,8 @@ export type ScoredCandidate = {
 
 const SCORE_PROMPT = `You're helping a recruiter source candidates from Google search results over public
 LinkedIn profile pages. For each result (title + snippet + link), extract what you can and score how well
-it matches the target role. Be honest -- most snippets are thin, so a low score for insufficient evidence
-is correct and expected, not a failure. Search snippets rarely mention qualification, CTC, or notice
+it matches the target role or named person. If a target candidate name is given, candidates matching that name should be scored high (90-100).
+Be honest -- most snippets are thin, so a low score for insufficient evidence is correct and expected, not a failure. Search snippets rarely mention qualification, CTC, or notice
 period -- leave those null rather than guessing.
 
 For every candidate also produce a structured evaluation of why they're a fit:
@@ -342,7 +394,8 @@ const SCORE_BATCH_SIZE = 15;
 const MAX_CANDIDATES_TO_SCORE = 30;
 
 async function scoreBatch(batch: RawResult[], criteria: SearchCriteria): Promise<ScoredCandidate[]> {
-  const context = `Target company: ${criteria.company || "not specified"}
+  const context = `Target candidate name: ${criteria.candidate_name || "not specified"}
+Target company: ${criteria.company || "not specified"}
 Target role: ${criteria.role_title || "not specified"}
 Target skills: ${(criteria.skills || []).join(", ") || "not specified"}
 Target location: ${criteria.location || "not specified"}
@@ -366,7 +419,7 @@ ${batch.map((r, i) => `${i + 1}. Title: ${r.title}\nSnippet: ${r.snippet || ""}\
   // Still extract candidates so the user sees search results instead of a 502 crash!
   return batch.map((r) => {
     const parts = r.title.replace(/\s*\|\s*LinkedIn$/i, "").split(/\s*[-–—]\s*/);
-    const name = parts[0]?.trim() || null;
+    const name = parts[0]?.trim() || criteria.candidate_name || null;
     const designation = parts[1]?.trim() || criteria.role_title || null;
     const company = parts[2]?.trim() || criteria.company || null;
     return {
@@ -375,7 +428,7 @@ ${batch.map((r, i) => `${i + 1}. Title: ${r.title}\nSnippet: ${r.snippet || ""}\
       company,
       location: criteria.location || null,
       profile_url: r.link,
-      match_score: 75,
+      match_score: criteria.candidate_name ? 90 : 75,
       qualification: null,
       current_ctc: null,
       expected_ctc: null,
