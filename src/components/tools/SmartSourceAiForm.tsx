@@ -42,7 +42,7 @@ type ProjectSummary = { id: string; name: string; created_at: string; candidateC
 const STATUS_STEPS = [
   "Reading the input",
   "Extracting role & skills",
-  "Searching LinkedIn",
+  "Searching public data",
   "Scoring matches",
   "Checking your database",
 ];
