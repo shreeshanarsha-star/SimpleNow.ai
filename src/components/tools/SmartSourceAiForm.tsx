@@ -199,6 +199,8 @@ export default function SmartSourceAiForm({
   const statusTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [view, setView] = useState<ViewMode>("table");
+  const [searchSort, setSearchSort] = useState<"score_desc" | "score_asc" | "default">("score_desc");
+  const [projectCandidateSort, setProjectCandidateSort] = useState<"score_desc" | "score_asc" | "default">("score_desc");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -603,13 +605,23 @@ export default function SmartSourceAiForm({
     });
   }
 
+  const sortedCandidates = useMemo(() => {
+    if (searchSort === "score_desc") {
+      return [...candidates].sort((a, b) => (b.match_score ?? -1) - (a.match_score ?? -1));
+    }
+    if (searchSort === "score_asc") {
+      return [...candidates].sort((a, b) => (a.match_score ?? 999) - (b.match_score ?? 999));
+    }
+    return candidates;
+  }, [candidates, searchSort]);
+
   function toggleSelectAll() {
-    setSelected((prev) => (prev.size === candidates.length ? new Set() : new Set(candidates.map((c) => c.id))));
+    setSelected((prev) => (prev.size === sortedCandidates.length ? new Set() : new Set(sortedCandidates.map((c) => c.id))));
   }
 
   function selectedOrAllCandidates(): Candidate[] {
-    if (selected.size > 0) return candidates.filter((c) => selected.has(c.id));
-    return candidates;
+    if (selected.size > 0) return sortedCandidates.filter((c) => selected.has(c.id));
+    return sortedCandidates;
   }
 
   async function loadProjectSources() {
@@ -1090,7 +1102,7 @@ export default function SmartSourceAiForm({
   }, [activeProjectCandidates]);
 
   const filteredProjectCandidates = useMemo(() => {
-    return activeProjectCandidates.filter((c) => {
+    const list = activeProjectCandidates.filter((c) => {
       if (projectStatusFilter !== "All") {
         const st = c.project_status || "CV Screened";
         if (st !== projectStatusFilter) return false;
@@ -1108,11 +1120,19 @@ export default function SmartSourceAiForm({
       }
       return true;
     });
-  }, [activeProjectCandidates, projectStatusFilter, projectSearchQuery]);
 
-  const pageCount = Math.max(1, Math.ceil(candidates.length / PAGE_SIZE));
-  const pageRows = candidates.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
-  const activeCandidate = candidates.find((c) => c.id === activeId) || candidates[0] || null;
+    if (projectCandidateSort === "score_desc") {
+      return [...list].sort((a, b) => (b.match_score ?? -1) - (a.match_score ?? -1));
+    }
+    if (projectCandidateSort === "score_asc") {
+      return [...list].sort((a, b) => (a.match_score ?? 999) - (b.match_score ?? 999));
+    }
+    return list;
+  }, [activeProjectCandidates, projectStatusFilter, projectSearchQuery, projectCandidateSort]);
+
+  const pageCount = Math.max(1, Math.ceil(sortedCandidates.length / PAGE_SIZE));
+  const pageRows = sortedCandidates.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  const activeCandidate = sortedCandidates.find((c) => c.id === activeId) || sortedCandidates[0] || null;
 
   return (
     <div className="max-w-6xl">
@@ -1547,22 +1567,57 @@ export default function SmartSourceAiForm({
                   )}
                 </div>
 
-                <div className="text-[12px] text-ink-muted flex items-center gap-2">
-                  <span>
-                    Showing <strong className="text-ink">{filteredProjectCandidates.length}</strong> of{" "}
-                    {activeProjectCandidates.length} candidates
-                  </span>
-                  {(projectStatusFilter !== "All" || projectSearchQuery) && (
+                <div className="flex items-center gap-3">
+                  {/* Score Sort Option */}
+                  <div className="inline-flex items-center gap-1.5 bg-page border border-border rounded-sm px-2.5 py-1 text-[12px]">
+                    <span className="text-ink-muted text-[11px] font-semibold uppercase tracking-wider">Sort:</span>
                     <button
-                      onClick={() => {
-                        setProjectStatusFilter("All");
-                        setProjectSearchQuery("");
-                      }}
-                      className="text-[11.5px] font-bold text-brand hover:underline ml-1"
+                      type="button"
+                      onClick={() => setProjectCandidateSort((s) => (s === "score_desc" ? "score_asc" : "score_desc"))}
+                      className={`px-2 py-0.5 rounded text-[11.5px] font-bold inline-flex items-center gap-1 transition-all ${
+                        projectCandidateSort === "score_desc"
+                          ? "bg-brand text-white shadow-soft-sm"
+                          : projectCandidateSort === "score_asc"
+                          ? "bg-brand/15 text-brand"
+                          : "bg-surface text-ink-2 hover:text-ink"
+                      }`}
+                      title={projectCandidateSort === "score_desc" ? "Currently sorted: Highest score first (click to invert)" : "Sort by highest score first"}
                     >
-                      Clear filters
+                      <span>Highest Score First</span>
+                      <span className="text-[10.5px] font-mono">
+                        {projectCandidateSort === "score_desc" ? "▼" : projectCandidateSort === "score_asc" ? "▲" : "↕"}
+                      </span>
                     </button>
-                  )}
+                    {projectCandidateSort !== "default" && (
+                      <button
+                        type="button"
+                        onClick={() => setProjectCandidateSort("default")}
+                        className="text-[11px] text-ink-muted hover:text-ink ml-0.5 hover:underline"
+                        title="Reset to default order"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="text-[12px] text-ink-muted flex items-center gap-2">
+                    <span>
+                      Showing <strong className="text-ink">{filteredProjectCandidates.length}</strong> of{" "}
+                      {activeProjectCandidates.length} candidates
+                    </span>
+                    {(projectStatusFilter !== "All" || projectSearchQuery || projectCandidateSort !== "default") && (
+                      <button
+                        onClick={() => {
+                          setProjectStatusFilter("All");
+                          setProjectSearchQuery("");
+                          setProjectCandidateSort("default");
+                        }}
+                        className="text-[11.5px] font-bold text-brand hover:underline ml-1"
+                      >
+                        Clear filters
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1583,6 +1638,7 @@ export default function SmartSourceAiForm({
                     onClick={() => {
                       setProjectStatusFilter("All");
                       setProjectSearchQuery("");
+                      setProjectCandidateSort("default");
                     }}
                     className="text-[12px] font-bold text-brand hover:underline"
                   >
@@ -1597,7 +1653,18 @@ export default function SmartSourceAiForm({
                         <tr className="bg-page border-b border-border text-[11.5px] font-bold text-ink-muted uppercase tracking-wider">
                           <th className="py-2.5 px-3.5 w-[30%]">Candidate & Role</th>
                           <th className="py-2.5 px-3 w-[16%]">Location & Exp</th>
-                          <th className="py-2.5 px-3 w-[8%] text-center">Score</th>
+                          <th
+                            onClick={() => setProjectCandidateSort((s) => (s === "score_desc" ? "score_asc" : "score_desc"))}
+                            className="py-2.5 px-3 w-[8%] text-center cursor-pointer hover:text-brand select-none transition-colors group"
+                            title="Click to sort by match score (highest score first)"
+                          >
+                            <div className="inline-flex items-center justify-center gap-1">
+                              <span className="group-hover:underline">Score</span>
+                              <span className={`text-[10.5px] font-mono ${projectCandidateSort === "score_desc" ? "text-brand font-bold" : "text-ink-muted"}`}>
+                                {projectCandidateSort === "score_desc" ? "▼" : projectCandidateSort === "score_asc" ? "▲" : "↕"}
+                              </span>
+                            </div>
+                          </th>
                           <th className="py-2.5 px-3 w-[18%]">Pipeline Status</th>
                           <th className="py-2.5 px-3 w-[20%]">Recruiter Comments</th>
                           <th className="py-2.5 px-3 w-[8%] text-right">Actions</th>
@@ -2118,25 +2185,59 @@ export default function SmartSourceAiForm({
           ) : (
             <>
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="inline-flex bg-page rounded-sm p-1 gap-0.5">
-                  {VIEWS.map((v) => (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="inline-flex bg-page rounded-sm p-1 gap-0.5 border border-border">
+                    {VIEWS.map((v) => (
+                      <button
+                        key={v.key}
+                        onClick={() => setView(v.key)}
+                        title={v.label}
+                        aria-label={v.label}
+                        className={`p-1.5 rounded-xs transition-colors inline-flex items-center justify-center ${
+                          view === v.key ? "bg-surface text-ink shadow-soft-sm" : "text-ink-muted hover:text-ink"
+                        }`}
+                      >
+                        <Icon name={v.icon} className="w-3.5 h-3.5" />
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Score Sort Option */}
+                  <div className="inline-flex items-center gap-1.5 bg-surface border border-border rounded-sm px-2.5 py-1 text-[12px] shadow-soft-sm">
+                    <span className="text-ink-muted text-[11px] font-semibold uppercase tracking-wider">Sort:</span>
                     <button
-                      key={v.key}
-                      onClick={() => setView(v.key)}
-                      title={v.label}
-                      aria-label={v.label}
-                      className={`p-1.5 rounded-xs transition-colors inline-flex items-center justify-center ${
-                        view === v.key ? "bg-surface text-ink shadow-soft-sm" : "text-ink-muted hover:text-ink"
+                      type="button"
+                      onClick={() => setSearchSort((s) => (s === "score_desc" ? "score_asc" : "score_desc"))}
+                      className={`px-2 py-0.5 rounded text-[11.5px] font-bold inline-flex items-center gap-1 transition-all ${
+                        searchSort === "score_desc"
+                          ? "bg-brand text-white shadow-soft-sm"
+                          : searchSort === "score_asc"
+                          ? "bg-brand/15 text-brand"
+                          : "bg-page text-ink-2 hover:text-ink"
                       }`}
+                      title={searchSort === "score_desc" ? "Currently sorted: Highest score first (click to invert)" : "Sort by highest score first"}
                     >
-                      <Icon name={v.icon} className="w-3.5 h-3.5" />
+                      <span>Highest Score First</span>
+                      <span className="text-[10.5px] font-mono">
+                        {searchSort === "score_desc" ? "▼" : searchSort === "score_asc" ? "▲" : "↕"}
+                      </span>
                     </button>
-                  ))}
+                    {searchSort !== "default" && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchSort("default")}
+                        className="text-[11px] text-ink-muted hover:text-ink ml-0.5 hover:underline"
+                        title="Reset to default search order"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="relative flex items-center gap-2">
                   <label className="flex items-center gap-1.5 text-[12px] font-medium text-ink-2 mr-1">
-                    <input type="checkbox" checked={selected.size === candidates.length} onChange={toggleSelectAll} />
+                    <input type="checkbox" checked={selected.size === sortedCandidates.length} onChange={toggleSelectAll} />
                     {selected.size > 0 ? `${selected.size} selected` : "Select all"}
                   </label>
 
@@ -2202,6 +2303,8 @@ export default function SmartSourceAiForm({
                   targetCompanies={activeTargetCompanies}
                   onWhatsApp={openWhatsAppModal}
                   onFindLookalikes={handleFindLookalikes}
+                  searchSort={searchSort}
+                  onToggleScoreSort={() => setSearchSort((s) => (s === "score_desc" ? "score_asc" : "score_desc"))}
                 />
               )}
               {view === "compact" && (
@@ -2992,6 +3095,8 @@ function TableView({
   targetCompanies,
   onWhatsApp,
   onFindLookalikes,
+  searchSort,
+  onToggleScoreSort,
 }: {
   rows: Candidate[];
   selected: Set<string>;
@@ -3002,6 +3107,8 @@ function TableView({
   targetCompanies?: string[];
   onWhatsApp?: (c: Candidate) => void;
   onFindLookalikes?: (c: Candidate) => void;
+  searchSort?: "score_desc" | "score_asc" | "default";
+  onToggleScoreSort?: () => void;
 }) {
   return (
     <div className="border border-border rounded-md bg-surface overflow-x-auto">
@@ -3010,7 +3117,18 @@ function TableView({
           <tr className="border-b border-border text-left text-[11px] font-bold uppercase tracking-wider text-ink-muted">
             <th className="px-3 py-2.5 w-8"></th>
             <th className="px-3 py-2.5">Name</th>
-            <th className="px-3 py-2.5">Score</th>
+            <th
+              onClick={onToggleScoreSort}
+              className="px-3 py-2.5 cursor-pointer hover:text-brand select-none transition-colors group"
+              title="Click to sort by match score (highest score first)"
+            >
+              <div className="inline-flex items-center gap-1">
+                <span className="group-hover:underline">Score</span>
+                <span className={`text-[10px] font-mono ${searchSort === "score_desc" ? "text-brand font-bold" : "text-ink-muted"}`}>
+                  {searchSort === "score_desc" ? "▼" : searchSort === "score_asc" ? "▲" : "↕"}
+                </span>
+              </div>
+            </th>
             <th className="px-3 py-2.5">Company</th>
             <th className="px-3 py-2.5">Location</th>
             <th className="px-3 py-2.5">Experience</th>
