@@ -5,6 +5,7 @@ import Icon from "@/components/Icon";
 import ProfileModal, { type IntelexaProfileData, type RecipientData } from "./ProfileModal";
 import NewEventModal, { type NewEventParams } from "./NewEventModal";
 import LiveRecordingView from "./LiveRecordingView";
+import TranscriptReviewView from "./TranscriptReviewView";
 import EventDetailView, { type EventDetailData } from "./EventDetailView";
 import { DEMO_EVENT_ID } from "@/lib/intelexaDemoData";
 
@@ -13,7 +14,7 @@ export default function IntelexaApp({
 }: {
   initialUser: { id: string; email: string };
 }) {
-  const [view, setView] = useState<"dashboard" | "recording" | "processing" | "detail">("dashboard");
+  const [view, setView] = useState<"dashboard" | "recording" | "review_completeness" | "processing" | "detail">("dashboard");
 
   // User Profile & Recipients
   const [profile, setProfile] = useState<Partial<IntelexaProfileData>>({
@@ -22,6 +23,17 @@ export default function IntelexaApp({
   const [recipients, setRecipients] = useState<RecipientData[]>([]);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [newEventModalOpen, setNewEventModalOpen] = useState(false);
+
+  // Review & Completeness Audit State
+  const [reviewData, setReviewData] = useState<{
+    eventId: string;
+    eventName: string;
+    eventType: string;
+    durationSeconds: number;
+    transcriptText: string;
+    segments: Array<{ start: string; end: string; text: string; speaker?: string }>;
+    audit: any;
+  } | null>(null);
 
   // Events list & selected event
   const [events, setEvents] = useState<EventDetailData[]>([]);
@@ -154,26 +166,37 @@ export default function IntelexaApp({
       const transcribeData = await transcribeRes.json();
       const fullText = transcribeData.text || "Uploaded audio recording.";
       const segments = transcribeData.segments || [];
+      const durationSeconds = Math.round(transcribeData.duration || 600);
 
-      // Run analysis
-      setProcessingStep("Mining opportunities, people, and insights from recording...");
-      const analyseRes = await fetch(`/api/intelexa/events/${event.id}/analyse`, {
+      // Verify completeness first & permanently store raw transcript
+      setProcessingStep("Auditing transcription completeness & voice fidelity...");
+      const verifyRes = await fetch(`/api/intelexa/events/${event.id}/verify-transcript`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           transcript_text: fullText,
           transcript_segments: segments,
-          duration_seconds: Math.round(transcribeData.duration || 600),
-          auto_name: !params.eventName,
+          duration_seconds: durationSeconds,
         }),
       });
 
-      if (analyseRes.ok) {
-        await openEventDetail(event.id);
-      } else {
-        alert("Failed to analyze uploaded audio.");
-        setView("dashboard");
+      let audit = null;
+      if (verifyRes.ok) {
+        const vData = await verifyRes.json();
+        audit = vData.audit;
       }
+
+      setReviewData({
+        eventId: event.id,
+        eventName: params.eventName || "Audio Recording Session",
+        eventType: params.eventType || "Recording",
+        durationSeconds,
+        transcriptText: fullText,
+        segments,
+        audit,
+      });
+
+      setView("review_completeness");
       return;
     }
 
@@ -207,7 +230,7 @@ export default function IntelexaApp({
     setView("recording");
   }
 
-  // 5. Stop & Analyse Handler
+  // 5. Stop Recording -> Verify Completeness -> Transcript Review Screen
   async function handleStopAndAnalyse(data: {
     transcriptText: string;
     segments: Array<{ start: string; end: string; text: string }>;
@@ -217,25 +240,77 @@ export default function IntelexaApp({
     const eventId = activeSession.id;
 
     setView("processing");
-    setProcessingStep("Transcribing and normalizing audio content...");
+    setProcessingStep("Finalizing transcription and auditing completeness...");
 
     try {
-      // Step 2
+      // 1. Audit Completeness and permanently store raw transcript
+      const verifyRes = await fetch(`/api/intelexa/events/${eventId}/verify-transcript`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript_text: data.transcriptText,
+          transcript_segments: data.segments,
+          duration_seconds: data.durationSeconds,
+        }),
+      });
+
+      let audit = null;
+      if (verifyRes.ok) {
+        const vData = await verifyRes.json();
+        audit = vData.audit;
+      }
+
+      setReviewData({
+        eventId,
+        eventName: activeSession.eventName,
+        eventType: activeSession.eventType,
+        durationSeconds: data.durationSeconds,
+        transcriptText: data.transcriptText,
+        segments: data.segments,
+        audit,
+      });
+
+      setView("review_completeness");
+    } catch (e) {
+      console.error("Verification step error:", e);
+      setReviewData({
+        eventId,
+        eventName: activeSession.eventName,
+        eventType: activeSession.eventType,
+        durationSeconds: data.durationSeconds,
+        transcriptText: data.transcriptText,
+        segments: data.segments,
+        audit: null,
+      });
+      setView("review_completeness");
+    }
+  }
+
+  // 6. Confirm Completeness & Run Multimodal Intelligence Analysis
+  async function handleConfirmAndAnalyse(params: {
+    finalTranscript: string;
+    userNotes: string;
+    attachments: any[];
+  }) {
+    if (!reviewData) return;
+    const eventId = reviewData.eventId;
+
+    setView("processing");
+    setProcessingStep("Fusing speech transcript, visual slides, and notes...");
+
+    try {
       setTimeout(() => {
-        setProcessingStep("Extracting entities, speakers, and strategic signals...");
+        setProcessingStep("Extracting entities, slide data, and strategic signals...");
       }, 1500);
 
-      // Step 3
       setTimeout(() => {
         setProcessingStep("Mining opportunities, pain points & personalizing against your goals...");
       }, 3500);
 
-      // Step 4
       setTimeout(() => {
         setProcessingStep("Constructing 13-section intelligence report and executive brief...");
       }, 6000);
 
-      // Step 5
       setTimeout(() => {
         setProcessingStep("Delivering intelligence report via Email and WhatsApp...");
       }, 8500);
@@ -244,10 +319,12 @@ export default function IntelexaApp({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          transcript_text: data.transcriptText,
-          transcript_segments: data.segments,
-          duration_seconds: data.durationSeconds,
-          auto_name: !activeSession.eventName || activeSession.eventName === "Untitled Event Session",
+          transcript_text: params.finalTranscript,
+          transcript_segments: reviewData.segments,
+          duration_seconds: reviewData.durationSeconds,
+          user_notes: params.userNotes,
+          attachments: params.attachments,
+          auto_name: !reviewData.eventName || reviewData.eventName === "Untitled Event Session",
         }),
       });
 
@@ -271,7 +348,17 @@ export default function IntelexaApp({
       setView("dashboard");
     } finally {
       setActiveSession(null);
+      setReviewData(null);
     }
+  }
+
+  // 7. Save Raw Transcript Only (Skip heavy AI analysis)
+  async function handleSaveTranscriptOnly() {
+    if (!reviewData) return;
+    const eventId = reviewData.eventId;
+    await openEventDetail(eventId);
+    setActiveSession(null);
+    setReviewData(null);
   }
 
   // 6. Delete Event Handlers
@@ -363,6 +450,27 @@ export default function IntelexaApp({
           eventType={activeSession.eventType}
           watchFor={activeSession.watchFor}
           onStopAndAnalyse={handleStopAndAnalyse}
+        />
+      )}
+
+      {/* VIEW: TRANSCRIPTION COMPLETENESS AUDIT & DROP BOX */}
+      {view === "review_completeness" && reviewData && (
+        <TranscriptReviewView
+          eventName={reviewData.eventName}
+          eventType={reviewData.eventType}
+          durationSeconds={reviewData.durationSeconds}
+          transcriptText={reviewData.transcriptText}
+          segments={reviewData.segments}
+          audit={reviewData.audit}
+          onConfirmAndAnalyse={handleConfirmAndAnalyse}
+          onSaveTranscriptOnly={handleSaveTranscriptOnly}
+          onBackToRecord={() => {
+            if (activeSession) {
+              setView("recording");
+            } else {
+              setView("dashboard");
+            }
+          }}
         />
       )}
 

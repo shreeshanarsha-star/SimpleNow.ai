@@ -867,19 +867,90 @@ export default function EventDetailView({
       {activeTab === "transcript" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted">
-              Timestamped Event Transcript
-            </h3>
-            <div className="w-full sm:w-64">
-              <input
-                type="text"
-                value={transcriptFilter}
-                onChange={(e) => setTranscriptFilter(e.target.value)}
-                placeholder="Search transcript by keyword or timestamp..."
-                className="w-full text-xs px-3 py-1.5 border border-border rounded-lg bg-surface text-ink focus:outline-none focus:border-brand"
-              />
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted">
+                Timestamped Event Transcript
+              </h3>
+              {event.metadata?.completeness_audit && (
+                <p className="text-[11px] text-good font-semibold mt-0.5">
+                  ✓ Verified Completeness: {event.metadata.completeness_audit.completeness_score}% ({event.metadata.completeness_audit.word_count} words • {event.metadata.completeness_audit.voice_fidelity})
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(transcript?.full_text || "");
+                  alert("Raw transcript copied to clipboard!");
+                }}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-page border border-border hover:border-brand text-ink transition"
+              >
+                Copy Text
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  let content = `INTELEXA EVENT TRANSCRIPT\nEvent: ${event.event_name}\nDate: ${event.start_time || new Date().toISOString()}\n\n`;
+                  if (transcript?.segments && transcript.segments.length > 0) {
+                    transcript.segments.forEach((s) => {
+                      content += `[${s.start}] ${s.speaker ? `[${s.speaker}] ` : ""}${s.text}\n\n`;
+                    });
+                  } else {
+                    content += transcript?.full_text || "";
+                  }
+                  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${event.event_name.replace(/[^a-z0-9]/gi, "_").toLowerCase()}_transcript.txt`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-page border border-border hover:border-brand text-ink transition"
+              >
+                Download .txt
+              </button>
+              <div className="w-full sm:w-56">
+                <input
+                  type="text"
+                  value={transcriptFilter}
+                  onChange={(e) => setTranscriptFilter(e.target.value)}
+                  placeholder="Search keywords or [00:12]..."
+                  className="w-full text-xs px-3 py-1.5 border border-border rounded-lg bg-surface text-ink focus:outline-none focus:border-brand"
+                />
+              </div>
             </div>
           </div>
+
+          {/* User Live Notes if provided */}
+          {event.metadata?.user_notes && (
+            <div className="p-4 rounded-xl bg-brand-wash/50 border border-brand/20 space-y-1">
+              <span className="text-xs font-bold text-brand uppercase tracking-wider block">
+                📝 Your Live Notes & Scratchpad
+              </span>
+              <p className="text-xs text-ink leading-relaxed whitespace-pre-wrap">
+                {event.metadata.user_notes}
+              </p>
+            </div>
+          )}
+
+          {/* Attached Slides if provided */}
+          {event.metadata?.attachments_summary && event.metadata.attachments_summary.length > 0 && (
+            <div className="p-3.5 rounded-xl bg-surface border border-border space-y-1.5">
+              <span className="text-xs font-bold text-ink flex items-center gap-1.5">
+                <span>🖼️ Attached Slides & Visuals</span>
+                <span className="text-[10px] text-ink-muted">({event.metadata.attachments_summary.length} analyzed)</span>
+              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                {event.metadata.attachments_summary.map((att: any, idx: number) => (
+                  <span key={idx} className="px-2.5 py-1 rounded-lg bg-page border border-border text-[11px] font-mono text-ink">
+                    📄 {att.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft max-h-[600px] overflow-y-auto space-y-3 font-mono text-xs">
             {transcript?.segments && transcript.segments.length > 0 ? (

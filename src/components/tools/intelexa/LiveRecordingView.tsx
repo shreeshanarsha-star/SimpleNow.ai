@@ -40,6 +40,7 @@ export default function LiveRecordingView({
   const [syncingChunk, setSyncingChunk] = useState<boolean>(false);
   const [wordCount, setWordCount] = useState<number>(0);
   const [stopping, setStopping] = useState<boolean>(false);
+  const [copiedLive, setCopiedLive] = useState<boolean>(false);
 
   // References
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -165,6 +166,8 @@ export default function LiveRecordingView({
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
+            channelCount: { ideal: 1 },
+            sampleRate: { ideal: 48000 },
           },
         });
 
@@ -200,14 +203,19 @@ export default function LiveRecordingView({
           // AudioContext unsupported, ignore volume meter
         }
 
-        // 3b. MediaRecorder
+        // 3b. MediaRecorder with High Voice Fidelity Bitrate (128 kbps)
         const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
           ? "audio/webm;codecs=opus"
           : MediaRecorder.isTypeSupported("audio/mp4")
           ? "audio/mp4"
           : "";
 
-        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        const recorderOptions: MediaRecorderOptions = {
+          audioBitsPerSecond: 128000,
+        };
+        if (mimeType) recorderOptions.mimeType = mimeType;
+
+        const recorder = new MediaRecorder(stream, recorderOptions);
 
         recorder.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) {
@@ -496,11 +504,26 @@ export default function LiveRecordingView({
                 ({wordCount} words)
               </span>
             </span>
-            {syncingChunk && (
-              <span className="text-[10px] text-brand font-medium animate-pulse">
-                Transcribing audio chunk...
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {liveTranscript && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(liveTranscript);
+                    setCopiedLive(true);
+                    setTimeout(() => setCopiedLive(false), 2000);
+                  }}
+                  className="px-2 py-0.5 text-[10px] font-semibold rounded bg-page border border-border hover:border-brand text-ink-muted hover:text-ink transition"
+                >
+                  {copiedLive ? "Copied! ✓" : "Copy Text"}
+                </button>
+              )}
+              {syncingChunk && (
+                <span className="text-[10px] text-brand font-medium animate-pulse">
+                  Transcribing chunk...
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="max-h-40 overflow-y-auto font-mono text-[11.5px] text-ink-2 bg-page/60 p-3 rounded-xl border border-border leading-relaxed">

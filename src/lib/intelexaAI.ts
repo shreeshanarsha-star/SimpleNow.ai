@@ -2,7 +2,7 @@
 // Implements multi-stage extraction, provenance tagging ([OBSERVED], [INFERRED], [RECOMMENDED]),
 // user-profile personalization, 13-section report generation, and timestamped Q&A.
 
-import { getModel } from "./aiClient";
+import { getModel, callVisionModel } from "./aiClient";
 
 export interface UserProfileContext {
   name?: string;
@@ -28,6 +28,8 @@ export interface EventMetadataContext {
   start_time?: string;
   end_time?: string;
   duration_seconds?: number;
+  user_notes?: string;
+  attachments?: Array<{ name: string; type: string; base64: string }>;
 }
 
 export interface TranscriptSegment {
@@ -146,6 +148,34 @@ Rules:
 }
 
 // -------------------------------------------------------------
+// Vision AI: Extract Data from Presentation Slides & Screenshots
+// -------------------------------------------------------------
+export async function extractSlideIntelligence(
+  attachments: Array<{ name: string; type: string; base64: string }>
+): Promise<string[]> {
+  const extractedSlides: string[] = [];
+  for (const att of attachments.slice(0, 5)) {
+    try {
+      const prompt = `You are Intelexa's Slide & Visual Intelligence Engine.
+Examine this conference presentation slide, chart, diagram, or whiteboard screenshot.
+Extract:
+1. Slide Title / Headline
+2. Key Data Points, Percentages, Architecture Components, or Frameworks
+3. Any Speaker, Company, or Competitor names visible.
+Be concise, bullet-pointed, and factual. Do not speculate.`;
+
+      const slideText = await callVisionModel(prompt, att.base64, 500);
+      if (slideText?.trim()) {
+        extractedSlides.push(`[Slide: "${att.name}"]\n${slideText.trim()}`);
+      }
+    } catch (err) {
+      console.warn(`[intelexa:vision] Failed to analyze slide image ${att.name}:`, err);
+    }
+  }
+  return extractedSlides;
+}
+
+// -------------------------------------------------------------
 // Stage 2 & 3 & 4 & 5: Deep Multi-Stage Extraction & Personalization
 // -------------------------------------------------------------
 export interface ExtractedIntelligence {
@@ -241,13 +271,26 @@ export async function processEventIntelligence(
   userProfile: UserProfileContext,
   eventMeta: EventMetadataContext
 ): Promise<ExtractedIntelligence> {
+  let visualSlidesContext = "";
+  if (eventMeta.attachments && eventMeta.attachments.length > 0) {
+    const slideSummaries = await extractSlideIntelligence(eventMeta.attachments);
+    if (slideSummaries.length > 0) {
+      visualSlidesContext = `\n\nPRESENTATION SLIDES & VISUAL SCREENSHOTS:\n${slideSummaries.join("\n\n")}`;
+    }
+  }
+
+  let userNotesContext = "";
+  if (eventMeta.user_notes?.trim()) {
+    userNotesContext = `\n\nUSER'S PERSONAL LIVE NOTES & OBSERVATIONS:\n${eventMeta.user_notes.trim()}\n(CRITICAL: The user noted these during the session. Weave their questions, speaker names, and observations directly into the intelligence extraction.)`;
+  }
+
   const systemPrompt = `You are Intelexa, the elite Personal Event Intelligence Agent inside SimpleNow.ai.
-Your mission is to transform live conversation transcripts into high-yield, structured business intelligence:
+Your mission is to transform live conversation transcripts, presentation slides, and user notes into high-yield, structured business intelligence:
 Knowledge + People + Opportunities + Decisions + Actions.
 
 CRITICAL AI RULES:
 1. PROVENANCE INTEGRITY: Every insight MUST be classified as:
-   - "OBSERVED": Directly supported by what was spoken verbatim.
+   - "OBSERVED": Directly supported by what was spoken verbatim or shown on presentation slides.
    - "INFERRED": Reasonable, logical interpretation by the AI.
    - "RECOMMENDED": Prescriptive recommendation based on the user's objectives.
    Never attribute AI inferences to a speaker.
@@ -259,9 +302,10 @@ CRITICAL AI RULES:
    What Matters: ${userProfile.what_matters_to_me || userProfile.business_interests || "High-value business opportunities"}
    Event Objectives: ${(eventMeta.objectives || []).join(", ") || "General Intelligence"}
    Watch For: ${eventMeta.watch_for || "Relevant business opportunities and competitive moves"}
-3. PRESERVE DEADLINES: Where deadlines were explicitly mentioned, preserve them verbatim. Do not invent dates.
-4. ACTIONABILITY: For key people detected, create realistic, contextual follow-up drafts for Email, WhatsApp, and LinkedIn based on actual spoken remarks.
-5. SCORECARD: Provide honest, objective assessment scores (0-100) for Knowledge Gained, Business Opportunities, Networking Value, Competitive Intelligence, and Overall Event Value.
+3. MULTIMODAL SYNTHESIS: Fuse spoken dialogue with presentation slides and user notes. If a key architecture diagram or metric was on a slide, incorporate it into insights and knowledge.
+4. PRESERVE DEADLINES: Where deadlines were explicitly mentioned, preserve them verbatim. Do not invent dates.
+5. ACTIONABILITY: For key people detected, create realistic, contextual follow-up drafts for Email, WhatsApp, and LinkedIn based on actual spoken remarks.
+6. SCORECARD: Provide honest, objective assessment scores (0-100) for Knowledge Gained, Business Opportunities, Networking Value, Competitive Intelligence, and Overall Event Value.
 
 Return a strictly valid JSON object matching the requested schema.`;
 
@@ -269,6 +313,8 @@ Return a strictly valid JSON object matching the requested schema.`;
 Event Type: ${eventMeta.event_type || "Live Event"}
 Transcript:
 ${transcriptText.slice(0, 24000)}
+${visualSlidesContext}
+${userNotesContext}
 
 Generate the complete structured JSON response matching this schema:
 {
@@ -395,7 +441,7 @@ Return valid JSON:
 Location: ${eventMeta.location || "Bengaluru / Virtual"}
 Duration: ${Math.round((eventMeta.duration_seconds || 0) / 60)} minutes
 User: ${userProfile.name || "User"} (${userProfile.company || "Enterprise"})
-
+${eventMeta.user_notes ? `User Live Notes: ${eventMeta.user_notes}\n` : ""}
 Extracted Data:
 ${JSON.stringify({
   insights: intel.insights.slice(0, 8),

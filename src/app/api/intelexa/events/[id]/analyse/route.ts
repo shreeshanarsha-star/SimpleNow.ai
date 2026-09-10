@@ -30,6 +30,8 @@ export async function POST(
       transcript_segments = [],
       duration_seconds = 0,
       auto_name = false,
+      user_notes = "",
+      attachments = [],
     } = body;
 
     if (!transcript_text.trim()) {
@@ -64,6 +66,19 @@ export async function POST(
       what_matters_to_me: "Business opportunities, executive intelligence, and strategic connections.",
     };
 
+    // Update metadata with user notes and slide attachments
+    const existingMetadata = (event.metadata && typeof event.metadata === "object") ? event.metadata : {};
+    const updatedMetadata = {
+      ...existingMetadata,
+      user_notes: user_notes || existingMetadata.user_notes || "",
+      attachments_count: attachments.length,
+      attachments_summary: attachments.map((a: any) => ({
+        name: a.name,
+        type: a.type,
+        size: a.size,
+      })),
+    };
+
     // 3. Mark Event as Processing
     await supabase
       .from("intelexa_events")
@@ -73,6 +88,7 @@ export async function POST(
         processing_step: "Transcribing and extracting entities...",
         duration_seconds,
         end_time: new Date().toISOString(),
+        metadata: updatedMetadata,
       })
       .eq("id", id);
 
@@ -99,13 +115,13 @@ export async function POST(
         full_text: transcript_text,
         segments: transcript_segments,
       },
-      { onConflict: "id" }
+      { onConflict: "event_id" }
     );
 
-    // 6. Multi-Stage AI Intelligence Extraction
+    // 6. Multi-Stage AI Intelligence Extraction (Fused with Slides & User Notes)
     await supabase
       .from("intelexa_events")
-      .update({ processing_step: "Mining opportunities, people, and insights..." })
+      .update({ processing_step: "Mining opportunities, slides, and personal notes..." })
       .eq("id", id);
 
     const intel = await processEventIntelligence(
@@ -118,6 +134,8 @@ export async function POST(
         watch_for: event.watch_for,
         location: event.location,
         duration_seconds,
+        user_notes,
+        attachments,
       }
     );
 
@@ -155,6 +173,7 @@ export async function POST(
         event_type: event.event_type,
         location: event.location,
         duration_seconds,
+        user_notes,
       },
       userProfileContext
     );
