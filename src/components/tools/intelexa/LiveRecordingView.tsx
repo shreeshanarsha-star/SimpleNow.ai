@@ -34,14 +34,25 @@ export default function LiveRecordingView({
   const [micActive, setMicActive] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
 
+  // Audio Level Meter & Sync Status
+  const [audioLevel, setAudioLevel] = useState<number>(0);
+  const [chunksSynced, setChunksSynced] = useState<number>(0);
+  const [syncingChunk, setSyncingChunk] = useState<boolean>(false);
+  const [wordCount, setWordCount] = useState<number>(0);
+  const [stopping, setStopping] = useState<boolean>(false);
+
   // References
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const recognitionRef = useRef<any>(null);
   const wakeLockRef = useRef<any>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const transcriptBufferRef = useRef<string>("");
+  const chunkTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+  const whisperTranscriptRef = useRef<string>("");
   const secondsRef = useRef<number>(0);
+  const lastChunkTimeRef = useRef<number>(0);
+  const isStoppingRef = useRef<boolean>(false);
 
   // Format Elapsed Time HH:MM:SS
   function formatTime(totalSec: number): string {
@@ -91,95 +102,141 @@ export default function LiveRecordingView({
     };
   }, [isPaused]);
 
-  // 3. Audio Recording & Web Speech Recognition
+  // Upload and Transcribe an Audio Slice via Whisper
+  async function transcribeChunk(blob: Blob, offsetSec: number) {
+    if (blob.size < 1200) return; // Ignore microscopic or silent clicks
+
+    setSyncingChunk(true);
+    try {
+      const form = new FormData();
+      const mimeType = blob.type || "audio/webm";
+      const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+      form.append("file", blob, `chunk_${offsetSec}.${ext}`);
+      form.append("offset", offsetSec.toString());
+
+      const res = await fetch("/api/intelexa/transcribe", {
+        method: "POST",
+        body: form,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.text?.trim()) {
+          const newText = data.text.trim();
+          whisperTranscriptRef.current += (whisperTranscriptRef.current ? " " : "") + newText;
+          setLiveTranscript(whisperTranscriptRef.current);
+          setWordCount(whisperTranscriptRef.current.split(/\s+/).filter(Boolean).length);
+          setChunksSynced((c) => c + 1);
+
+          if (Array.isArray(data.segments) && data.segments.length > 0) {
+            setSegments((prev) => [...prev, ...data.segments]);
+          } else {
+            setSegments((prev) => [
+              ...prev,
+              {
+                start: formatTime(offsetSec),
+                end: formatTime(secondsRef.current),
+                text: newText,
+              },
+            ]);
+          }
+
+          // Check for key signals
+          detectQuickSignal(newText, formatTime(offsetSec));
+        }
+      } else {
+        console.warn("Chunk transcription returned status:", res.status);
+      }
+    } catch (err) {
+      console.warn("Chunk transcription network issue:", err);
+    } finally {
+      setSyncingChunk(false);
+    }
+  }
+
+  // 3. Audio Recording & Continuous Chunk Pipeline
   useEffect(() => {
     let stream: MediaStream | null = null;
 
     async function initAudio() {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+
         setMicActive(true);
         setMicError(null);
 
-        // MediaRecorder for raw audio buffer
-        const recorder = new MediaRecorder(stream, {
-          mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-            ? "audio/webm;codecs=opus"
-            : undefined,
-        });
+        // 3a. Audio Context for Live Volume Level Meter
+        try {
+          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+          if (AudioContextClass) {
+            const ctx = new AudioContextClass();
+            audioContextRef.current = ctx;
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 256;
+            const source = ctx.createMediaStreamSource(stream);
+            source.connect(analyser);
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            const updateMeter = () => {
+              if (isStoppingRef.current) return;
+              analyser.getByteFrequencyData(dataArray);
+              let sum = 0;
+              for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+              }
+              const avg = sum / dataArray.length;
+              setAudioLevel(Math.min(100, Math.round((avg / 128) * 100)));
+              animFrameRef.current = requestAnimationFrame(updateMeter);
+            };
+            updateMeter();
+          }
+        } catch {
+          // AudioContext unsupported, ignore volume meter
+        }
+
+        // 3b. MediaRecorder
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
+          : "";
+
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
 
         recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) {
+          if (e.data && e.data.size > 0) {
             audioChunksRef.current.push(e.data);
           }
         };
 
-        recorder.start(5000); // 5-second chunk intervals
+        // Start recorder with 2-second timeslices
+        recorder.start(2000);
         mediaRecorderRef.current = recorder;
 
-        // Browser Web Speech API for instantaneous zero-latency transcription
-        const SpeechRecognition =
-          (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        // 3c. Continuous Rolling Chunk Pipeline (Every 30 Seconds)
+        chunkTimerRef.current = setInterval(async () => {
+          if (recorder.state === "recording" && audioChunksRef.current.length > 0) {
+            const currentOffset = lastChunkTimeRef.current;
+            lastChunkTimeRef.current = secondsRef.current;
 
-        if (SpeechRecognition) {
-          const recognizer = new SpeechRecognition();
-          recognizer.continuous = true;
-          recognizer.interimResults = true;
-          recognizer.lang = "en-US";
+            const sliceBlob = new Blob(audioChunksRef.current, {
+              type: mimeType || "audio/webm",
+            });
+            audioChunksRef.current = []; // Reset buffer
 
-          recognizer.onresult = (event: any) => {
-            let finalChunk = "";
-            let interimChunk = "";
-
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-              if (event.results[i].isFinal) {
-                finalChunk += event.results[i][0].transcript + " ";
-              } else {
-                interimChunk += event.results[i][0].transcript;
-              }
-            }
-
-            if (finalChunk) {
-              const currentTimestamp = formatTime(secondsRef.current);
-              transcriptBufferRef.current += finalChunk;
-              setLiveTranscript((prev) => prev + finalChunk);
-
-              setSegments((prev) => [
-                ...prev,
-                {
-                  start: currentTimestamp,
-                  end: currentTimestamp,
-                  text: finalChunk.trim(),
-                },
-              ]);
-
-              // Check for quick keyword signals
-              detectQuickSignal(finalChunk, currentTimestamp);
-            }
-          };
-
-          recognizer.onerror = (err: any) => {
-            console.warn("SpeechRecognition notice:", err.error);
-          };
-
-          recognizer.onend = () => {
-            // Auto restart if still listening
-            if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-              try {
-                recognizer.start();
-              } catch {}
-            }
-          };
-
-          try {
-            recognizer.start();
-            recognitionRef.current = recognizer;
-          } catch {}
-        }
+            await transcribeChunk(sliceBlob, currentOffset);
+          }
+        }, 30000); // 30 seconds
       } catch (err) {
         console.error("Microphone access failed:", err);
         setMicError(
-          "Microphone permission was denied or is unavailable. Please check your browser settings."
+          "Microphone permission was denied or is unavailable. Please grant microphone access in your browser settings."
         );
       }
     }
@@ -187,11 +244,12 @@ export default function LiveRecordingView({
     initAudio();
 
     return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
+      isStoppingRef.current = true;
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
       }
+      if (chunkTimerRef.current) clearInterval(chunkTimerRef.current);
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
         mediaRecorderRef.current.stop();
       }
@@ -211,7 +269,8 @@ export default function LiveRecordingView({
       lower.includes("pilot") ||
       lower.includes("looking for") ||
       lower.includes("need a solution") ||
-      lower.includes("budget")
+      lower.includes("budget") ||
+      lower.includes("pricing")
     ) {
       newSignal = {
         time,
@@ -224,7 +283,8 @@ export default function LiveRecordingView({
       lower.includes("bottleneck") ||
       lower.includes("struggle") ||
       lower.includes("frustrated") ||
-      lower.includes("challenge")
+      lower.includes("challenge") ||
+      lower.includes("issue")
     ) {
       newSignal = {
         time,
@@ -238,11 +298,12 @@ export default function LiveRecordingView({
       lower.includes("head of") ||
       lower.includes("founder") ||
       lower.includes("cto") ||
-      lower.includes("ceo")
+      lower.includes("ceo") ||
+      lower.includes("speaker")
     ) {
       newSignal = {
         time,
-        tag: "Person Detected",
+        tag: "Leader Detected",
         text: text.slice(0, 90) + "...",
         priority: "HIGH",
       };
@@ -257,40 +318,50 @@ export default function LiveRecordingView({
     if (!mediaRecorderRef.current) return;
     if (isPaused) {
       mediaRecorderRef.current.resume();
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.start();
-        } catch {}
-      }
       setIsPaused(false);
     } else {
       mediaRecorderRef.current.pause();
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
-      }
       setIsPaused(true);
     }
   }
 
-  function handleStop() {
+  // Final Stop & Analyse Handler (Flushes final audio slice to Whisper)
+  async function handleStop() {
+    setStopping(true);
+    isStoppingRef.current = true;
+
     if (timerRef.current) clearInterval(timerRef.current);
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {}
-    }
+    if (chunkTimerRef.current) clearInterval(chunkTimerRef.current);
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+
+    // Stop MediaRecorder
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
     }
 
-    // Call Stop & Analyse handler with captured transcript
-    const fullText = transcriptBufferRef.current.trim() || liveTranscript.trim() || "Live audio session completed.";
+    // Wait 300ms for final dataavailable event
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    // Flush final audio slice if exists
+    if (audioChunksRef.current.length > 0) {
+      const mimeType = mediaRecorderRef.current?.mimeType || "audio/webm";
+      const finalBlob = new Blob(audioChunksRef.current, { type: mimeType });
+      audioChunksRef.current = [];
+      await transcribeChunk(finalBlob, lastChunkTimeRef.current);
+    }
+
+    const fullText =
+      whisperTranscriptRef.current.trim() ||
+      liveTranscript.trim() ||
+      "Audio session completed.";
+
     onStopAndAnalyse({
       transcriptText: fullText,
-      segments: segments.length > 0 ? segments : [{ start: "00:00:00", end: formatTime(seconds), text: fullText }],
-      durationSeconds: seconds,
+      segments:
+        segments.length > 0
+          ? segments
+          : [{ start: "00:00:00", end: formatTime(secondsRef.current), text: fullText }],
+      durationSeconds: secondsRef.current,
     });
   }
 
@@ -303,24 +374,36 @@ export default function LiveRecordingView({
         <span className="truncate max-w-xs">{eventName || "Live Intelligence Session"}</span>
       </div>
 
-      {/* Main Status & Pulsing Ring */}
+      {/* Main Status & Audio Pulse */}
       <div className="relative flex flex-col items-center justify-center">
         {/* Pulsing Aura */}
-        <div className={`w-36 h-36 rounded-full flex items-center justify-center transition-all duration-700 ${
-          isPaused ? "bg-warning/10" : "bg-critical/10"
-        }`}>
-          <div className={`w-24 h-24 rounded-full flex items-center justify-center shadow-lg transition-all duration-500 ${
-            isPaused ? "bg-warning text-white" : "bg-critical text-white animate-pulse"
-          }`}>
+        <div
+          className={`w-36 h-36 rounded-full flex items-center justify-center transition-all duration-700 ${
+            isPaused ? "bg-warning/10" : "bg-critical/10"
+          }`}
+        >
+          <div
+            className={`w-24 h-24 rounded-full flex items-center justify-center shadow-lg transition-all duration-500 ${
+              isPaused ? "bg-warning text-white" : "bg-critical text-white animate-pulse"
+            }`}
+          >
             <Icon name="mic" className="w-10 h-10" />
           </div>
         </div>
 
         {/* Status Label */}
         <div className="mt-5 flex items-center gap-2">
-          <span className={`w-2.5 h-2.5 rounded-full ${isPaused ? "bg-warning" : "bg-critical animate-ping"}`} />
+          <span
+            className={`w-2.5 h-2.5 rounded-full ${
+              isPaused ? "bg-warning" : "bg-critical animate-ping"
+            }`}
+          />
           <h2 className="text-sm sm:text-base font-extrabold tracking-wider uppercase text-ink">
-            {isPaused ? "INTELEXA IS PAUSED" : "INTELEXA IS LISTENING"}
+            {stopping
+              ? "FINALIZING LAST AUDIO CHUNK..."
+              : isPaused
+              ? "INTELEXA IS PAUSED"
+              : "INTELEXA IS RECORDING & TRANSCRIBING"}
           </h2>
         </div>
 
@@ -329,10 +412,37 @@ export default function LiveRecordingView({
           {formatTime(seconds)}
         </div>
 
+        {/* Live Audio Level & Whisper Sync Status */}
+        <div className="mt-3 flex items-center justify-center gap-3 text-xs flex-wrap">
+          {/* Live Mic Level */}
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-surface border border-border rounded-full shadow-soft">
+            <span className="text-ink-muted text-[11px]">Mic Level:</span>
+            <div className="w-16 h-2 bg-page rounded-full overflow-hidden border border-border">
+              <div
+                style={{ width: `${Math.max(5, audioLevel)}%` }}
+                className={`h-full transition-all duration-100 ${
+                  audioLevel > 15 ? "bg-good" : "bg-ink-muted/50"
+                }`}
+              />
+            </div>
+            <span className="text-[10px] font-mono text-ink-muted">{audioLevel}%</span>
+          </div>
+
+          {/* Continuous Whisper Status */}
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-brand-wash border border-brand/20 text-brand rounded-full font-semibold text-[11px]">
+            <span className={`w-1.5 h-1.5 rounded-full ${syncingChunk ? "bg-warning animate-ping" : "bg-good"}`} />
+            <span>
+              {syncingChunk
+                ? "Syncing 30s chunk..."
+                : `Whisper Active • ${chunksSynced} synced (${wordCount} words)`}
+            </span>
+          </div>
+        </div>
+
         <p className="text-xs text-ink-muted mt-2 max-w-md">
           {isPaused
-            ? "Microphone capture paused. Click Resume when ready."
-            : "Screen kept awake. Put your phone on the table and focus on the event."}
+            ? "Recording paused. Click Resume when ready."
+            : "Screen kept awake. Continuous Whisper audio chunks are automatically transcribed and saved every 30 seconds."}
         </p>
 
         {micError && (
@@ -342,25 +452,13 @@ export default function LiveRecordingView({
         )}
       </div>
 
-      {/* Audio Waveform Simulation */}
-      {!isPaused && (
-        <div className="flex items-center justify-center gap-1.5 h-8">
-          {[40, 75, 55, 90, 60, 85, 45, 95, 70, 50, 80, 65, 40].map((h, i) => (
-            <span
-              key={i}
-              style={{ height: `${h}%`, animationDelay: `${i * 0.08}s` }}
-              className="w-1 bg-critical/70 rounded-full animate-bounce"
-            />
-          ))}
-        </div>
-      )}
-
       {/* Control Buttons */}
       <div className="flex items-center justify-center gap-4 w-full max-w-sm">
         <button
           type="button"
           onClick={handleTogglePause}
-          className="flex-1 flex items-center justify-center gap-2 py-3 px-5 rounded-2xl border border-border bg-surface text-ink text-xs font-bold hover:bg-page transition shadow-soft"
+          disabled={stopping}
+          className="flex-1 flex items-center justify-center gap-2 py-3 px-5 rounded-2xl border border-border bg-surface text-ink text-xs font-bold hover:bg-page transition shadow-soft disabled:opacity-50"
         >
           <Icon name={isPaused ? "play" : "pause"} className="w-4 h-4" />
           {isPaused ? "Resume" : "Pause"}
@@ -369,10 +467,11 @@ export default function LiveRecordingView({
         <button
           type="button"
           onClick={handleStop}
-          className="flex-1 flex items-center justify-center gap-2 py-3 px-5 rounded-2xl bg-critical text-white text-xs font-bold hover:bg-critical/90 transition shadow-soft"
+          disabled={stopping}
+          className="flex-1 flex items-center justify-center gap-2 py-3 px-5 rounded-2xl bg-critical text-white text-xs font-bold hover:bg-critical/90 transition shadow-soft disabled:opacity-50"
         >
           <Icon name="stop" className="w-4 h-4" />
-          Stop & Analyse
+          {stopping ? "Finalizing..." : "Stop & Analyse"}
         </button>
       </div>
 
@@ -386,8 +485,34 @@ export default function LiveRecordingView({
         </div>
       )}
 
-      {/* Optional Live Intelligence Panel (Section 7) */}
-      <div className="w-full max-w-lg text-left">
+      {/* Live Transcript Stream & Signals Panel */}
+      <div className="w-full max-w-xl text-left space-y-3">
+        {/* Live Audio Transcript Box */}
+        <div className="p-4 border border-border rounded-2xl bg-surface shadow-soft space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-ink flex items-center gap-1.5">
+              <span>🎙️ Live Whisper Transcript</span>
+              <span className="text-[10px] font-normal text-ink-muted font-mono">
+                ({wordCount} words)
+              </span>
+            </span>
+            {syncingChunk && (
+              <span className="text-[10px] text-brand font-medium animate-pulse">
+                Transcribing audio chunk...
+              </span>
+            )}
+          </div>
+
+          <div className="max-h-40 overflow-y-auto font-mono text-[11.5px] text-ink-2 bg-page/60 p-3 rounded-xl border border-border leading-relaxed">
+            {liveTranscript || (
+              <span className="text-ink-muted italic">
+                Listening to audio... First 30-second Whisper chunk will appear shortly.
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Collapsible Strategic Signals Panel */}
         <button
           type="button"
           onClick={() => setShowLivePanel(!showLivePanel)}
@@ -395,7 +520,7 @@ export default function LiveRecordingView({
         >
           <span className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-brand" />
-            Live Intelligence Signals ({liveSignals.length})
+            Detected Signals & Opportunities ({liveSignals.length})
           </span>
           <span className="text-ink-muted text-[11px]">
             {showLivePanel ? "Hide Panel ▲" : "Show Panel ▼"}
@@ -403,10 +528,10 @@ export default function LiveRecordingView({
         </button>
 
         {showLivePanel && (
-          <div className="mt-2 p-4 border border-border rounded-xl bg-surface shadow-soft space-y-3 animate-fadeIn">
+          <div className="p-4 border border-border rounded-xl bg-surface shadow-soft space-y-3 animate-fadeIn">
             {liveSignals.length === 0 ? (
               <p className="text-xs text-ink-muted text-center py-3">
-                Listening for high-priority signals, executive roles, and business opportunities...
+                No high-priority signals detected yet. Speaking content is analyzed every 30 seconds.
               </p>
             ) : (
               liveSignals.map((sig, idx) => (
@@ -423,17 +548,6 @@ export default function LiveRecordingView({
                   <p className="text-ink leading-snug">{sig.text}</p>
                 </div>
               ))
-            )}
-
-            {liveTranscript && (
-              <div className="pt-2 border-t border-border">
-                <span className="text-[10px] font-bold uppercase text-ink-muted block mb-1">
-                  Live Spoken Stream (Edge Transcription):
-                </span>
-                <p className="text-[11px] text-ink-2 max-h-24 overflow-y-auto font-mono bg-page p-2 rounded-lg">
-                  {liveTranscript}
-                </p>
-              </div>
             )}
           </div>
         )}

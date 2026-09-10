@@ -35,6 +35,7 @@ export async function POST(req: Request) {
     const contentType = req.headers.get("content-type") || "";
     let fileBlob: Blob | null = null;
     let fileName = "audio.webm";
+    let offsetSeconds = 0;
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
@@ -42,6 +43,9 @@ export async function POST(req: Request) {
       if (file && typeof file === "object" && "arrayBuffer" in file) {
         fileBlob = file as Blob;
         fileName = (file as any).name || "audio.webm";
+      }
+      if (formData.get("offset")) {
+        offsetSeconds = Number(formData.get("offset")) || 0;
       }
     } else {
       const body = await req.json();
@@ -52,19 +56,23 @@ export async function POST(req: Request) {
         const ext = mimeType.includes("mp4") ? "mp4" : mimeType.includes("wav") ? "wav" : mimeType.includes("mpeg") ? "mp3" : "webm";
         fileName = `audio.${ext}`;
       }
+      if (body.offset) {
+        offsetSeconds = Number(body.offset) || 0;
+      }
     }
 
-    if (!fileBlob) {
-      return NextResponse.json({ error: "No audio file or base64 provided." }, { status: 400 });
+    if (!fileBlob || fileBlob.size === 0) {
+      return NextResponse.json({ error: "No valid audio data provided." }, { status: 400 });
     }
 
-    // Attempt 1: Groq Whisper (Fast & high accuracy)
+    // Attempt 1: Groq Whisper (Blazing fast ~1s latency)
     if (groqKey) {
       try {
         const form = new FormData();
         form.append("file", fileBlob, fileName);
         form.append("model", "whisper-large-v3");
         form.append("response_format", "verbose_json");
+        form.append("temperature", "0.2");
 
         const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
           method: "POST",
@@ -75,10 +83,18 @@ export async function POST(req: Request) {
         if (res.ok) {
           const data = await res.json();
           const segments = (data.segments || []).map((seg: any) => ({
-            start: formatSeconds(seg.start || 0),
-            end: formatSeconds(seg.end || 0),
+            start: formatSeconds((seg.start || 0) + offsetSeconds),
+            end: formatSeconds((seg.end || 0) + offsetSeconds),
             text: seg.text?.trim() || "",
           }));
+
+          if (segments.length === 0 && data.text?.trim()) {
+            segments.push({
+              start: formatSeconds(offsetSeconds),
+              end: formatSeconds(offsetSeconds + (data.duration || 30)),
+              text: data.text.trim(),
+            });
+          }
 
           return NextResponse.json({
             ok: true,
@@ -89,16 +105,17 @@ export async function POST(req: Request) {
           });
         }
       } catch (err) {
-        console.warn("[intelexa:transcribe] Groq attempt failed, falling back to OpenAI", err);
+        console.warn("[intelexa:transcribe] Groq attempt failed, falling back to OpenAI Whisper:", err);
       }
     }
 
-    // Attempt 2: OpenAI Whisper
+    // Attempt 2: OpenAI Whisper-1
     if (openaiKey) {
       const form = new FormData();
       form.append("file", fileBlob, fileName);
       form.append("model", "whisper-1");
       form.append("response_format", "verbose_json");
+      form.append("temperature", "0.2");
 
       const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
         method: "POST",
@@ -109,10 +126,18 @@ export async function POST(req: Request) {
       if (res.ok) {
         const data = await res.json();
         const segments = (data.segments || []).map((seg: any) => ({
-          start: formatSeconds(seg.start || 0),
-          end: formatSeconds(seg.end || 0),
+          start: formatSeconds((seg.start || 0) + offsetSeconds),
+          end: formatSeconds((seg.end || 0) + offsetSeconds),
           text: seg.text?.trim() || "",
         }));
+
+        if (segments.length === 0 && data.text?.trim()) {
+          segments.push({
+            start: formatSeconds(offsetSeconds),
+            end: formatSeconds(offsetSeconds + (data.duration || 30)),
+            text: data.text.trim(),
+          });
+        }
 
         return NextResponse.json({
           ok: true,
