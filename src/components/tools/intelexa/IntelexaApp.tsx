@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Icon from "@/components/Icon";
+import { useRegisterToolHome } from "@/components/ToolHomeContext";
 import ProfileModal, { type IntelexaProfileData, type RecipientData } from "./ProfileModal";
 import NewEventModal, { type NewEventParams } from "./NewEventModal";
 import LiveRecordingView from "./LiveRecordingView";
@@ -62,6 +63,24 @@ export default function IntelexaApp({
 
   const [processingStep, setProcessingStep] = useState<string>("Initializing AI analysis pipeline...");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Handler to return directly to Intelexa.ai Home Page (Dashboard)
+  const handleGoHome = useCallback(() => {
+    setView("dashboard");
+    setSelectedEventId(null);
+    setSelectedEventData(null);
+    setActiveSession(null);
+    setReviewData(null);
+  }, []);
+
+  // Register with AppShell / Topbar so clicking "Intelexa.ai" in header returns home
+  useRegisterToolHome(handleGoHome);
+
+  // Also listen for custom events from Sidebar
+  useEffect(() => {
+    window.addEventListener("intelexa-go-home", handleGoHome);
+    return () => window.removeEventListener("intelexa-go-home", handleGoHome);
+  }, [handleGoHome]);
 
   // 1. Fetch Profile and Events on Mount
   useEffect(() => {
@@ -464,6 +483,7 @@ export default function IntelexaApp({
           audit={reviewData.audit}
           onConfirmAndAnalyse={handleConfirmAndAnalyse}
           onSaveTranscriptOnly={handleSaveTranscriptOnly}
+          onGoHome={handleGoHome}
           onBackToRecord={() => {
             if (activeSession) {
               setView("recording");

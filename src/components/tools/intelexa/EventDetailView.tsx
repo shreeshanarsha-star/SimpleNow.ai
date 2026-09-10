@@ -163,13 +163,27 @@ export default function EventDetailView({
       {/* Top Bar: Back & Event Info */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-5">
         <div className="space-y-1">
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex items-center gap-1.5 text-xs font-semibold text-brand hover:underline mb-1"
-          >
-            &larr; Back to Events Library
-          </button>
+          <div className="flex items-center gap-1.5 text-xs text-ink-muted mb-1">
+            <button
+              type="button"
+              onClick={onBack}
+              className="font-bold text-brand hover:underline flex items-center gap-1"
+            >
+              <span>Intelexa.ai</span>
+            </button>
+            <span>/</span>
+            <button
+              type="button"
+              onClick={onBack}
+              className="hover:underline text-ink-muted hover:text-ink font-medium"
+            >
+              Events Library
+            </button>
+            <span>/</span>
+            <span className="truncate max-w-[220px] sm:max-w-md text-ink font-semibold">
+              {event.event_name}
+            </span>
+          </div>
           <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-xl sm:text-2xl font-bold text-ink">{event.event_name}</h1>
             {event.is_demo && (

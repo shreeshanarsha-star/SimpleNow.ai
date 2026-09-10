@@ -34,6 +34,7 @@ export default function TranscriptReviewView({
   onConfirmAndAnalyse,
   onSaveTranscriptOnly,
   onBackToRecord,
+  onGoHome,
 }: {
   eventName: string;
   eventType: string;
@@ -48,6 +49,7 @@ export default function TranscriptReviewView({
   }) => void;
   onSaveTranscriptOnly: () => void;
   onBackToRecord: () => void;
+  onGoHome?: () => void;
 }) {
   const [editedTranscript, setEditedTranscript] = useState(transcriptText);
   const [isEditing, setIsEditing] = useState(false);
@@ -149,6 +151,17 @@ export default function TranscriptReviewView({
       {/* Top Header & Context */}
       <div className="flex items-center justify-between gap-4 flex-wrap pb-4 border-b border-border">
         <div>
+          <div className="flex items-center gap-1.5 text-xs text-ink-muted mb-1.5">
+            <button
+              type="button"
+              onClick={onGoHome || onSaveTranscriptOnly}
+              className="font-bold text-brand hover:underline flex items-center gap-1"
+            >
+              <span>Intelexa.ai</span>
+            </button>
+            <span>/</span>
+            <span className="text-ink-muted">Completeness Audit & Drop Box</span>
+          </div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-wash border border-brand/20 text-brand text-xs font-semibold mb-1.5">
             <span>{eventType}</span>
             <span>&bull;</span>

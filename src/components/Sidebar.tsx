@@ -188,7 +188,12 @@ export default function Sidebar({
           name="Intelexa.ai"
           active={isActive("/tools/intelexa")}
           dotStatus="live"
-          onNavigate={onClose}
+          onNavigate={() => {
+            onClose?.();
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("intelexa-go-home"));
+            }
+          }}
         />
         {visibleDepartments.length > 0 && (
           <>
