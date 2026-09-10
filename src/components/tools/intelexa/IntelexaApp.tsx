@@ -25,6 +25,17 @@ export default function IntelexaApp({
 
   // Events list & selected event
   const [events, setEvents] = useState<EventDetailData[]>([]);
+  const [stats, setStats] = useState<{
+    totalEvents: number;
+    highValueOpportunities: number;
+    keyPeopleConnected: number;
+    avgCommercialYield: number | null;
+  }>({
+    totalEvents: 0,
+    highValueOpportunities: 0,
+    keyPeopleConnected: 0,
+    avgCommercialYield: null,
+  });
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedEventData, setSelectedEventData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -59,6 +70,7 @@ export default function IntelexaApp({
         if (eventsRes.ok) {
           const eData = await eventsRes.json();
           setEvents(eData.events || []);
+          if (eData.stats) setStats(eData.stats);
         }
       } catch (err) {
         console.error("Failed to load Intelexa data:", err);
@@ -245,6 +257,7 @@ export default function IntelexaApp({
         if (refreshRes.ok) {
           const eData = await refreshRes.json();
           setEvents(eData.events || []);
+          if (eData.stats) setStats(eData.stats);
         }
 
         await openEventDetail(eventId);
@@ -264,7 +277,14 @@ export default function IntelexaApp({
   // 6. Delete Event Handlers
   async function handleDeleteEvent(id: string) {
     await fetch(`/api/intelexa/events/${id}`, { method: "DELETE" });
-    setEvents(events.filter((e) => e.id !== id));
+    const refreshRes = await fetch("/api/intelexa/events");
+    if (refreshRes.ok) {
+      const eData = await refreshRes.json();
+      setEvents(eData.events || []);
+      if (eData.stats) setStats(eData.stats);
+    } else {
+      setEvents(events.filter((e) => e.id !== id));
+    }
     setView("dashboard");
   }
 
@@ -443,33 +463,62 @@ export default function IntelexaApp({
             </div>
           </div>
 
-          {/* Quick Metrics */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft">
-              <div className="text-xs font-medium text-ink-muted">Events Captured</div>
-              <div className="text-2xl font-extrabold text-ink mt-1">
-                {events.length + 1}
-              </div>
+          {/* Real Dynamic Metrics */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs text-ink-muted">
+              <span className="font-bold uppercase tracking-wider text-[10px]">
+                Your Live Event Metrics
+              </span>
+              {stats.totalEvents === 0 ? (
+                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                  Awaiting first recording &bull; Explore Demo Event below
+                </span>
+              ) : (
+                <span className="text-good-text font-medium">
+                  Dynamically calculated across {stats.totalEvents} {stats.totalEvents === 1 ? "session" : "sessions"}
+                </span>
+              )}
             </div>
 
-            <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft">
-              <div className="text-xs font-medium text-ink-muted">High-Value Opportunities</div>
-              <div className="text-2xl font-extrabold text-brand mt-1">
-                🔥 12
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft">
+                <div className="text-xs font-medium text-ink-muted">Personal Events</div>
+                <div className="text-2xl font-extrabold text-ink mt-1">
+                  {stats.totalEvents}
+                </div>
+                <div className="text-[11px] text-ink-muted mt-0.5">
+                  {stats.totalEvents === 0 ? "0 recorded" : `${stats.totalEvents} recorded`}
+                </div>
               </div>
-            </div>
 
-            <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft">
-              <div className="text-xs font-medium text-ink-muted">Key People Connected</div>
-              <div className="text-2xl font-extrabold text-ink mt-1">
-                👤 28
+              <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft">
+                <div className="text-xs font-medium text-ink-muted">High-Value Opportunities</div>
+                <div className="text-2xl font-extrabold text-brand mt-1">
+                  {stats.highValueOpportunities > 0 ? `🔥 ${stats.highValueOpportunities}` : "0"}
+                </div>
+                <div className="text-[11px] text-ink-muted mt-0.5">
+                  {stats.highValueOpportunities > 0 ? "Mined from your events" : "Mined from conversations"}
+                </div>
               </div>
-            </div>
 
-            <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft">
-              <div className="text-xs font-medium text-ink-muted">Avg Commercial Yield</div>
-              <div className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">
-                90/100
+              <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft">
+                <div className="text-xs font-medium text-ink-muted">Key People Connected</div>
+                <div className="text-2xl font-extrabold text-ink mt-1">
+                  {stats.keyPeopleConnected > 0 ? `👤 ${stats.keyPeopleConnected}` : "0"}
+                </div>
+                <div className="text-[11px] text-ink-muted mt-0.5">
+                  {stats.keyPeopleConnected > 0 ? "Stakeholders profiled" : "Identified during events"}
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft">
+                <div className="text-xs font-medium text-ink-muted">Avg Commercial Yield</div>
+                <div className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">
+                  {stats.avgCommercialYield !== null ? `${stats.avgCommercialYield}/100` : "--"}
+                </div>
+                <div className="text-[11px] text-ink-muted mt-0.5">
+                  {stats.avgCommercialYield !== null ? "Average AI assessment" : "Computed after first event"}
+                </div>
               </div>
             </div>
           </div>

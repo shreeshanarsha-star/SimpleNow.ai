@@ -41,7 +41,41 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ events: events || [] });
+  // Fetch real user intelligence data for dynamic roll-up stats
+  const { data: intelligences } = await supabase
+    .from("intelexa_intelligence")
+    .select("opportunities, people, scorecard")
+    .eq("user_id", user.id);
+
+  let highValueOpportunities = 0;
+  let keyPeopleConnected = 0;
+  let totalScore = 0;
+  let scoredEventsCount = 0;
+
+  (intelligences || []).forEach((intel) => {
+    if (Array.isArray(intel.opportunities)) {
+      highValueOpportunities += intel.opportunities.filter((o: any) => o.priority === "HIGH").length;
+    }
+    if (Array.isArray(intel.people)) {
+      keyPeopleConnected += intel.people.length;
+    }
+    if (intel.scorecard?.overall_score && typeof intel.scorecard.overall_score === "number") {
+      totalScore += intel.scorecard.overall_score;
+      scoredEventsCount++;
+    }
+  });
+
+  const avgCommercialYield = scoredEventsCount > 0 ? Math.round(totalScore / scoredEventsCount) : null;
+
+  return NextResponse.json({
+    events: events || [],
+    stats: {
+      totalEvents: (events || []).length,
+      highValueOpportunities,
+      keyPeopleConnected,
+      avgCommercialYield,
+    },
+  });
 }
 
 export async function POST(req: Request) {
