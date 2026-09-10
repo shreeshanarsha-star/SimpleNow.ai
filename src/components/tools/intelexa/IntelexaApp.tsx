@@ -549,8 +549,6 @@ export default function IntelexaApp({
             <div className="space-y-2.5 max-w-2xl">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-wash border border-brand/30 text-brand text-xs font-bold uppercase tracking-wider">
                 <span>⚡ INTELEXA.AI</span>
-                <span>&bull;</span>
-                <span>Personal Intelligence Agent</span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight">
                 Turn live conversations into actionable intelligence.
