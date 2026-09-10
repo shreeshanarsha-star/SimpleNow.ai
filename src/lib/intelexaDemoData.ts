@@ -334,13 +334,6 @@ The session opened with Dr. Ananya Sen breaking down why 2026 enterprise softwar
 - **Do Later:** Follow up with Vikram Malhotra on venture metrics.
 
 ---
-
-## 6. Event Scorecard (AI Assessment)
-- **Knowledge Gained:** 88/100  
-- **Business Opportunities:** 94/100  
-- **Networking Value:** 91/100  
-- **Competitive Intelligence:** 85/100  
-- **Overall Value:** 90/100  
 `,
   email_delivery_status: "sent",
   whatsapp_delivery_status: "sent",

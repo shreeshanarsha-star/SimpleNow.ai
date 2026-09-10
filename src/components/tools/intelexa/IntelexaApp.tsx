@@ -42,11 +42,13 @@ export default function IntelexaApp({
     totalEvents: number;
     highValueOpportunities: number;
     keyPeopleConnected: number;
-    avgCommercialYield: number | null;
+    actionItemsCreated?: number;
+    avgCommercialYield?: number | null;
   }>({
     totalEvents: 0,
     highValueOpportunities: 0,
     keyPeopleConnected: 0,
+    actionItemsCreated: 0,
     avgCommercialYield: null,
   });
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -638,12 +640,12 @@ export default function IntelexaApp({
               </div>
 
               <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft">
-                <div className="text-xs font-medium text-ink-muted">Avg Commercial Yield</div>
+                <div className="text-xs font-medium text-ink-muted">Action Items Created</div>
                 <div className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">
-                  {stats.avgCommercialYield !== null ? `${stats.avgCommercialYield}/100` : "--"}
+                  {(stats.actionItemsCreated || 0) > 0 ? `✅ ${stats.actionItemsCreated}` : "0"}
                 </div>
                 <div className="text-[11px] text-ink-muted mt-0.5">
-                  {stats.avgCommercialYield !== null ? "Average AI assessment" : "Computed after first event"}
+                  {(stats.actionItemsCreated || 0) > 0 ? "Prioritized tasks & follow-ups" : "Extracted from event decisions"}
                 </div>
               </div>
             </div>

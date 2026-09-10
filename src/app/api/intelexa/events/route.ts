@@ -44,13 +44,12 @@ export async function GET() {
   // Fetch real user intelligence data for dynamic roll-up stats
   const { data: intelligences } = await supabase
     .from("intelexa_intelligence")
-    .select("opportunities, people, scorecard")
+    .select("opportunities, people, action_plan")
     .eq("user_id", user.id);
 
   let highValueOpportunities = 0;
   let keyPeopleConnected = 0;
-  let totalScore = 0;
-  let scoredEventsCount = 0;
+  let actionItemsCreated = 0;
 
   (intelligences || []).forEach((intel) => {
     if (Array.isArray(intel.opportunities)) {
@@ -59,13 +58,14 @@ export async function GET() {
     if (Array.isArray(intel.people)) {
       keyPeopleConnected += intel.people.length;
     }
-    if (intel.scorecard?.overall_score && typeof intel.scorecard.overall_score === "number") {
-      totalScore += intel.scorecard.overall_score;
-      scoredEventsCount++;
+    if (intel.action_plan && typeof intel.action_plan === "object") {
+      const plan = intel.action_plan as any;
+      actionItemsCreated +=
+        (Array.isArray(plan.do_today) ? plan.do_today.length : 0) +
+        (Array.isArray(plan.do_this_week) ? plan.do_this_week.length : 0) +
+        (Array.isArray(plan.do_later) ? plan.do_later.length : 0);
     }
   });
-
-  const avgCommercialYield = scoredEventsCount > 0 ? Math.round(totalScore / scoredEventsCount) : null;
 
   return NextResponse.json({
     events: events || [],
@@ -73,7 +73,7 @@ export async function GET() {
       totalEvents: (events || []).length,
       highValueOpportunities,
       keyPeopleConnected,
-      avgCommercialYield,
+      actionItemsCreated,
     },
   });
 }

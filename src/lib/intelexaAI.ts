@@ -256,7 +256,7 @@ export interface ExtractedIntelligence {
     do_later: Array<{ task: string; deadline?: string; priority?: string }>;
   };
   top_3_recommendations: string[];
-  scorecard: {
+  scorecard?: {
     knowledge_score: number;
     opportunities_score: number;
     networking_score: number;
@@ -450,7 +450,6 @@ ${JSON.stringify({
   competitive: intel.competitive_intelligence,
   actions: intel.action_plan,
   top3: intel.top_3_recommendations,
-  scorecard: intel.scorecard
 }, null, 2)}
 
 Ensure the full_markdown contains:
@@ -465,8 +464,7 @@ Ensure the full_markdown contains:
 9. Top 3 Recommendations ("If I only do three things...")
 10. People to Follow Up With
 11. Follow-up Drafts (Email, WhatsApp, LinkedIn)
-12. Event Scorecard (Knowledge, Opportunities, Networking, Competitive, Overall /100)
-13. Delivery & Next Actions`;
+12. Delivery & Next Actions`;
 
   return callOpenAiJson<EventReportResult>(systemPrompt, userPrompt, 3800);
 }

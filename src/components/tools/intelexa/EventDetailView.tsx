@@ -361,55 +361,6 @@ export default function EventDetailView({
             </ul>
           </div>
 
-          {/* Event Scorecard (Section 13.12) */}
-          {intelligence?.scorecard && (
-            <div className="p-5 rounded-2xl bg-surface border border-border shadow-soft space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-ink">
-                    Event Intelligence Scorecard
-                  </h3>
-                  <p className="text-[11px] text-ink-muted">AI assessment of commercial and strategic yield</p>
-                </div>
-                <div className="px-3 py-1 rounded-xl bg-brand text-white font-extrabold text-sm shadow-sm">
-                  {intelligence.scorecard.overall_score}/100 Overall
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3 bg-page rounded-xl border border-border text-center">
-                  <div className="text-[11px] text-ink-muted font-medium">Knowledge Gained</div>
-                  <div className="text-lg font-bold text-ink mt-0.5">
-                    {intelligence.scorecard.knowledge_score}/100
-                  </div>
-                </div>
-                <div className="p-3 bg-page rounded-xl border border-border text-center">
-                  <div className="text-[11px] text-ink-muted font-medium">Opportunities</div>
-                  <div className="text-lg font-bold text-brand mt-0.5">
-                    {intelligence.scorecard.opportunities_score}/100
-                  </div>
-                </div>
-                <div className="p-3 bg-page rounded-xl border border-border text-center">
-                  <div className="text-[11px] text-ink-muted font-medium">Networking Value</div>
-                  <div className="text-lg font-bold text-ink mt-0.5">
-                    {intelligence.scorecard.networking_score}/100
-                  </div>
-                </div>
-                <div className="p-3 bg-page rounded-xl border border-border text-center">
-                  <div className="text-[11px] text-ink-muted font-medium">Competitive Intel</div>
-                  <div className="text-lg font-bold text-ink mt-0.5">
-                    {intelligence.scorecard.competitive_score}/100
-                  </div>
-                </div>
-              </div>
-
-              {intelligence.scorecard.rationale && (
-                <p className="text-xs text-ink-muted bg-page/60 p-3 rounded-xl border border-border italic">
-                  &ldquo;{intelligence.scorecard.rationale}&rdquo;
-                </p>
-              )}
-            </div>
-          )}
 
           {/* Top 3 Recommendations (Section 13.9) */}
           {intelligence?.top_3_recommendations && intelligence.top_3_recommendations.length > 0 && (
