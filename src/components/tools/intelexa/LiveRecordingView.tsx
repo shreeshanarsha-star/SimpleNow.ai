@@ -69,6 +69,7 @@ export default function LiveRecordingView({
   const secondsRef = useRef<number>(0);
   const isStoppingRef = useRef<boolean>(false);
   const isPausedRef = useRef<boolean>(false);
+  const inFlightPromisesRef = useRef<Promise<any>[]>([]);
 
   // Format Elapsed Time HH:MM:SS
   function formatTime(totalSec: number): string {
@@ -174,7 +175,7 @@ export default function LiveRecordingView({
   }, []);
 
   // Upload and Transcribe an Audio Slice via Whisper
-  async function transcribeSegmentBlob(blob: Blob, offsetSec: number, chunkIndex: number) {
+  const transcribeSegmentBlob = useCallback(async (blob: Blob, offsetSec: number, chunkIndex: number) => {
     if (blob.size < 1500) return; // Ignore silent empty clicks
 
     setSyncingChunk(true);
@@ -249,7 +250,7 @@ export default function LiveRecordingView({
     } finally {
       setSyncingChunk(false);
     }
-  }
+  }, [activeSessionId, detectQuickSignal]);
 
   // Helper to start a fresh Segment Recorder on the active stream
   const startSegmentRecorder = useCallback(() => {
@@ -278,18 +279,19 @@ export default function LiveRecordingView({
       }
     };
 
-    segRecorder.onstop = async () => {
+    segRecorder.onstop = () => {
       const actualMime = segRecorder.mimeType || mimeType || "audio/webm";
       if (segmentChunksRef.current.length > 0) {
         const segBlob = new Blob(segmentChunksRef.current, { type: actualMime });
         segmentChunksRef.current = [];
-        await transcribeSegmentBlob(segBlob, startOffset, thisIndex);
+        const task = transcribeSegmentBlob(segBlob, startOffset, thisIndex);
+        inFlightPromisesRef.current.push(task);
       }
     };
 
     segRecorder.start(1000);
     segmentRecorderRef.current = segRecorder;
-  }, [activeSessionId, detectQuickSignal]);
+  }, [transcribeSegmentBlob]);
 
   // Cycle segment recorder: stops current segment (flushing valid EBML footer) & immediately starts a fresh one
   const cycleSegmentRecorder = useCallback(() => {
@@ -561,8 +563,11 @@ export default function LiveRecordingView({
       } catch {}
     }
 
-    // Wait 500ms for final onstop + dataavailable events to flush
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // Wait for final onstop event and all in-flight transcription promises (capped at 3.5s timeout)
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const inFlightWait = Promise.allSettled(inFlightPromisesRef.current);
+    const timeoutWait = new Promise((resolve) => setTimeout(resolve, 3500));
+    await Promise.race([inFlightWait, timeoutWait]);
 
     // Combine transcripts with fail-safe fusion:
     // If Whisper has rich content, use Whisper. If Whisper dropped chunks or is sparse, use Web Speech.
