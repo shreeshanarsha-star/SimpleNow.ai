@@ -60,6 +60,7 @@ export default function EventDetailView({
   onDeleteReport,
   onSyncTodo,
   onRedeliver,
+  onReAnalyse,
 }: {
   event: EventDetailData;
   transcript?: TranscriptData | null;
@@ -72,6 +73,7 @@ export default function EventDetailView({
   onDeleteReport: () => Promise<void>;
   onSyncTodo: (task: string, deadline?: string) => Promise<boolean>;
   onRedeliver: (channel?: "email" | "whatsapp") => Promise<void>;
+  onReAnalyse?: () => Promise<void>;
 }) {
   const [activeTab, setActiveTab] = useState<
     "report" | "opportunities" | "people" | "competitive" | "actions" | "transcript" | "qa"
@@ -86,6 +88,7 @@ export default function EventDetailView({
   const [transcriptFilter, setTranscriptFilter] = useState("");
   const [showPrivacyMenu, setShowPrivacyMenu] = useState(false);
   const [redelivering, setRedelivering] = useState(false);
+  const [reanalysing, setReanalysing] = useState(false);
 
   // Format Duration
   const totalSec = event.duration_seconds || 0;
@@ -243,6 +246,27 @@ export default function EventDetailView({
             Share WhatsApp
           </a>
 
+          {/* Re-Generate Intelligence Button */}
+          {onReAnalyse && !event.is_demo && (
+            <button
+              type="button"
+              onClick={async () => {
+                setReanalysing(true);
+                try {
+                  await onReAnalyse();
+                } finally {
+                  setReanalysing(false);
+                }
+              }}
+              disabled={reanalysing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand text-white font-semibold text-xs hover:bg-brand/90 transition shadow-sm disabled:opacity-50"
+              title="Re-run AI Intelligence Analysis and build fresh report on this transcript"
+            >
+              <Icon name="sparkles" className="w-3.5 h-3.5" />
+              {reanalysing ? "Analysing..." : "⚡ Re-Generate Intelligence"}
+            </button>
+          )}
+
           {/* Re-deliver / Retry Button */}
           <button
             type="button"
@@ -343,6 +367,37 @@ export default function EventDetailView({
       {/* TAB 1: Intelligence Report */}
       {activeTab === "report" && (
         <div className="space-y-6">
+          {/* If report is missing or empty */}
+          {(!report?.executive_brief || report.executive_brief.length === 0) && !report?.full_markdown && (
+            <div className="p-8 rounded-2xl bg-surface border border-border text-center space-y-4 shadow-soft">
+              <div className="text-4xl">🎙️</div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-ink">Intelligence Report Not Yet Generated</h3>
+                <p className="text-xs text-ink-muted max-w-md mx-auto">
+                  This session has transcript data recorded, but the full 13-section AI intelligence report has not been generated yet.
+                </p>
+              </div>
+              {onReAnalyse && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setReanalysing(true);
+                    try {
+                      await onReAnalyse();
+                    } finally {
+                      setReanalysing(false);
+                    }
+                  }}
+                  disabled={reanalysing}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-white font-bold text-xs hover:bg-brand/90 transition shadow-button disabled:opacity-50"
+                >
+                  <Icon name="sparkles" className="w-4 h-4" />
+                  {reanalysing ? "Generating Intelligence Report..." : "⚡ Generate Intelligence Report Now"}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Executive Brief (Section 13.1) */}
           <div className="p-5 rounded-2xl bg-surface border border-border shadow-soft space-y-3">
             <div className="flex items-center justify-between">

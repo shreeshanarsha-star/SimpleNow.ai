@@ -4,6 +4,7 @@ import { deliverEventIntelligence } from "@/lib/intelexaDelivery";
 import type { ExtractedIntelligence } from "@/lib/intelexaAI";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(
   req: Request,

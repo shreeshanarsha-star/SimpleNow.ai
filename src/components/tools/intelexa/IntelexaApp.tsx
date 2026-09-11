@@ -454,6 +454,49 @@ export default function IntelexaApp({
     }
   }
 
+  // 9. Re-Generate Intelligence for existing event
+  async function handleReAnalyse(eventId: string) {
+    setView("processing");
+    setProcessingStep("Fusing saved transcript and mining strategic signals...");
+
+    try {
+      setTimeout(() => {
+        setProcessingStep("Mining opportunities, pain points & personalizing against your goals...");
+      }, 2000);
+
+      setTimeout(() => {
+        setProcessingStep("Constructing 13-section intelligence report and executive brief...");
+      }, 5000);
+
+      const res = await fetch(`/api/intelexa/events/${eventId}/analyse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auto_name: false,
+        }),
+      });
+
+      if (res.ok) {
+        // Refresh events list
+        const refreshRes = await fetch("/api/intelexa/events");
+        if (refreshRes.ok) {
+          const eData = await refreshRes.json();
+          setEvents(eData.events || []);
+          if (eData.stats) setStats(eData.stats);
+        }
+
+        await openEventDetail(eventId);
+      } else {
+        const err = await res.json();
+        alert(err.error || "Failed to re-analyze event.");
+        await openEventDetail(eventId);
+      }
+    } catch (e) {
+      alert("Re-analysis error: " + (e as Error).message);
+      await openEventDetail(eventId);
+    }
+  }
+
   // Filtered Events
   const filteredEvents = events.filter(
     (e) =>
@@ -467,6 +510,7 @@ export default function IntelexaApp({
       {/* VIEW 1: LIVE RECORDING */}
       {view === "recording" && activeSession && (
         <LiveRecordingView
+          sessionId={activeSession.id}
           eventName={activeSession.eventName}
           eventType={activeSession.eventType}
           watchFor={activeSession.watchFor}
@@ -540,6 +584,7 @@ export default function IntelexaApp({
           onDeleteReport={() => handleDeleteReport(selectedEventData.event.id)}
           onSyncTodo={handleSyncTodo}
           onRedeliver={handleRedeliver}
+          onReAnalyse={() => handleReAnalyse(selectedEventData.event.id)}
         />
       )}
 

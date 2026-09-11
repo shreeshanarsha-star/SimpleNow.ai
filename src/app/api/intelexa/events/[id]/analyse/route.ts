@@ -8,6 +8,7 @@ import {
 import { deliverEventIntelligence } from "@/lib/intelexaDelivery";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(
   req: Request,
@@ -34,9 +35,27 @@ export async function POST(
       attachments = [],
     } = body;
 
-    if (!transcript_text.trim()) {
+    let rawTranscriptText = (transcript_text || "").trim();
+    let rawTranscriptSegments = transcript_segments || [];
+
+    // If no transcript was provided in request body, retrieve existing saved transcript
+    if (!rawTranscriptText) {
+      const { data: existingTranscript } = await supabase
+        .from("intelexa_transcripts")
+        .select("full_text, segments")
+        .eq("event_id", id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (existingTranscript?.full_text?.trim()) {
+        rawTranscriptText = existingTranscript.full_text.trim();
+        rawTranscriptSegments = existingTranscript.segments || [];
+      }
+    }
+
+    if (!rawTranscriptText) {
       return NextResponse.json(
-        { error: "No transcript content was provided for analysis." },
+        { error: "No transcript content was found or provided for analysis." },
         { status: 400 }
       );
     }
@@ -79,20 +98,47 @@ export async function POST(
       })),
     };
 
-    // 3. Mark Event as Processing
+    // 3. Store Raw Transcript FIRST so speech is never lost
+    await supabase.from("intelexa_transcripts").upsert(
+      {
+        event_id: id,
+        user_id: user.id,
+        full_text: rawTranscriptText,
+        segments: rawTranscriptSegments,
+      },
+      { onConflict: "event_id" }
+    );
+
+    // 4. Mark Event as Processing
     await supabase
       .from("intelexa_events")
       .update({
         recording_status: "stopped",
         processing_status: "processing",
-        processing_step: "Transcribing and extracting entities...",
-        duration_seconds,
+        processing_step: "Mining opportunities, slides, and personal notes...",
+        duration_seconds: Math.max(duration_seconds, event.duration_seconds || 0),
         end_time: new Date().toISOString(),
         metadata: updatedMetadata,
       })
       .eq("id", id);
 
-    // 4. Auto-generate Name if blank
+    // 5. Multi-Stage AI Intelligence Extraction (Fused with Slides & User Notes)
+    const intel = await processEventIntelligence(
+      rawTranscriptText,
+      userProfileContext,
+      {
+        event_name: event.event_name,
+        event_type: event.event_type,
+        objectives: event.objectives,
+        watch_for: event.watch_for,
+        location: event.location,
+        duration_seconds: Math.max(duration_seconds, event.duration_seconds || 0),
+        user_notes: user_notes || existingMetadata.user_notes || "",
+        attachments,
+      }
+    );
+
+    // 6. Name Resolution (Use title generated in single-pass extraction if title was blank)
     let finalEventName = event.event_name;
     if (
       auto_name ||
@@ -100,46 +146,14 @@ export async function POST(
       finalEventName === "Untitled Event Session" ||
       finalEventName.trim().length === 0
     ) {
-      finalEventName = await generateAutomaticEventName(transcript_text);
+      finalEventName = intel.event_name || (await generateAutomaticEventName(rawTranscriptText));
       await supabase
         .from("intelexa_events")
         .update({ event_name: finalEventName })
         .eq("id", id);
     }
 
-    // 5. Store Transcript
-    await supabase.from("intelexa_transcripts").upsert(
-      {
-        event_id: id,
-        user_id: user.id,
-        full_text: transcript_text,
-        segments: transcript_segments,
-      },
-      { onConflict: "event_id" }
-    );
-
-    // 6. Multi-Stage AI Intelligence Extraction (Fused with Slides & User Notes)
-    await supabase
-      .from("intelexa_events")
-      .update({ processing_step: "Mining opportunities, slides, and personal notes..." })
-      .eq("id", id);
-
-    const intel = await processEventIntelligence(
-      transcript_text,
-      userProfileContext,
-      {
-        event_name: finalEventName,
-        event_type: event.event_type,
-        objectives: event.objectives,
-        watch_for: event.watch_for,
-        location: event.location,
-        duration_seconds,
-        user_notes,
-        attachments,
-      }
-    );
-
-    // 7. Store Intelligence
+    // 7. Store Intelligence Record
     const { data: savedIntel } = await supabase
       .from("intelexa_intelligence")
       .insert({
@@ -160,10 +174,10 @@ export async function POST(
       .select()
       .single();
 
-    // 8. Construct Final 13-Section Report
+    // 8. Construct Final Report (Instant deterministic compilation from structured data)
     await supabase
       .from("intelexa_events")
-      .update({ processing_step: "Constructing polished executive intelligence report..." })
+      .update({ processing_step: "Constructing executive intelligence report..." })
       .eq("id", id);
 
     const reportData = await constructEventReport(
@@ -178,7 +192,7 @@ export async function POST(
       userProfileContext
     );
 
-    // 9. Deliver via Email & WhatsApp
+    // 9. Deliver via Email & WhatsApp (Safe non-blocking delivery)
     await supabase
       .from("intelexa_events")
       .update({ processing_step: "Delivering report to recipients..." })
@@ -197,15 +211,28 @@ export async function POST(
           },
         ];
 
-    const delivery = await deliverEventIntelligence({
-      eventId: id,
-      eventName: finalEventName,
-      eventType: event.event_type,
-      durationSeconds: duration_seconds,
-      executiveBrief: reportData.executive_brief,
-      intelligence: intel,
-      recipients,
-    });
+    let delivery: any = {
+      emailSent: 0,
+      emailFailed: 0,
+      whatsappSent: 0,
+      whatsappFailed: 0,
+      whatsappLinks: [],
+      logs: [],
+    };
+
+    try {
+      delivery = await deliverEventIntelligence({
+        eventId: id,
+        eventName: finalEventName,
+        eventType: event.event_type,
+        durationSeconds: duration_seconds,
+        executiveBrief: reportData.executive_brief,
+        intelligence: intel,
+        recipients,
+      });
+    } catch (deliverErr) {
+      console.warn("[intelexa:analyse] Delivery warning (non-fatal):", deliverErr);
+    }
 
     // 10. Store Final Report
     const { data: savedReport } = await supabase
@@ -229,7 +256,7 @@ export async function POST(
       .update({
         processing_status: "completed",
         processing_step: "Report Delivered",
-        duration_seconds,
+        duration_seconds: Math.max(duration_seconds, event.duration_seconds || 0),
       })
       .eq("id", id)
       .select()

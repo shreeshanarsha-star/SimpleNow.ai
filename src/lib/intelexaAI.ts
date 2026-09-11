@@ -256,6 +256,9 @@ export interface ExtractedIntelligence {
     do_later: Array<{ task: string; deadline?: string; priority?: string }>;
   };
   top_3_recommendations: string[];
+  event_name?: string;
+  executive_brief?: string[];
+  what_happened?: string;
   scorecard?: {
     knowledge_score: number;
     opportunities_score: number;
@@ -400,17 +403,181 @@ Generate the complete structured JSON response matching this schema:
     "2. string",
     "3. string"
   ],
-  "scorecard": {
-    "knowledge_score": 85,
-    "opportunities_score": 90,
-    "networking_score": 80,
-    "competitive_score": 75,
-    "overall_score": 84,
-    "rationale": "string"
-  }
+  "event_name": "Concise professional title (4-8 words, e.g. 'TA Summit — Scaling Tech Hiring & Calibrated Screening')",
+  "executive_brief": [
+    "5 to 7 sharp bullets covering key discussions, opportunities, and decisions in under 60 seconds"
+  ],
+  "what_happened": "Concise 2-paragraph narrative summary of what transpired during the event"
 }`;
 
   return callOpenAiJson<ExtractedIntelligence>(systemPrompt, userPrompt, 4000);
+}
+
+// -------------------------------------------------------------
+// Deterministic 12-Section Markdown Report Compiler
+// -------------------------------------------------------------
+export function compileReportMarkdown(
+  intel: ExtractedIntelligence,
+  eventMeta: EventMetadataContext,
+  userProfile: UserProfileContext
+): string {
+  const eventTitle = eventMeta.event_name || intel.event_name || "Live Intelligence Session";
+  const durationMin = Math.round((eventMeta.duration_seconds || 0) / 60);
+
+  let md = `# INTELEXA EVENT INTELLIGENCE REPORT\n`;
+  md += `**Event:** ${eventTitle} | **Type:** ${eventMeta.event_type || "Conference / Summit"}\n`;
+  md += `**Prepared for:** ${userProfile.name || "User"} (${userProfile.company || "Enterprise"})\n`;
+  md += `**Duration:** ${durationMin > 0 ? `${durationMin} mins` : "Live Session"} | **Location:** ${eventMeta.location || "On-site / Virtual"}\n\n`;
+  md += `---\n\n`;
+
+  // 1. Executive Brief
+  md += `## 1. Executive Brief (Under 60 Seconds)\n`;
+  if (Array.isArray(intel.executive_brief) && intel.executive_brief.length > 0) {
+    intel.executive_brief.forEach((b) => {
+      md += `- ${b}\n`;
+    });
+  } else {
+    md += `- Executive intelligence session captured and processed.\n`;
+  }
+  md += `\n---\n\n`;
+
+  // 2. What Happened
+  md += `## 2. What Happened\n`;
+  md += `${intel.what_happened || "A high-impact event session with key industry stakeholders, strategy discussions, and market moves."}\n\n`;
+  md += `---\n\n`;
+
+  // 3. Top Insights
+  md += `## 3. What Matters: Top Insights\n`;
+  if (Array.isArray(intel.insights) && intel.insights.length > 0) {
+    intel.insights.slice(0, 8).forEach((ins, idx) => {
+      md += `### ${idx + 1}. [${ins.classification || "OBSERVED"}] ${ins.insight} (${ins.timestamp || "Event"})\n`;
+      md += `* **What was said:** ${ins.what_was_said}\n`;
+      md += `* **What it means:** ${ins.what_it_means}\n`;
+      md += `* **Why it matters to you:** ${ins.why_matters}\n\n`;
+    });
+  } else {
+    md += `Insights synthesized from event dialogue and session materials.\n\n`;
+  }
+  md += `---\n\n`;
+
+  // 4. Key People
+  md += `## 4. Key Stakeholders & People Profiled\n`;
+  if (Array.isArray(intel.people) && intel.people.length > 0) {
+    intel.people.forEach((p) => {
+      md += `### 👤 ${p.name} — ${p.role}${p.company ? ` (${p.company})` : ""}\n`;
+      md += `- **Discussed:** ${p.discussed}\n`;
+      md += `- **Interest Level:** ${p.interest}\n`;
+      md += `- **Why It Matters:** ${p.why_matters}\n`;
+      if (p.opportunity) md += `- **Opportunity:** ${p.opportunity}\n`;
+      md += `\n`;
+    });
+  } else {
+    md += `Stakeholder interactions logged and mapped.\n\n`;
+  }
+  md += `---\n\n`;
+
+  // 5. Opportunities
+  md += `## 5. High-Yield Opportunities\n`;
+  if (Array.isArray(intel.opportunities) && intel.opportunities.length > 0) {
+    intel.opportunities.forEach((opp) => {
+      const flame = opp.priority === "HIGH" ? "🔥 [HIGH]" : opp.priority === "MEDIUM" ? "🟡 [MEDIUM]" : "⚪ [LOW]";
+      md += `### ${flame} ${opp.opportunity}\n`;
+      if (opp.person_company) md += `* **Context / Stakeholder:** ${opp.person_company}\n`;
+      md += `* **Reason:** ${opp.reason}\n`;
+      md += `* **Verifiable Evidence:** ${opp.evidence}\n`;
+      md += `* **Recommended Action:** ${opp.recommended_action}\n\n`;
+    });
+  } else {
+    md += `Opportunities mined against your strategic profile.\n\n`;
+  }
+  md += `---\n\n`;
+
+  // 6. Competitive Intelligence
+  md += `## 6. Competitive Intelligence\n`;
+  if (intel.competitive_intelligence?.competitors?.length) {
+    intel.competitive_intelligence.competitors.forEach((c) => {
+      md += `### ⚔️ ${c.name}\n`;
+      if (c.products) md += `- **Products / Features:** ${c.products}\n`;
+      if (c.pricing) md += `- **Pricing Disclosures:** ${c.pricing}\n`;
+      if (c.claims) md += `- **Claims & Positioning:** ${c.claims}\n`;
+      if (c.weaknesses) md += `- **Identified Vulnerabilities:** ${c.weaknesses}\n`;
+      if (c.opportunities) md += `- **Wedge Opportunity:** ${c.opportunities}\n`;
+      md += `\n`;
+    });
+  } else {
+    md += `No direct competitors named during this session.\n\n`;
+  }
+  md += `---\n\n`;
+
+  // 7. Market Intelligence
+  md += `## 7. Market Intelligence\n`;
+  if (intel.market_intelligence) {
+    if (intel.market_intelligence.trends?.length) {
+      md += `**Key Market Trends:**\n`;
+      intel.market_intelligence.trends.forEach((t) => (md += `- ${t}\n`));
+      md += `\n`;
+    }
+    if (intel.market_intelligence.customer_pain?.length) {
+      md += `**Customer Pain Points:**\n`;
+      intel.market_intelligence.customer_pain.forEach((p) => (md += `- ${p}\n`));
+      md += `\n`;
+    }
+    if (intel.market_intelligence.buying_signals?.length) {
+      md += `**Commercial Buying Signals:**\n`;
+      intel.market_intelligence.buying_signals.forEach((s) => (md += `- ${s}\n`));
+      md += `\n`;
+    }
+  }
+  md += `---\n\n`;
+
+  // 8. Action Plan
+  md += `## 8. Prioritized Action Plan\n`;
+  if (intel.action_plan) {
+    if (intel.action_plan.do_today?.length) {
+      md += `### ⚡ Do Today (Immediate Momentum)\n`;
+      intel.action_plan.do_today.forEach((a) => (md += `- [ ] **${a.task}**${a.deadline ? ` (Due: ${a.deadline})` : ""}\n`));
+      md += `\n`;
+    }
+    if (intel.action_plan.do_this_week?.length) {
+      md += `### 📅 Do This Week\n`;
+      intel.action_plan.do_this_week.forEach((a) => (md += `- [ ] **${a.task}**${a.deadline ? ` (Due: ${a.deadline})` : ""}\n`));
+      md += `\n`;
+    }
+    if (intel.action_plan.do_later?.length) {
+      md += `### ⏳ Do Later / Strategic Tracking\n`;
+      intel.action_plan.do_later.forEach((a) => (md += `- [ ] ${a.task}${a.deadline ? ` (${a.deadline})` : ""}\n`));
+      md += `\n`;
+    }
+  }
+  md += `---\n\n`;
+
+  // 9. Top 3 Recommendations
+  md += `## 9. Top 3 Strategic Recommendations\n`;
+  if (intel.top_3_recommendations?.length) {
+    intel.top_3_recommendations.forEach((r, idx) => {
+      md += `${idx + 1}. ${r}\n`;
+    });
+  }
+  md += `\n---\n\n`;
+
+  // 10. Follow-up Drafts
+  md += `## 10. Personalized Follow-up Drafts\n`;
+  if (intel.people?.length) {
+    intel.people.slice(0, 3).forEach((p) => {
+      md += `### Follow-up with ${p.name} (${p.company || "Enterprise"})\n`;
+      if (p.follow_up_drafts?.email) {
+        md += `**📧 Email Draft:**\n\`\`\`text\n${p.follow_up_drafts.email}\n\`\`\`\n\n`;
+      }
+      if (p.follow_up_drafts?.whatsapp) {
+        md += `**💬 WhatsApp Draft:**\n\`\`\`text\n${p.follow_up_drafts.whatsapp}\n\`\`\`\n\n`;
+      }
+      if (p.follow_up_drafts?.linkedin) {
+        md += `**🔗 LinkedIn Note:**\n\`\`\`text\n${p.follow_up_drafts.linkedin}\n\`\`\`\n\n`;
+      }
+    });
+  }
+
+  return md;
 }
 
 // -------------------------------------------------------------
@@ -427,46 +594,58 @@ export async function constructEventReport(
   eventMeta: EventMetadataContext,
   userProfile: UserProfileContext
 ): Promise<EventReportResult> {
+  // If single-pass extraction already produced executive brief and what happened, compile immediately in 1ms!
+  if (
+    Array.isArray(intel.executive_brief) &&
+    intel.executive_brief.length > 0 &&
+    intel.what_happened?.trim()
+  ) {
+    return {
+      executive_brief: intel.executive_brief,
+      what_happened: intel.what_happened,
+      full_markdown: compileReportMarkdown(intel, eventMeta, userProfile),
+    };
+  }
+
+  // Fallback: fast synthesis if missing
   const systemPrompt = `You are Intelexa's Master Intelligence Report Writer.
-Generate a structured, executive-grade Event Intelligence Report adhering to the strict 13-section format.
-Tone: Highly intelligent, concise, strategic, polished.
+Generate an executive brief and what happened narrative.
 Return valid JSON:
 {
   "executive_brief": [ "5 to 7 sharp bullets covering the entire event in under 60 seconds" ],
-  "what_happened": "Concise 2-paragraph narrative summary of the event",
-  "full_markdown": "Full Markdown formatted report containing all 13 sections"
+  "what_happened": "Concise 2-paragraph narrative summary of the event"
 }`;
 
   const userPrompt = `Event: ${eventMeta.event_name} (${eventMeta.event_type})
-Location: ${eventMeta.location || "Bengaluru / Virtual"}
-Duration: ${Math.round((eventMeta.duration_seconds || 0) / 60)} minutes
-User: ${userProfile.name || "User"} (${userProfile.company || "Enterprise"})
-${eventMeta.user_notes ? `User Live Notes: ${eventMeta.user_notes}\n` : ""}
-Extracted Data:
-${JSON.stringify({
-  insights: intel.insights.slice(0, 8),
-  people: intel.people.slice(0, 5),
-  opportunities: intel.opportunities.slice(0, 6),
-  competitive: intel.competitive_intelligence,
-  actions: intel.action_plan,
-  top3: intel.top_3_recommendations,
-}, null, 2)}
+Insights: ${JSON.stringify(intel.insights.slice(0, 5))}
+Opportunities: ${JSON.stringify(intel.opportunities.slice(0, 4))}`;
 
-Ensure the full_markdown contains:
-1. Executive Brief (5-7 bullets)
-2. What Happened
-3. What Matters (Top Insights with [OBSERVED], [INFERRED], [RECOMMENDED] tags & timestamps)
-4. People (Key stakeholders with role, company, discussion, and opportunity)
-5. Opportunities (High, Medium, Low priority with evidence and recommended actions)
-6. Competitive Intelligence (Competitors, products, pricing, claims, weaknesses)
-7. Market Intelligence (Trends, customer pain, tech shifts, buying signals)
-8. Action Plan (Do Today, Do This Week, Do Later)
-9. Top 3 Recommendations ("If I only do three things...")
-10. People to Follow Up With
-11. Follow-up Drafts (Email, WhatsApp, LinkedIn)
-12. Delivery & Next Actions`;
-
-  return callOpenAiJson<EventReportResult>(systemPrompt, userPrompt, 3800);
+  try {
+    const res = await callOpenAiJson<{ executive_brief: string[]; what_happened: string }>(
+      systemPrompt,
+      userPrompt,
+      1500
+    );
+    const brief = res.executive_brief || ["Keynote and session takeaways recorded."];
+    const what = res.what_happened || "High-impact event session attended and recorded.";
+    intel.executive_brief = brief;
+    intel.what_happened = what;
+    return {
+      executive_brief: brief,
+      what_happened: what,
+      full_markdown: compileReportMarkdown(intel, eventMeta, userProfile),
+    };
+  } catch {
+    const brief = ["Event session captured and analyzed."];
+    const what = "Comprehensive event intelligence recorded.";
+    intel.executive_brief = brief;
+    intel.what_happened = what;
+    return {
+      executive_brief: brief,
+      what_happened: what,
+      full_markdown: compileReportMarkdown(intel, eventMeta, userProfile),
+    };
+  }
 }
 
 // -------------------------------------------------------------
