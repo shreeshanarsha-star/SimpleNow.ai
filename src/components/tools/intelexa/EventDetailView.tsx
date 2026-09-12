@@ -375,7 +375,7 @@ export default function EventDetailView({
               <div className="space-y-1">
                 <h3 className="text-base font-bold text-ink">Intelligence Report Not Yet Generated</h3>
                 <p className="text-xs text-ink-muted max-w-md mx-auto">
-                  This session has transcript data recorded, but the full 13-section AI intelligence report has not been generated yet.
+                  This session has transcript data captured, but the full 13-section AI intelligence report has not been generated yet.
                 </p>
               </div>
               {onReAnalyse && (

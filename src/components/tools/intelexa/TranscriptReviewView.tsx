@@ -288,7 +288,7 @@ export default function TranscriptReviewView({
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-good animate-pulse" />
               <div>
-                <span className="text-xs font-bold text-ink block">Recorded Master Audio Available</span>
+                <span className="text-xs font-bold text-ink block">Captured Master Audio Available</span>
                 <span className="text-[11px] text-ink-muted">Play to verify microphone clarity before running intelligence</span>
               </div>
             </div>

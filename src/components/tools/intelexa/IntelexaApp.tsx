@@ -164,7 +164,7 @@ export default function IntelexaApp({
     // If user uploaded an audio file directly
     if (params.audioFile) {
       setView("processing");
-      setProcessingStep("Uploading audio recording to transcription server...");
+      setProcessingStep("Uploading audio capture to transcription server...");
 
       const createRes = await fetch("/api/intelexa/events", {
         method: "POST",
@@ -191,7 +191,7 @@ export default function IntelexaApp({
       });
 
       const transcribeData = await transcribeRes.json();
-      const fullText = transcribeData.text || "Uploaded audio recording.";
+      const fullText = transcribeData.text || "Uploaded audio capture.";
       const segments = transcribeData.segments || [];
       const durationSeconds = Math.round(transcribeData.duration || 600);
 
@@ -215,8 +215,8 @@ export default function IntelexaApp({
 
       setReviewData({
         eventId: event.id,
-        eventName: params.eventName || "Audio Recording Session",
-        eventType: params.eventType || "Recording",
+        eventName: params.eventName || "Audio Capture Session",
+        eventType: params.eventType || "Capture",
         durationSeconds,
         transcriptText: fullText,
         segments,
@@ -284,7 +284,7 @@ export default function IntelexaApp({
     }
   }
 
-  // 5. Stop Recording -> Verify Completeness -> Transcript Review Screen
+  // 5. Stop Capture -> Verify Completeness -> Transcript Review Screen
   async function handleStopAndAnalyse(data: {
     transcriptText: string;
     segments: Array<{ start: string; end: string; text: string }>;
@@ -681,7 +681,7 @@ export default function IntelexaApp({
               </span>
               {stats.totalEvents === 0 ? (
                 <span className="text-amber-600 dark:text-amber-400 font-medium">
-                  Awaiting first recording &bull; Explore Demo Event below
+                  Awaiting first capture &bull; Explore Demo Event below
                 </span>
               ) : (
                 <span className="text-good-text font-medium">
@@ -697,7 +697,7 @@ export default function IntelexaApp({
                   {stats.totalEvents}
                 </div>
                 <div className="text-[11px] text-ink-muted mt-0.5">
-                  {stats.totalEvents === 0 ? "0 recorded" : `${stats.totalEvents} recorded`}
+                  {stats.totalEvents === 0 ? "0 captured" : `${stats.totalEvents} captured`}
                 </div>
               </div>
 

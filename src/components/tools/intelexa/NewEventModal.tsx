@@ -434,10 +434,10 @@ export default function NewEventModal({
                     ) : (
                       <div>
                         <div className="text-xs font-semibold text-brand hover:underline">
-                          Click to choose an audio recording
+                          Click to choose an audio capture
                         </div>
                         <div className="text-[11px] text-ink-muted mt-0.5">
-                          Supports .m4a, .mp3, .wav, .webm, .mp4 (Voice memos, recordings)
+                          Supports .m4a, .mp3, .wav, .webm, .mp4 (Voice memos, captures)
                         </div>
                       </div>
                     )}
@@ -754,7 +754,7 @@ export default function NewEventModal({
                 ) : (
                   <>
                     <Icon name="upload" className="w-3.5 h-3.5" />
-                    ANALYSE RECORDING
+                    ANALYSE CAPTURE
                   </>
                 )}
               </button>

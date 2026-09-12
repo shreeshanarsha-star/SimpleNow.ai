@@ -533,7 +533,7 @@ export default function LiveRecordingView({
   // Direct Audio Download (Allows immediate local export of full raw conference recording)
   function handleDownloadMasterAudio() {
     if (masterRecordingChunksRef.current.length === 0) {
-      alert("No audio recorded yet.");
+      alert("No audio captured yet.");
       return;
     }
     const mimeType = detectedMimeTypeRef.current || "audio/webm";
@@ -542,7 +542,7 @@ export default function LiveRecordingView({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${(eventNameRef.current || "intelexa_recording").replace(/\s+/g, "_")}_${Date.now()}.${ext}`;
+    a.download = `${(eventNameRef.current || "intelexa_capture").replace(/\s+/g, "_")}_${Date.now()}.${ext}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -595,7 +595,7 @@ export default function LiveRecordingView({
     // transcribe the FULL master audio blob in one unified pass!
     const whisperWordCount = whisperText ? whisperText.split(/\s+/).filter(Boolean).length : 0;
     if (whisperWordCount < 10 && masterBlob && masterBlob.size > 3000) {
-      setStoppingStatus("Transcribing full master recording via Whisper AI...");
+      setStoppingStatus("Transcribing full master capture via Whisper AI...");
       try {
         const fullMasterText = await transcribeAudioBlob(masterBlob, 0, 9999, true);
         if (fullMasterText && fullMasterText.trim().length > 0) {
@@ -676,7 +676,7 @@ export default function LiveRecordingView({
               ? stoppingStatus.toUpperCase()
               : isPaused
               ? "INTELEXA IS PAUSED"
-              : "INTELEXA IS RECORDING & TRANSCRIBING"}
+              : "INTELEXA IS CAPTURING & TRANSCRIBING"}
           </h2>
         </div>
 
@@ -734,8 +734,8 @@ export default function LiveRecordingView({
 
         <p className="text-xs text-ink-muted mt-2 max-w-md">
           {isPaused
-            ? "Recording paused. Click Resume when ready."
-            : "Screen kept awake. Continuous master recording is active with instant on-device speech transcription."}
+            ? "Capture paused. Click Resume when ready."
+            : "Screen kept awake. Continuous master capture is active with instant on-device speech transcription."}
         </p>
 
         {micError && (
@@ -761,7 +761,7 @@ export default function LiveRecordingView({
           type="button"
           onClick={handleDownloadMasterAudio}
           className="w-full sm:w-auto flex items-center justify-center gap-1.5 py-3 px-4 rounded-2xl border border-border bg-surface text-ink text-xs font-semibold hover:bg-page transition shadow-soft"
-          title="Save complete raw audio recording to your device files"
+          title="Save complete raw audio capture to your device files"
         >
           <span>💾</span>
           <span>Audio Backup</span>
