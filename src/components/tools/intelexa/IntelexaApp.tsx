@@ -609,15 +609,6 @@ export default function IntelexaApp({
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-shrink-0">
               <button
                 type="button"
-                onClick={() => setProfileModalOpen(true)}
-                className="px-4 py-2.5 rounded-2xl border border-border bg-surface text-ink text-xs font-semibold hover:bg-page transition shadow-soft flex items-center justify-center gap-2"
-              >
-                <span>👤</span>
-                Profile & Goals
-              </button>
-
-              <button
-                type="button"
                 onClick={() => openEventDetail(DEMO_EVENT_ID)}
                 className="px-4 py-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-bold hover:bg-amber-500/20 transition flex items-center justify-center gap-2"
                 title="Explore pre-loaded synthetic demonstration event"
@@ -834,6 +825,8 @@ export default function IntelexaApp({
         open={newEventModalOpen}
         onClose={() => setNewEventModalOpen(false)}
         defaultRecipients={recipients}
+        initialProfile={profile}
+        onSaveProfile={handleSaveProfile}
         onStartEvent={handleStartEvent}
       />
     </div>
