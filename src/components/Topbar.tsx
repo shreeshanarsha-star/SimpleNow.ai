@@ -86,12 +86,11 @@ export default function Topbar({
 
       <span className="text-border-strong text-[14px] select-none flex-shrink-0">/</span>
 
-      {/* Option 3: Interactive Topbar Tool Switcher */}
       <div className="relative" ref={dropdownRef}>
         <button
           type="button"
           onClick={() => setDropdownOpen(!dropdownOpen)}
-          title="Switch tool (Option 3: Topbar Switcher)"
+          title="Switch tool"
           aria-expanded={dropdownOpen}
           className="group flex items-center gap-1.5 px-2 py-1 -ml-1 rounded-xl hover:bg-page transition-colors text-ink hover:text-brand"
         >
@@ -109,7 +108,6 @@ export default function Topbar({
           <div className="absolute left-0 top-full mt-2 z-50 w-72 sm:w-80 rounded-2xl bg-surface/95 backdrop-blur-2xl border border-border shadow-2xl p-3 space-y-2.5 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-1.5 border-b border-border/70 text-[11px] font-bold text-ink-muted uppercase tracking-wider">
               <span>Quick Tool Switcher</span>
-              <span className="text-[10px] lowercase text-brand font-semibold">Option 3</span>
             </div>
 
             {/* Category Segmented Selector */}
