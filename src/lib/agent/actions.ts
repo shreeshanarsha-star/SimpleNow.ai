@@ -510,7 +510,7 @@ const addTodo: ActionSpec = {
 
     return {
       ok: true,
-      data: { added: true, id: todo.id, text: todo.text, dueDate: todo.due_date, href: "/tools/widgets-ai?tool=todo" },
+      data: { added: true, id: todo.id, text: todo.text, dueDate: todo.due_date, href: "/tools/todo" },
     };
   },
 };

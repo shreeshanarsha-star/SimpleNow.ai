@@ -4,6 +4,8 @@ import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
 import { ALL_ITEMS, PERSONAL_TOOLS, type Tool } from "@/lib/departments";
 import { createClient } from "@/lib/supabase/server";
+import IconicToolNav from "@/components/tools/personal/IconicToolNav";
+import { getLicensedToolsForUser } from "@/lib/licensedTools";
 
 export const dynamic = "force-dynamic";
 
@@ -21,76 +23,67 @@ export default async function DepartmentPage({
   if (!dept) notFound();
   const d = dept;
 
-  // Personal Tools is a cross-cutting utility set available to everyone
-  // regardless of org/plan -- never license-gated. Every other department's
-  // tool list is filtered down to exactly what the signed-in user's
-  // organization is licensed for (mirrors Sidebar.tsx + requireFeatureAccess).
-  const bypassLicense = dept.id === PERSONAL_TOOLS.id;
-
   let visibleTools: Tool[] = d.tools;
   let gateMessage: string | null = null;
   let filteredByLicense = false;
 
-  if (!bypassLicense) {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-    const isRealUser = Boolean(user && !user.is_anonymous && user.email);
+  const isRealUser = Boolean(user && !user.is_anonymous && user.email);
+  const licensedTools = await getLicensedToolsForUser(supabase, user?.id);
 
-    if (!isRealUser || !user) {
-      // Guests browse the full, unfiltered tool list for this department --
-      // same "see everything, sign in to use it" rule as Sidebar. Clicking
-      // into a live tool hits middleware's /tools/** auth redirect, so
-      // nothing here needs to gate the browsing view itself.
-    } else {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("is_admin, org_id")
-        .eq("id", user.id)
-        .maybeSingle();
+  if (!isRealUser || !user) {
+    // Guests browse bundled tools for personal tools, or the full list for departments
+    if (dept.id === PERSONAL_TOOLS.id) {
+      visibleTools = d.tools.filter((t) => t.bundled);
+    }
+  } else {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("is_admin, org_id")
+      .eq("id", user.id)
+      .maybeSingle();
 
-      if (profile?.is_admin) {
-        // Platform owner -- sees every tool except Talent.ai. He manages
-        // orgs/approvals/grants at the platform level and isn't a
-        // recruiter/hiring-manager/approver in anyone's Talent.ai workflow,
-        // so it's hidden from his own nav; he checks a customer's Talent.ai
-        // usage from that org's row in the Owner Console (/admin/organizations)
-        // instead. Scoped to just this one tool for now -- every other live
-        // tool stays unfiltered for him.
-        visibleTools = d.tools.filter((t) => t.n !== "Talent.ai");
-      } else if (!profile?.org_id) {
+    if (profile?.is_admin) {
+      visibleTools = d.tools.filter((t) => t.n !== "Talent.ai");
+    } else if (!profile?.org_id) {
+      if (dept.id === PERSONAL_TOOLS.id) {
+        visibleTools = d.tools.filter((t) => t.bundled);
+      } else {
         visibleTools = [];
         gateMessage =
           "Your account isn't part of an organization yet. Ask your admin to add you.";
-      } else {
-        const { data: org } = await supabase
-          .from("organizations")
-          .select("plan, status")
-          .eq("id", profile.org_id)
-          .maybeSingle();
+      }
+    } else {
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("plan, status")
+        .eq("id", profile.org_id)
+        .maybeSingle();
 
-        if (org?.status !== "approved") {
+      if (org?.status !== "approved") {
+        if (dept.id === PERSONAL_TOOLS.id) {
+          visibleTools = d.tools.filter((t) => t.bundled);
+        } else {
           visibleTools = [];
           gateMessage = "Your organization is still pending approval from the platform owner.";
-        } else if (org.plan === "bulk") {
-          // Bulk-plan org -- every tool in the department, no per-tool grant needed.
-        } else {
-          const { data: grants } = await supabase
-            .from("feature_access")
-            .select("feature_key")
-            .eq("org_id", profile.org_id);
-          const grantedKeys = new Set((grants || []).map((g) => g.feature_key));
-          // Bundled tools (e.g. Team Chat) need no feature_access grant --
-          // every approved org gets them automatically, same rule as
-          // Sidebar.tsx and requireOrgMember().
-          visibleTools = d.tools.filter((t) => t.bundled || grantedKeys.has(t.n));
-          filteredByLicense = true;
-          if (visibleTools.length === 0) {
-            gateMessage =
-              "Your organization doesn't have access to any tools in this department yet. Ask the platform owner to grant access.";
-          }
+        }
+      } else if (org.plan === "bulk") {
+        // Bulk-plan org -- gets all tools
+      } else {
+        const { data: grants } = await supabase
+          .from("feature_access")
+          .select("feature_key")
+          .eq("org_id", profile.org_id);
+        const grantedKeys = new Set((grants || []).map((g) => g.feature_key));
+        visibleTools = d.tools.filter((t) => t.bundled || grantedKeys.has(t.n));
+        filteredByLicense = true;
+        if (visibleTools.length === 0) {
+          gateMessage =
+            "Your organization doesn't have access to any tools in this department yet. Ask the platform owner to grant access.";
         }
       }
     }
@@ -182,6 +175,12 @@ export default async function DepartmentPage({
           {dept.status === "live" ? "Live" : "Coming soon"}
         </span>
       </div>
+
+      {dept.id === PERSONAL_TOOLS.id && (
+        <div className="pb-5">
+          <IconicToolNav currentHref={`/departments/${dept.id}`} tools={licensedTools} />
+        </div>
+      )}
 
       {visibleTools.length === 0 ? (
         <div className="flex flex-col items-center text-center gap-2 border border-dashed border-border rounded-lg px-8 py-14 max-w-md mx-auto">
