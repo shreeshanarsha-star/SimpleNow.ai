@@ -1,21 +1,18 @@
 import React from "react";
 import Icon from "@/components/Icon";
-import IconicToolNav from "./IconicToolNav";
 import { LicensedTool } from "@/lib/licensedTools";
 
 export default function PersonalToolLayout({
   title,
   description,
   icon = "grid",
-  currentHref,
-  licensedTools,
   children,
 }: {
   title: string;
   description?: string;
   icon?: string;
-  currentHref: string;
-  licensedTools: LicensedTool[];
+  currentHref?: string;
+  licensedTools?: LicensedTool[];
   children: React.ReactNode;
 }) {
   return (
@@ -37,11 +34,6 @@ export default function PersonalToolLayout({
               <p className="text-[12px] text-ink-muted mt-0.5 leading-snug">{description}</p>
             )}
           </div>
-        </div>
-
-        {/* Iconic Navigation to other licensed tools */}
-        <div className="flex-shrink-0">
-          <IconicToolNav currentHref={currentHref} tools={licensedTools} />
         </div>
       </div>
 

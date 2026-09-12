@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import IconicToolNav from "./IconicToolNav";
 import Calculator from "./Calculator";
 import QuickNotes from "./QuickNotes";
 import CalendarWidget from "./CalendarWidget";
@@ -10,7 +9,6 @@ import ClockWidget from "./ClockWidget";
 import TimerStopwatch from "./TimerStopwatch";
 import TodoList from "./TodoList";
 import UnitConverter from "./UnitConverter";
-import { PERSONAL_TOOL_DEFS } from "@/lib/licensedTools";
 
 const TOOLS = [
   { key: "calculator", label: "Calculator", href: "/tools/calculator", Component: Calculator },
@@ -34,10 +32,8 @@ export default function PersonalToolsView() {
 
   return (
     <div className="flex flex-col gap-4 w-full">
-      {/* Sleek Iconic Navigation (Zero bulky sidebar) */}
       <div className="flex items-center justify-between pb-3 border-b border-border/70">
         <h2 className="text-base font-bold text-ink">{current.label}</h2>
-        <IconicToolNav currentHref={current.href} tools={PERSONAL_TOOL_DEFS} />
       </div>
 
       <div className="w-full min-w-0">

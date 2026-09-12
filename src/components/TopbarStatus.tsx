@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Icon from "./Icon";
 import { VScroller } from "./Scroller";
 import ThemeSwitcher from "./ThemeSwitcher";
+import AppLauncher from "./AppLauncher";
 import { createClient } from "@/lib/supabase/client";
 
 // Bengaluru -- fallback location used only when the browser doesn't
@@ -55,6 +56,7 @@ export default function TopbarStatus() {
   const [weather, setWeather] = useState<{ temp: number; code: number } | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [launcherOpen, setLauncherOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [firstName, setFirstName] = useState<string | null>(null);
 
@@ -227,6 +229,17 @@ export default function TopbarStatus() {
 
       {now && <span className="hidden sm:block w-px h-6 bg-border flex-shrink-0" />}
 
+      {/* 9-Dots App Launcher (Personal & Licensed Tools) */}
+      <AppLauncher
+        isOpen={launcherOpen}
+        onToggle={() => {
+          setLauncherOpen((v) => !v);
+          setThemeOpen(false);
+          setNotifOpen(false);
+        }}
+        onClose={() => setLauncherOpen(false)}
+      />
+
       {/* Appearance -- a personalization preference, not a wayfinding
           control, so it lives here in the persistent global header (same
           pattern as GitHub/Linear/Vercel) rather than competing for space
@@ -235,7 +248,11 @@ export default function TopbarStatus() {
         <button
           type="button"
           aria-label="Appearance"
-          onClick={() => setThemeOpen((v) => !v)}
+          onClick={() => {
+            setThemeOpen((v) => !v);
+            setLauncherOpen(false);
+            setNotifOpen(false);
+          }}
           className="w-7 h-7 rounded-full flex items-center justify-center text-ink-2 hover:text-ink hover:bg-surface transition-colors flex-shrink-0"
         >
           <Icon name="palette" className="w-[14px] h-[14px]" />
@@ -262,7 +279,11 @@ export default function TopbarStatus() {
         <button
           type="button"
           aria-label="Notifications"
-          onClick={() => setNotifOpen((v) => !v)}
+          onClick={() => {
+            setNotifOpen((v) => !v);
+            setLauncherOpen(false);
+            setThemeOpen(false);
+          }}
           className="relative w-7 h-7 rounded-full flex items-center justify-center text-ink-2 hover:text-ink hover:bg-surface transition-colors flex-shrink-0"
         >
           <Icon name="bell" className="w-[14px] h-[14px]" />

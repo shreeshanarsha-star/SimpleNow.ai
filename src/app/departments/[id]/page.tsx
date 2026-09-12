@@ -4,8 +4,6 @@ import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
 import { ALL_ITEMS, PERSONAL_TOOLS, type Tool } from "@/lib/departments";
 import { createClient } from "@/lib/supabase/server";
-import IconicToolNav from "@/components/tools/personal/IconicToolNav";
-import { getLicensedToolsForUser } from "@/lib/licensedTools";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +30,6 @@ export default async function DepartmentPage({
   } = await supabase.auth.getUser();
 
   const isRealUser = Boolean(user && !user.is_anonymous && user.email);
-  const licensedTools = await getLicensedToolsForUser(supabase, user?.id);
 
   if (!isRealUser || !user) {
     // Guests browse bundled tools for personal tools, or the full list for departments
@@ -168,12 +165,6 @@ export default async function DepartmentPage({
           {dept.status === "live" ? "Live" : "Coming soon"}
         </span>
       </div>
-
-      {dept.id === PERSONAL_TOOLS.id && (
-        <div className="pb-5">
-          <IconicToolNav currentHref={`/departments/${dept.id}`} tools={licensedTools} />
-        </div>
-      )}
 
       {visibleTools.length === 0 ? (
         <div className="flex flex-col items-center text-center gap-2 border border-dashed border-border rounded-lg px-8 py-14 max-w-md mx-auto">
