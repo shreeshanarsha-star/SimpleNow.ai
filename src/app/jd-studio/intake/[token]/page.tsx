@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
+import Logo from "@/components/Logo";
 import type { JdQuestion, JdDraft, BiasFlag } from "@/lib/jdstudio/types";
 
 interface TokenData {
@@ -90,7 +91,12 @@ export default function JdIntakePage({ params }: { params: Promise<{ token: stri
   return (
     <div className="min-h-screen bg-[#f7f4ec] flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-xl bg-white rounded-2xl border border-[#e9e3d3] shadow-sm p-8">
-        <div className="text-[12px] font-bold tracking-wide text-[#8a6a10] uppercase mb-4">JD Studio.ai</div>
+        <div className="flex items-center justify-between gap-2 mb-6 border-b border-[#e9e3d3] pb-4">
+          <Logo height={26} />
+          <div className="text-[11.5px] font-bold tracking-wide text-[#8a6a10] uppercase bg-[#fbf8f0] border border-[#e9e3d3] px-2.5 py-1 rounded">
+            JD Studio.ai
+          </div>
+        </div>
 
         {loading && <p className="text-[13px] text-[#8c8776]">Loading…</p>}
 

@@ -34,6 +34,7 @@ export default function IntelexaApp({
     transcriptText: string;
     segments: Array<{ start: string; end: string; text: string; speaker?: string }>;
     audit: any;
+    audioBlob?: Blob;
   } | null>(null);
 
   // Events list & selected event
@@ -256,6 +257,7 @@ export default function IntelexaApp({
     transcriptText: string;
     segments: Array<{ start: string; end: string; text: string }>;
     durationSeconds: number;
+    audioBlob?: Blob;
   }) {
     if (!activeSession) return;
     const eventId = activeSession.id;
@@ -289,6 +291,7 @@ export default function IntelexaApp({
         transcriptText: data.transcriptText,
         segments: data.segments,
         audit,
+        audioBlob: data.audioBlob,
       });
 
       setView("review_completeness");
@@ -302,6 +305,7 @@ export default function IntelexaApp({
         transcriptText: data.transcriptText,
         segments: data.segments,
         audit: null,
+        audioBlob: data.audioBlob,
       });
       setView("review_completeness");
     }
@@ -527,6 +531,7 @@ export default function IntelexaApp({
           transcriptText={reviewData.transcriptText}
           segments={reviewData.segments}
           audit={reviewData.audit}
+          audioBlob={reviewData.audioBlob}
           onConfirmAndAnalyse={handleConfirmAndAnalyse}
           onSaveTranscriptOnly={handleSaveTranscriptOnly}
           onGoHome={handleGoHome}

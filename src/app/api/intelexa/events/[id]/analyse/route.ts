@@ -45,6 +45,8 @@ export async function POST(
         .select("full_text, segments")
         .eq("event_id", id)
         .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (existingTranscript?.full_text?.trim()) {
@@ -99,15 +101,16 @@ export async function POST(
     };
 
     // 3. Store Raw Transcript FIRST so speech is never lost
-    await supabase.from("intelexa_transcripts").upsert(
-      {
-        event_id: id,
-        user_id: user.id,
-        full_text: rawTranscriptText,
-        segments: rawTranscriptSegments,
-      },
-      { onConflict: "event_id" }
-    );
+    await supabase.from("intelexa_transcripts").delete().eq("event_id", id);
+    const { error: transcriptInsertErr } = await supabase.from("intelexa_transcripts").insert({
+      event_id: id,
+      user_id: user.id,
+      full_text: rawTranscriptText,
+      segments: rawTranscriptSegments,
+    });
+    if (transcriptInsertErr) {
+      console.error("[intelexa:analyse] Failed to store transcript:", transcriptInsertErr);
+    }
 
     // 4. Mark Event as Processing
     await supabase
@@ -154,6 +157,7 @@ export async function POST(
     }
 
     // 7. Store Intelligence Record
+    await supabase.from("intelexa_intelligence").delete().eq("event_id", id);
     const { data: savedIntel } = await supabase
       .from("intelexa_intelligence")
       .insert({
@@ -235,6 +239,7 @@ export async function POST(
     }
 
     // 10. Store Final Report
+    await supabase.from("intelexa_reports").delete().eq("event_id", id);
     const { data: savedReport } = await supabase
       .from("intelexa_reports")
       .insert({

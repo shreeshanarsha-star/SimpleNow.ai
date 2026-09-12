@@ -51,10 +51,32 @@ export async function GET(
 
   // Fetch associated records
   const [transcriptRes, intelligenceRes, reportRes, qaRes] = await Promise.all([
-    supabase.from("intelexa_transcripts").select("*").eq("event_id", id).maybeSingle(),
-    supabase.from("intelexa_intelligence").select("*").eq("event_id", id).maybeSingle(),
-    supabase.from("intelexa_reports").select("*").eq("event_id", id).maybeSingle(),
-    supabase.from("intelexa_qa").select("*").eq("event_id", id).order("created_at", { ascending: true }),
+    supabase
+      .from("intelexa_transcripts")
+      .select("*")
+      .eq("event_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("intelexa_intelligence")
+      .select("*")
+      .eq("event_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("intelexa_reports")
+      .select("*")
+      .eq("event_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("intelexa_qa")
+      .select("*")
+      .eq("event_id", id)
+      .order("created_at", { ascending: true }),
   ]);
 
   return NextResponse.json({

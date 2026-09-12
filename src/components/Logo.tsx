@@ -22,10 +22,24 @@ const GOLD = "#C79A3E";
 export default function Logo({
   height = 28,
   className = "",
+  variant = "vector",
 }: {
   height?: number;
   className?: string;
+  variant?: "vector" | "image";
 }) {
+  if (variant === "image") {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src="/simplenow-logo.png"
+        alt="SimpleNow"
+        style={{ height: `${height}px`, width: "auto" }}
+        className={`flex-shrink-0 object-contain select-none ${className}`}
+      />
+    );
+  }
+
   const checkSize = height * 0.58;
 
   return (
@@ -39,7 +53,7 @@ export default function Logo({
         lineHeight: 1,
       }}
     >
-      <span style={{ color: "var(--ink)" }}>Simple</span>
+      <span style={{ color: "var(--ink, currentColor)" }}>Simple</span>
       <span className="relative inline-flex items-baseline" style={{ color: GOLD }}>
         N
         <svg

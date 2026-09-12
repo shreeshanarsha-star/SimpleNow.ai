@@ -26,9 +26,14 @@ export default function LiveRecordingView({
     transcriptText: string;
     segments: Array<{ start: string; end: string; text: string }>;
     durationSeconds: number;
+    audioBlob?: Blob;
   }) => void;
 }) {
   const activeSessionId = useRef<string>(sessionId || `session_${Date.now()}`).current;
+  const eventNameRef = useRef(eventName);
+  eventNameRef.current = eventName;
+  const eventTypeRef = useRef(eventType);
+  eventTypeRef.current = eventType;
 
   const [seconds, setSeconds] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
@@ -46,23 +51,25 @@ export default function LiveRecordingView({
   const [syncingChunk, setSyncingChunk] = useState<boolean>(false);
   const [wordCount, setWordCount] = useState<number>(0);
   const [stopping, setStopping] = useState<boolean>(false);
+  const [stoppingStatus, setStoppingStatus] = useState<string>("Finalizing audio & transcribing...");
   const [copiedLive, setCopiedLive] = useState<boolean>(false);
   const [hasWebSpeech, setHasWebSpeech] = useState<boolean>(false);
+  const [lowAudioWarning, setLowAudioWarning] = useState<boolean>(false);
 
-  // References
+  // Master Audio Recording (NEVER WIPED: Stores 100% of all audio slices)
+  const masterRecordingChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
-  const masterRecorderRef = useRef<MediaRecorder | null>(null);
-  const masterChunksRef = useRef<Blob[]>([]);
-  const segmentRecorderRef = useRef<MediaRecorder | null>(null);
-  const segmentChunksRef = useRef<Blob[]>([]);
+  const activeSegmentRecorderRef = useRef<MediaRecorder | null>(null);
   const segmentIndexRef = useRef<number>(0);
-  const segmentStartTimeRef = useRef<number>(0);
+  const detectedMimeTypeRef = useRef<string>("audio/webm");
 
   const wakeLockRef = useRef<any>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const segmentCycleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number | null>(null);
+  const silentFramesCountRef = useRef<number>(0);
+
   const whisperTranscriptRef = useRef<string>("");
   const webSpeechTranscriptRef = useRef<string>("");
   const speechRecognitionRef = useRef<any>(null);
@@ -80,7 +87,7 @@ export default function LiveRecordingView({
     return `${pad(h)}:${pad(m)}:${pad(s)}`;
   }
 
-  // 1. Request Screen Wake Lock (Keeps mobile screen awake on conference table)
+  // 1. Request Screen Wake Lock (Keeps mobile awake during keynote)
   useEffect(() => {
     async function requestWakeLock() {
       try {
@@ -174,61 +181,77 @@ export default function LiveRecordingView({
     }
   }, []);
 
-  // Upload and Transcribe an Audio Slice via Whisper
-  const transcribeSegmentBlob = useCallback(async (blob: Blob, offsetSec: number, chunkIndex: number) => {
-    if (blob.size < 1500) return; // Ignore silent empty clicks
+  // Transcribe an Audio Slice via Whisper
+  const transcribeAudioBlob = useCallback(
+    async (blob: Blob, offsetSec: number, chunkIndex: number, isFinalMaster = false): Promise<string> => {
+      if (blob.size < 1200) return "";
 
-    setSyncingChunk(true);
-    try {
-      const form = new FormData();
-      const mimeType = blob.type || "audio/webm";
-      const ext = mimeType.includes("mp4") ? "mp4" : "webm";
-      form.append("file", blob, `chunk_${offsetSec}.${ext}`);
-      form.append("offset", offsetSec.toString());
+      setSyncingChunk(true);
+      try {
+        const form = new FormData();
+        const mimeType = blob.type || detectedMimeTypeRef.current || "audio/webm";
+        const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+        form.append("file", blob, `audio_${offsetSec}.${ext}`);
+        form.append("offset", offsetSec.toString());
 
-      const res = await fetch("/api/intelexa/transcribe", {
-        method: "POST",
-        body: form,
-      });
+        const res = await fetch("/api/intelexa/transcribe", {
+          method: "POST",
+          body: form,
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.text?.trim()) {
-          const newText = data.text.trim();
-          whisperTranscriptRef.current += (whisperTranscriptRef.current ? " " : "") + newText;
-          setLiveTranscript(whisperTranscriptRef.current);
-          setWordCount(whisperTranscriptRef.current.split(/\s+/).filter(Boolean).length);
-          setChunksSynced((c) => c + 1);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.text?.trim()) {
+            const newText = data.text.trim();
 
-          if (Array.isArray(data.segments) && data.segments.length > 0) {
-            setSegments((prev) => [...prev, ...data.segments]);
-          } else {
-            setSegments((prev) => [
-              ...prev,
-              {
-                start: formatTime(offsetSec),
-                end: formatTime(secondsRef.current),
-                text: newText,
-              },
-            ]);
+            if (isFinalMaster) {
+              whisperTranscriptRef.current = newText;
+            } else {
+              whisperTranscriptRef.current += (whisperTranscriptRef.current ? " " : "") + newText;
+            }
+
+            setLiveTranscript(whisperTranscriptRef.current);
+            setWordCount(whisperTranscriptRef.current.split(/\s+/).filter(Boolean).length);
+            setChunksSynced((c) => c + 1);
+
+            if (Array.isArray(data.segments) && data.segments.length > 0) {
+              setSegments((prev) => (isFinalMaster ? data.segments : [...prev, ...data.segments]));
+            } else {
+              setSegments((prev) => [
+                ...prev,
+                {
+                  start: formatTime(offsetSec),
+                  end: formatTime(secondsRef.current),
+                  text: newText,
+                },
+              ]);
+            }
+
+            detectQuickSignal(newText, formatTime(offsetSec));
+
+            saveVaultChunk({
+              sessionId: activeSessionId,
+              chunkIndex,
+              offsetSec,
+              blob,
+              whisperText: newText,
+              createdAt: Date.now(),
+            });
+
+            return newText;
           }
-
-          // Detect signals
-          detectQuickSignal(newText, formatTime(offsetSec));
-
-          // Save chunk to local IndexedDB Vault
+        } else {
+          console.warn("Whisper transcription response status:", res.status);
           saveVaultChunk({
             sessionId: activeSessionId,
             chunkIndex,
             offsetSec,
             blob,
-            whisperText: newText,
             createdAt: Date.now(),
           });
         }
-      } else {
-        console.warn("Segment Whisper transcription returned status:", res.status);
-        // Even if Whisper fails, preserve raw chunk in local vault
+      } catch (err) {
+        console.warn("Whisper transcription network error:", err);
         saveVaultChunk({
           sessionId: activeSessionId,
           chunkIndex,
@@ -236,23 +259,16 @@ export default function LiveRecordingView({
           blob,
           createdAt: Date.now(),
         });
+      } finally {
+        setSyncingChunk(false);
       }
-    } catch (err) {
-      console.warn("Segment transcription network issue:", err);
-      // Preserve in local vault
-      saveVaultChunk({
-        sessionId: activeSessionId,
-        chunkIndex,
-        offsetSec,
-        blob,
-        createdAt: Date.now(),
-      });
-    } finally {
-      setSyncingChunk(false);
-    }
-  }, [activeSessionId, detectQuickSignal]);
+      return "";
+    },
+    [activeSessionId, detectQuickSignal]
+  );
 
-  // Helper to start a fresh Segment Recorder on the active stream
+  // Helper to start next discrete segment recorder
+  // EACH RECORDER OWNS ITS OWN PRIVATE `localChunks` CLOSURE (CANNOT BE WIPED)
   const startSegmentRecorder = useCallback(() => {
     if (!streamRef.current || isStoppingRef.current) return;
 
@@ -262,42 +278,44 @@ export default function LiveRecordingView({
       ? "audio/mp4"
       : "";
 
-    const recorderOptions: MediaRecorderOptions = {
-      audioBitsPerSecond: 128000,
-    };
+    detectedMimeTypeRef.current = mimeType || "audio/webm";
+
+    const recorderOptions: MediaRecorderOptions = { audioBitsPerSecond: 128000 };
     if (mimeType) recorderOptions.mimeType = mimeType;
 
-    const segRecorder = new MediaRecorder(streamRef.current, recorderOptions);
     const thisIndex = segmentIndexRef.current++;
     const startOffset = secondsRef.current;
-    segmentStartTimeRef.current = startOffset;
-    segmentChunksRef.current = [];
+    const localChunks: Blob[] = []; // PRIVATE LOCAL ARRAY IN THIS FUNCTION CLOSURE
+
+    const segRecorder = new MediaRecorder(streamRef.current, recorderOptions);
 
     segRecorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) {
-        segmentChunksRef.current.push(e.data);
+        localChunks.push(e.data);
+        // Also permanently append to the master continuous recording
+        masterRecordingChunksRef.current.push(e.data);
       }
     };
 
     segRecorder.onstop = () => {
       const actualMime = segRecorder.mimeType || mimeType || "audio/webm";
-      if (segmentChunksRef.current.length > 0) {
-        const segBlob = new Blob(segmentChunksRef.current, { type: actualMime });
-        segmentChunksRef.current = [];
-        const task = transcribeSegmentBlob(segBlob, startOffset, thisIndex);
-        inFlightPromisesRef.current.push(task);
+      if (localChunks.length > 0) {
+        const segBlob = new Blob(localChunks, { type: actualMime });
+        if (segBlob.size > 1500) {
+          const task = transcribeAudioBlob(segBlob, startOffset, thisIndex);
+          inFlightPromisesRef.current.push(task);
+        }
       }
     };
 
     segRecorder.start(1000);
-    segmentRecorderRef.current = segRecorder;
-  }, [transcribeSegmentBlob]);
+    activeSegmentRecorderRef.current = segRecorder;
+  }, [transcribeAudioBlob]);
 
-  // Cycle segment recorder: stops current segment (flushing valid EBML footer) & immediately starts a fresh one
+  // Cycle segment recorder: stops current segment (flushing its private closure) & starts a new one
   const cycleSegmentRecorder = useCallback(() => {
     if (isStoppingRef.current || isPausedRef.current) return;
-    const oldRecorder = segmentRecorderRef.current;
-    // Start next segment immediately to guarantee zero gap
+    const oldRecorder = activeSegmentRecorderRef.current;
     startSegmentRecorder();
     if (oldRecorder && oldRecorder.state !== "inactive") {
       try {
@@ -308,21 +326,26 @@ export default function LiveRecordingView({
     }
   }, [startSegmentRecorder]);
 
-  // 3. Audio Recording & Dual Pipeline (Whisper Segment Cycling + Local Web Speech)
+  // 3. Main Audio Recording Pipeline Initialization
+  // EMPTY DEPENDENCY ARRAY: Runs ONCE on mount so stream is never destroyed prematurely!
   useEffect(() => {
     let stream: MediaStream | null = null;
 
     async function initAudio() {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: { ideal: 1 },
-            sampleRate: { ideal: 48000 },
-          },
-        });
+        // Robust getUserMedia with progressive fallback
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+        } catch {
+          // Fallback to basic audio constraint
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
 
         streamRef.current = stream;
         setMicActive(true);
@@ -334,6 +357,9 @@ export default function LiveRecordingView({
           if (AudioContextClass) {
             const ctx = new AudioContextClass();
             audioContextRef.current = ctx;
+            if (ctx.state === "suspended") {
+              ctx.resume().catch(() => {});
+            }
             const analyser = ctx.createAnalyser();
             analyser.fftSize = 256;
             const source = ctx.createMediaStreamSource(stream);
@@ -348,7 +374,20 @@ export default function LiveRecordingView({
                 sum += dataArray[i];
               }
               const avg = sum / dataArray.length;
-              setAudioLevel(Math.min(100, Math.round((avg / 128) * 100)));
+              const level = Math.min(100, Math.round((avg / 128) * 100));
+              setAudioLevel(level);
+
+              if (level < 3) {
+                silentFramesCountRef.current++;
+                if (silentFramesCountRef.current > 300) {
+                  // >5 seconds of complete silence
+                  setLowAudioWarning(true);
+                }
+              } else {
+                silentFramesCountRef.current = 0;
+                setLowAudioWarning(false);
+              }
+
               animFrameRef.current = requestAnimationFrame(updateMeter);
             };
             updateMeter();
@@ -357,32 +396,15 @@ export default function LiveRecordingView({
           // AudioContext unsupported, ignore volume meter
         }
 
-        // 3b. Master Continuous Recorder (Keeps 100% of the session audio for full export)
-        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : MediaRecorder.isTypeSupported("audio/mp4")
-          ? "audio/mp4"
-          : "";
-
-        const recorderOptions: MediaRecorderOptions = { audioBitsPerSecond: 128000 };
-        if (mimeType) recorderOptions.mimeType = mimeType;
-
-        const masterRecorder = new MediaRecorder(stream, recorderOptions);
-        masterRecorder.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) {
-            masterChunksRef.current.push(e.data);
-          }
-        };
-        masterRecorder.start(2000);
-        masterRecorderRef.current = masterRecorder;
-
-        // 3c. Start Initial Segment Recorder (Cycles every 30 seconds for Whisper)
+        // 3b. Start initial Segment Recorder
         startSegmentRecorder();
+
+        // 3c. Cycle segment recorder every 30 seconds for live chunk sync
         segmentCycleTimerRef.current = setInterval(() => {
           cycleSegmentRecorder();
         }, 30000);
 
-        // 3d. Device-Native Web Speech API (Instant client-side speech-to-text fallback)
+        // 3d. Device-Native Web Speech API (Local on-device transcription)
         try {
           const SpeechRec =
             (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -398,8 +420,8 @@ export default function LiveRecordingView({
                 const transcriptPiece = event.results[i][0].transcript;
                 if (event.results[i].isFinal) {
                   webSpeechTranscriptRef.current += (webSpeechTranscriptRef.current ? " " : "") + transcriptPiece.trim();
-                  // If Whisper hasn't delivered yet, display Web Speech text
-                  if (!whisperTranscriptRef.current) {
+                  // Real-time live display
+                  if (!whisperTranscriptRef.current || whisperTranscriptRef.current.length < webSpeechTranscriptRef.current.length) {
                     setLiveTranscript(webSpeechTranscriptRef.current);
                     setWordCount(webSpeechTranscriptRef.current.split(/\s+/).filter(Boolean).length);
                   }
@@ -411,15 +433,19 @@ export default function LiveRecordingView({
             };
 
             recognition.onerror = (e: any) => {
-              console.warn("Web Speech API notice:", e.error);
+              console.warn("Web Speech notice:", e.error);
             };
 
             recognition.onend = () => {
-              // Auto-restart if recording is still active
+              // Graceful delayed restart to prevent Chrome crash-loop
               if (!isStoppingRef.current && !isPausedRef.current) {
-                try {
-                  recognition.start();
-                } catch {}
+                setTimeout(() => {
+                  if (!isStoppingRef.current && !isPausedRef.current) {
+                    try {
+                      recognition.start();
+                    } catch {}
+                  }
+                }, 350);
               }
             };
 
@@ -431,11 +457,11 @@ export default function LiveRecordingView({
           console.warn("Web Speech API unavailable:", speechErr);
         }
 
-        // Initialize vault session
+        // Save session in local IndexedDB vault
         saveVaultSession({
           id: activeSessionId,
-          eventName,
-          eventType,
+          eventName: eventNameRef.current,
+          eventType: eventTypeRef.current,
           startTime: Date.now(),
           durationSeconds: 0,
           whisperTranscript: "",
@@ -443,7 +469,7 @@ export default function LiveRecordingView({
           chunkCount: 0,
         });
       } catch (err) {
-        console.error("Microphone access failed:", err);
+        console.error("Microphone access error:", err);
         setMicError(
           "Microphone permission was denied or is unavailable. Please grant microphone access in your browser settings."
         );
@@ -459,14 +485,9 @@ export default function LiveRecordingView({
         audioContextRef.current.close().catch(() => {});
       }
       if (segmentCycleTimerRef.current) clearInterval(segmentCycleTimerRef.current);
-      if (segmentRecorderRef.current && segmentRecorderRef.current.state !== "inactive") {
+      if (activeSegmentRecorderRef.current && activeSegmentRecorderRef.current.state !== "inactive") {
         try {
-          segmentRecorderRef.current.stop();
-        } catch {}
-      }
-      if (masterRecorderRef.current && masterRecorderRef.current.state !== "inactive") {
-        try {
-          masterRecorderRef.current.stop();
+          activeSegmentRecorderRef.current.stop();
         } catch {}
       }
       if (speechRecognitionRef.current) {
@@ -478,18 +499,15 @@ export default function LiveRecordingView({
         stream.getTracks().forEach((t) => t.stop());
       }
     };
-  }, [activeSessionId, eventName, eventType, startSegmentRecorder, cycleSegmentRecorder]);
+  }, []); // RUN ONCE ON MOUNT
 
   function handleTogglePause() {
     if (isPaused) {
       // Resume
       isPausedRef.current = false;
       setIsPaused(false);
-      if (masterRecorderRef.current && masterRecorderRef.current.state === "paused") {
-        masterRecorderRef.current.resume();
-      }
-      if (segmentRecorderRef.current && segmentRecorderRef.current.state === "paused") {
-        segmentRecorderRef.current.resume();
+      if (activeSegmentRecorderRef.current && activeSegmentRecorderRef.current.state === "paused") {
+        activeSegmentRecorderRef.current.resume();
       }
       if (speechRecognitionRef.current) {
         try {
@@ -500,11 +518,8 @@ export default function LiveRecordingView({
       // Pause
       isPausedRef.current = true;
       setIsPaused(true);
-      if (masterRecorderRef.current && masterRecorderRef.current.state === "recording") {
-        masterRecorderRef.current.pause();
-      }
-      if (segmentRecorderRef.current && segmentRecorderRef.current.state === "recording") {
-        segmentRecorderRef.current.pause();
+      if (activeSegmentRecorderRef.current && activeSegmentRecorderRef.current.state === "recording") {
+        activeSegmentRecorderRef.current.pause();
       }
       if (speechRecognitionRef.current) {
         try {
@@ -516,24 +531,24 @@ export default function LiveRecordingView({
 
   // Direct Audio Download (Allows immediate local export of full raw conference recording)
   function handleDownloadMasterAudio() {
-    if (masterChunksRef.current.length === 0) {
+    if (masterRecordingChunksRef.current.length === 0) {
       alert("No audio recorded yet.");
       return;
     }
-    const mimeType = masterRecorderRef.current?.mimeType || "audio/webm";
-    const blob = new Blob(masterChunksRef.current, { type: mimeType });
+    const mimeType = detectedMimeTypeRef.current || "audio/webm";
+    const blob = new Blob(masterRecordingChunksRef.current, { type: mimeType });
     const ext = mimeType.includes("mp4") ? "mp4" : "webm";
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${(eventName || "intelexa_recording").replace(/\s+/g, "_")}_${Date.now()}.${ext}`;
+    a.download = `${(eventNameRef.current || "intelexa_recording").replace(/\s+/g, "_")}_${Date.now()}.${ext}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
 
-  // Final Stop & Analyse Handler
+  // Final Stop & Analyse Handler (THE ULTIMATE FAIL-SAFE)
   async function handleStop() {
     setStopping(true);
     isStoppingRef.current = true;
@@ -549,37 +564,52 @@ export default function LiveRecordingView({
       } catch {}
     }
 
-    // Stop Master Recorder
-    if (masterRecorderRef.current && masterRecorderRef.current.state !== "inactive") {
+    // Stop active segment recorder
+    if (activeSegmentRecorderRef.current && activeSegmentRecorderRef.current.state !== "inactive") {
       try {
-        masterRecorderRef.current.stop();
+        activeSegmentRecorderRef.current.stop();
       } catch {}
     }
 
-    // Stop active segment recorder and wait for its completion
-    if (segmentRecorderRef.current && segmentRecorderRef.current.state !== "inactive") {
-      try {
-        segmentRecorderRef.current.stop();
-      } catch {}
-    }
+    setStoppingStatus("Flushing final audio segments...");
 
-    // Wait for final onstop event and all in-flight transcription promises (capped at 3.5s timeout)
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // Wait for in-flight transcription promises (capped at 3s)
+    await new Promise((resolve) => setTimeout(resolve, 400));
     const inFlightWait = Promise.allSettled(inFlightPromisesRef.current);
-    const timeoutWait = new Promise((resolve) => setTimeout(resolve, 3500));
+    const timeoutWait = new Promise((resolve) => setTimeout(resolve, 3000));
     await Promise.race([inFlightWait, timeoutWait]);
 
-    // Combine transcripts with fail-safe fusion:
-    // If Whisper has rich content, use Whisper. If Whisper dropped chunks or is sparse, use Web Speech.
-    const whisperText = whisperTranscriptRef.current.trim();
+    // Build Master Audio Blob from all recorded chunks
+    const mimeType = detectedMimeTypeRef.current || "audio/webm";
+    const masterBlob =
+      masterRecordingChunksRef.current.length > 0
+        ? new Blob(masterRecordingChunksRef.current, { type: mimeType })
+        : undefined;
+
+    let whisperText = whisperTranscriptRef.current.trim();
     const webSpeechText = webSpeechTranscriptRef.current.trim();
 
+    // FAIL-SAFE MASTER AUDIT:
+    // If Whisper intermediate chunks failed or produced less than 10 words, BUT we have master audio,
+    // transcribe the FULL master audio blob in one unified pass!
+    const whisperWordCount = whisperText ? whisperText.split(/\s+/).filter(Boolean).length : 0;
+    if (whisperWordCount < 10 && masterBlob && masterBlob.size > 3000) {
+      setStoppingStatus("Transcribing full master recording via Whisper AI...");
+      try {
+        const fullMasterText = await transcribeAudioBlob(masterBlob, 0, 9999, true);
+        if (fullMasterText && fullMasterText.trim().length > 0) {
+          whisperText = fullMasterText.trim();
+        }
+      } catch (masterErr) {
+        console.warn("Master audio transcription fallback notice:", masterErr);
+      }
+    }
+
+    // Combine transcripts with fail-safe fusion:
     let fullText = whisperText;
-    if (!fullText || (webSpeechText.length > fullText.length * 1.5 && webSpeechText.length > 50)) {
-      // Web Speech captured more than Whisper (e.g. conference Wi-Fi cut off)
+    if (!fullText || (webSpeechText.length > fullText.length * 1.5 && webSpeechText.length > 30)) {
       fullText = webSpeechText;
-    } else if (webSpeechText && !whisperText.includes(webSpeechText.slice(-40))) {
-      // Append any trailing sentences that Web Speech caught after the last 30s cycle
+    } else if (webSpeechText && !whisperText.includes(webSpeechText.slice(-30))) {
       fullText = whisperText + (whisperText ? " " : "") + webSpeechText;
     }
 
@@ -603,6 +633,7 @@ export default function LiveRecordingView({
           ? segments
           : [{ start: "00:00:00", end: formatTime(secondsRef.current), text: fullText }],
       durationSeconds: secondsRef.current,
+      audioBlob: masterBlob,
     });
   }
 
@@ -641,7 +672,7 @@ export default function LiveRecordingView({
           />
           <h2 className="text-sm sm:text-base font-extrabold tracking-wider uppercase text-ink">
             {stopping
-              ? "FINALIZING LAST AUDIO CHUNK..."
+              ? stoppingStatus.toUpperCase()
               : isPaused
               ? "INTELEXA IS PAUSED"
               : "INTELEXA IS RECORDING & TRANSCRIBING"}
@@ -653,20 +684,24 @@ export default function LiveRecordingView({
           {formatTime(seconds)}
         </div>
 
-        {/* Live Audio Level & Whisper Sync Status */}
+        {/* Live Audio Level & Sync Status */}
         <div className="mt-3 flex items-center justify-center gap-2 text-xs flex-wrap">
           {/* Live Mic Level */}
           <div className="flex items-center gap-1.5 px-3 py-1 bg-surface border border-border rounded-full shadow-soft">
-            <span className="text-ink-muted text-[11px]">Mic:</span>
-            <div className="w-16 h-2 bg-page rounded-full overflow-hidden border border-border">
+            <span className="text-ink-muted text-[11px]">Mic Live:</span>
+            <div className="w-20 h-2.5 bg-page rounded-full overflow-hidden border border-border">
               <div
                 style={{ width: `${Math.max(5, audioLevel)}%` }}
-                className={`h-full transition-all duration-100 ${
-                  audioLevel > 15 ? "bg-good" : "bg-ink-muted/50"
+                className={`h-full transition-all duration-75 ${
+                  audioLevel > 20
+                    ? "bg-good"
+                    : audioLevel > 5
+                    ? "bg-brand"
+                    : "bg-ink-muted/40"
                 }`}
               />
             </div>
-            <span className="text-[10px] font-mono text-ink-muted">{audioLevel}%</span>
+            <span className="text-[10px] font-mono font-semibold text-ink">{audioLevel}%</span>
           </div>
 
           {/* Continuous Whisper Status */}
@@ -674,7 +709,7 @@ export default function LiveRecordingView({
             <span className={`w-1.5 h-1.5 rounded-full ${syncingChunk ? "bg-warning animate-ping" : "bg-good"}`} />
             <span>
               {syncingChunk
-                ? "Syncing 30s chunk..."
+                ? "Syncing audio segment..."
                 : `Whisper Active • ${chunksSynced} synced (${wordCount} words)`}
             </span>
           </div>
@@ -683,15 +718,23 @@ export default function LiveRecordingView({
           {hasWebSpeech && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded-full font-semibold text-[10px]">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>Offline Device Backup Active</span>
+              <span>Real-Time Device Speech Active</span>
             </div>
           )}
         </div>
 
+        {/* Low Audio Warning Banner */}
+        {lowAudioWarning && !isPaused && !stopping && (
+          <div className="mt-3 p-2 px-3 bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs rounded-xl flex items-center gap-2 animate-fadeIn max-w-md">
+            <span>⚠️</span>
+            <span>Microphone input is quiet. Please speak closer to your microphone or check microphone volume in system settings.</span>
+          </div>
+        )}
+
         <p className="text-xs text-ink-muted mt-2 max-w-md">
           {isPaused
             ? "Recording paused. Click Resume when ready."
-            : "Screen kept awake. Audio segments cycle every 30s with complete container headers, backed by local device speech recognition."}
+            : "Screen kept awake. Continuous master recording is active with instant on-device speech transcription."}
         </p>
 
         {micError && (
@@ -771,7 +814,7 @@ export default function LiveRecordingView({
               )}
               {syncingChunk && (
                 <span className="text-[10px] text-brand font-medium animate-pulse">
-                  Transcribing segment...
+                  Transcribing...
                 </span>
               )}
             </div>
@@ -789,7 +832,7 @@ export default function LiveRecordingView({
               <div className="text-brand/80 italic animate-pulse">{interimSpeech}</div>
             ) : (
               <span className="text-ink-muted italic">
-                Listening to audio... Speech is transcribed locally in real-time and synced with high-accuracy Whisper every 30 seconds.
+                Listening to audio... Words appear in real-time as you speak.
               </span>
             )}
           </div>

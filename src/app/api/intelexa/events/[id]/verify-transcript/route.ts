@@ -48,15 +48,16 @@ export async function POST(
 
     // 2. Independently and Permanently Store Raw Transcript in Database
     // This ensures raw speech is NEVER lost regardless of user's next action
-    await supabase.from("intelexa_transcripts").upsert(
-      {
-        event_id: id,
-        user_id: user.id,
-        full_text: transcript_text,
-        segments: transcript_segments,
-      },
-      { onConflict: "event_id" }
-    );
+    await supabase.from("intelexa_transcripts").delete().eq("event_id", id);
+    const { error: transcriptInsertErr } = await supabase.from("intelexa_transcripts").insert({
+      event_id: id,
+      user_id: user.id,
+      full_text: transcript_text,
+      segments: transcript_segments,
+    });
+    if (transcriptInsertErr) {
+      console.error("[intelexa:verify-transcript] Failed to store transcript:", transcriptInsertErr);
+    }
 
     // Update event duration
     await supabase

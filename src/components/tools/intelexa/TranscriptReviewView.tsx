@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Icon from "@/components/Icon";
 
 export interface AuditData {
@@ -31,6 +31,7 @@ export default function TranscriptReviewView({
   transcriptText,
   segments,
   audit,
+  audioBlob,
   onConfirmAndAnalyse,
   onSaveTranscriptOnly,
   onBackToRecord,
@@ -42,6 +43,7 @@ export default function TranscriptReviewView({
   transcriptText: string;
   segments: Array<{ start: string; end: string; text: string; speaker?: string }>;
   audit: AuditData | null;
+  audioBlob?: Blob | null;
   onConfirmAndAnalyse: (params: {
     finalTranscript: string;
     userNotes: string;
@@ -53,6 +55,15 @@ export default function TranscriptReviewView({
 }) {
   const [editedTranscript, setEditedTranscript] = useState(transcriptText);
   const [isEditing, setIsEditing] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (audioBlob) {
+      const url = URL.createObjectURL(audioBlob);
+      setAudioUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+  }, [audioBlob]);
   const [userNotes, setUserNotes] = useState("");
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [searchFilter, setSearchFilter] = useState("");
@@ -269,6 +280,29 @@ export default function TranscriptReviewView({
             </span>
           </div>
         </div>
+
+        {/* Audio Verification & Playback */}
+        {audioUrl && (
+          <div className="mt-4 p-3 rounded-xl bg-surface/90 border border-brand/20 flex flex-wrap items-center justify-between gap-3 animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-good animate-pulse" />
+              <div>
+                <span className="text-xs font-bold text-ink block">Recorded Master Audio Available</span>
+                <span className="text-[11px] text-ink-muted">Play to verify microphone clarity before running intelligence</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 flex-1 min-w-[260px] justify-end">
+              <audio controls src={audioUrl} className="h-8 max-w-xs w-full" />
+              <a
+                href={audioUrl}
+                download={`${(eventName || "intelexa_audio").replace(/[^a-z0-9]/gi, "_").toLowerCase()}_master.webm`}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-page hover:bg-brand-wash hover:text-brand border border-border transition flex items-center gap-1.5 whitespace-nowrap shadow-soft"
+              >
+                <span>Download .webm</span>
+              </a>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 2. Visuals & Context Drop Box (Screenshots, Slides, Notes) */}
