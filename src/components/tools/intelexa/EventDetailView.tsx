@@ -347,7 +347,7 @@ export default function EventDetailView({
           { id: "people", label: `👥 People & Follow-ups (${intelligence?.people?.length || 0})` },
           { id: "competitive", label: "⚔️ Competitive & Market" },
           { id: "actions", label: "✅ Action Plan" },
-          { id: "transcript", label: "🎙️ Transcript" },
+          { id: "transcript", label: "✨ Transcript" },
           { id: "qa", label: `💬 Ask Intelexa (${qaHistory.length})` },
         ].map((tab) => (
           <button
@@ -371,7 +371,9 @@ export default function EventDetailView({
           {/* If report is missing or empty */}
           {(!report?.executive_brief || report.executive_brief.length === 0) && !report?.full_markdown && (
             <div className="p-8 rounded-2xl bg-surface border border-border text-center space-y-4 shadow-soft">
-              <div className="text-4xl">🎙️</div>
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-brand-wash flex items-center justify-center text-brand">
+                <Icon name="waveformSpark" className="w-7 h-7" />
+              </div>
               <div className="space-y-1">
                 <h3 className="text-base font-bold text-ink">Intelligence Report Not Yet Generated</h3>
                 <p className="text-xs text-ink-muted max-w-md mx-auto">

@@ -93,6 +93,10 @@ export const ICONS: Record<string, string> = {
   stop: "M4 4h16v16H4z",
   copy: "M8 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4 M16 4h4a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
   zap: "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
+  waveform: "M3 10v4 M7 6v12 M11 3v18 M15 7v10 M19 10v4",
+  spark: "M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4L12 2z",
+  waveformSpark:
+    "M3 10v4 M7 6v12 M11 4v16 M15 9v6 M19 2l.8 2.2L22 5l-2.2.8L19 8l-.8-2.2L16 5l2.2-.8L19 2z",
 };
 
 export function iconPaths(name: string): string[] {

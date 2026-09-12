@@ -225,7 +225,7 @@ export default function NewEventModal({
                 : "border-transparent text-ink-muted hover:text-ink"
             }`}
           >
-            <span>🎙️</span>
+            <Icon name="waveformSpark" className="w-3.5 h-3.5" />
             <span>1. Event Setup</span>
           </button>
 
@@ -299,8 +299,8 @@ export default function NewEventModal({
                       : "text-ink-muted hover:text-ink"
                   }`}
                 >
-                  <span className="w-2 h-2 rounded-full bg-critical animate-pulse" />
-                  Live Microphone Session
+                  <Icon name="waveformSpark" className="w-3.5 h-3.5 text-critical animate-pulse" />
+                  Live Capture Session
                 </button>
                 <button
                   type="button"

@@ -656,11 +656,62 @@ export default function LiveRecordingView({
           }`}
         >
           <div
-            className={`w-24 h-24 rounded-full flex items-center justify-center shadow-lg transition-all duration-500 ${
+            onClick={handleTogglePause}
+            className={`w-24 h-24 rounded-full flex items-center justify-center shadow-lg transition-all duration-500 relative cursor-pointer select-none group ${
               isPaused ? "bg-warning text-white" : "bg-critical text-white animate-pulse"
             }`}
+            title={isPaused ? "Click to Resume Capture" : "Click to Pause Capture"}
           >
-            <Icon name="mic" className="w-10 h-10" />
+            {/* Waveform + Spark Hero Visual */}
+            <div className="relative flex items-center justify-center w-16 h-16 pointer-events-none">
+              {/* Dynamic Soundwave Bars */}
+              <div className="flex items-center justify-center gap-1.5 h-12">
+                <span
+                  style={{
+                    height: isPaused ? "8px" : `${Math.max(10, Math.min(26, 10 + audioLevel * 0.4))}px`,
+                  }}
+                  className="w-1.5 bg-white rounded-full transition-all duration-100 ease-out shadow-sm"
+                />
+                <span
+                  style={{
+                    height: isPaused ? "10px" : `${Math.max(14, Math.min(38, 14 + audioLevel * 0.6))}px`,
+                  }}
+                  className="w-1.5 bg-white rounded-full transition-all duration-100 ease-out shadow-sm"
+                />
+                <span
+                  style={{
+                    height: isPaused ? "12px" : `${Math.max(20, Math.min(48, 20 + audioLevel * 0.85))}px`,
+                  }}
+                  className="w-1.5 bg-white rounded-full transition-all duration-100 ease-out shadow-sm"
+                />
+                <span
+                  style={{
+                    height: isPaused ? "10px" : `${Math.max(14, Math.min(38, 14 + audioLevel * 0.6))}px`,
+                  }}
+                  className="w-1.5 bg-white rounded-full transition-all duration-100 ease-out shadow-sm"
+                />
+                <span
+                  style={{
+                    height: isPaused ? "8px" : `${Math.max(10, Math.min(26, 10 + audioLevel * 0.4))}px`,
+                  }}
+                  className="w-1.5 bg-white rounded-full transition-all duration-100 ease-out shadow-sm"
+                />
+              </div>
+
+              {/* Primary AI Spark Star (+Spark) */}
+              <div className="absolute -top-1 -right-1 text-white filter drop-shadow-[0_0_6px_rgba(255,255,255,0.9)] animate-pulse">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current" stroke="none">
+                  <path d="M12 0L14.6 9.4L24 12L14.6 14.6L12 24L9.4 14.6L0 12L9.4 9.4L12 0Z" />
+                </svg>
+              </div>
+
+              {/* Secondary Micro Spark */}
+              <div className="absolute -bottom-0.5 -left-1 text-white/80 filter drop-shadow-[0_0_4px_rgba(255,255,255,0.6)]">
+                <svg viewBox="0 0 24 24" className="w-3 h-3 fill-current" stroke="none">
+                  <path d="M12 0L14.6 9.4L24 12L14.6 14.6L12 24L9.4 14.6L0 12L9.4 9.4L12 0Z" />
+                </svg>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -687,9 +738,12 @@ export default function LiveRecordingView({
 
         {/* Live Audio Level & Sync Status */}
         <div className="mt-3 flex items-center justify-center gap-2 text-xs flex-wrap">
-          {/* Live Mic Level */}
+          {/* Live Audio Level */}
           <div className="flex items-center gap-1.5 px-3 py-1 bg-surface border border-border rounded-full shadow-soft">
-            <span className="text-ink-muted text-[11px]">Mic Live:</span>
+            <span className="text-ink-muted text-[11px] flex items-center gap-1">
+              <Icon name="waveform" className="w-3 h-3 text-brand" />
+              Capture Live:
+            </span>
             <div className="w-20 h-2.5 bg-page rounded-full overflow-hidden border border-border">
               <div
                 style={{ width: `${Math.max(5, audioLevel)}%` }}
@@ -794,7 +848,10 @@ export default function LiveRecordingView({
         <div className="p-4 border border-border rounded-2xl bg-surface shadow-soft space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-ink flex items-center gap-1.5">
-              <span>🎙️ Live Transcript Stream</span>
+              <span className="flex items-center gap-1 text-brand">
+                <Icon name="waveformSpark" className="w-3.5 h-3.5" />
+              </span>
+              <span>Live Transcript Stream</span>
               <span className="text-[10px] font-normal text-ink-muted font-mono">
                 ({wordCount} words)
               </span>
