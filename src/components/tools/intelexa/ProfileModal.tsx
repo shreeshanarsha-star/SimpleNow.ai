@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Icon from "@/components/Icon";
+import { VScroller } from "@/components/Scroller";
 
 export interface IntelexaProfileData {
   name: string;
@@ -141,8 +142,8 @@ export default function ProfileModal({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Content with zero native scrollbars & standard Scroller alternative */}
+        <VScroller className="flex-1 min-h-0" trackClassName="p-6 space-y-6">
           {error && (
             <div className="p-3 bg-critical/10 border border-critical/30 text-critical text-xs rounded-lg font-medium">
               {error}
@@ -376,7 +377,7 @@ export default function ProfileModal({
               </div>
             )}
           </div>
-        </div>
+        </VScroller>
 
         {/* Footer */}
         <div className="px-6 py-3.5 border-t border-border bg-page/50 flex items-center justify-end gap-2.5">

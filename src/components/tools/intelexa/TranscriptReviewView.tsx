@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Icon from "@/components/Icon";
+import { VScroller } from "@/components/Scroller";
 
 export interface AuditData {
   completeness_score: number;
@@ -486,7 +487,7 @@ export default function TranscriptReviewView({
             className="w-full text-xs font-mono p-3 border border-border rounded-xl bg-page text-ink focus:outline-none focus:border-brand leading-relaxed"
           />
         ) : (
-          <div className="max-h-72 overflow-y-auto p-3.5 rounded-xl bg-page border border-border font-mono text-xs space-y-2.5">
+          <VScroller className="max-h-72 rounded-xl bg-page border border-border" trackClassName="p-3.5 font-mono text-xs space-y-2.5">
             {segments && segments.length > 0 ? (
               segments
                 .filter(
@@ -515,7 +516,7 @@ export default function TranscriptReviewView({
                 {editedTranscript}
               </p>
             )}
-          </div>
+          </VScroller>
         )}
       </div>
 

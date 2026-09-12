@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "@/components/Icon";
+import { VScroller } from "@/components/Scroller";
 import { saveVaultSession, saveVaultChunk } from "@/lib/intelexaVault";
 
 export interface LiveSignal {
@@ -820,7 +821,7 @@ export default function LiveRecordingView({
             </div>
           </div>
 
-          <div className="max-h-48 overflow-y-auto font-mono text-[11.5px] text-ink-2 bg-page/60 p-3 rounded-xl border border-border leading-relaxed space-y-1">
+          <VScroller className="max-h-48 rounded-xl bg-page/60 border border-border font-mono text-[11.5px]" trackClassName="p-3 leading-relaxed space-y-1 text-ink-2">
             {liveTranscript ? (
               <>
                 <div>{liveTranscript}</div>
@@ -835,7 +836,7 @@ export default function LiveRecordingView({
                 Listening to audio... Words appear in real-time as you speak.
               </span>
             )}
-          </div>
+          </VScroller>
         </div>
 
         {/* Collapsible Strategic Signals Panel */}

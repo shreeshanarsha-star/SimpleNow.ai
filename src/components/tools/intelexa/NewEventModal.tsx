@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Icon from "@/components/Icon";
+import { VScroller } from "@/components/Scroller";
 import type { IntelexaProfileData, RecipientData } from "./ProfileModal";
 
 const EVENT_TYPES = [
@@ -245,8 +246,8 @@ export default function NewEventModal({
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        {/* Modal Body with zero native scrollbar & standard Scroller alternative */}
+        <VScroller className="flex-1 min-h-0" trackClassName="p-6 space-y-5">
           {error && (
             <div className="p-3 bg-critical/10 border border-critical/30 text-critical text-xs rounded-lg font-medium animate-fadeIn">
               {error}
@@ -707,7 +708,7 @@ export default function NewEventModal({
               </div>
             </div>
           )}
-        </div>
+        </VScroller>
 
         {/* Modal Footer */}
         <div className="px-6 py-3.5 border-t border-border bg-page/50 flex items-center justify-between">

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Icon from "@/components/Icon";
+import { HScroller, VScroller } from "@/components/Scroller";
 import type { ExtractedIntelligence } from "@/lib/intelexaAI";
 
 export interface EventDetailData {
@@ -338,8 +339,8 @@ export default function EventDetailView({
         </div>
       </div>
 
-      {/* Tabs Navigation */}
-      <div className="flex items-center gap-2 border-b border-border overflow-x-auto pb-1">
+      {/* Tabs Navigation with zero native scrollbars */}
+      <HScroller className="border-b border-border" trackClassName="flex items-center gap-2 pb-1">
         {[
           { id: "report", label: "📊 Intelligence Report" },
           { id: "opportunities", label: `🎯 Opportunities (${intelligence?.opportunities?.length || 0})` },
@@ -362,7 +363,7 @@ export default function EventDetailView({
             {tab.label}
           </button>
         ))}
-      </div>
+      </HScroller>
 
       {/* TAB 1: Intelligence Report */}
       {activeTab === "report" && (
@@ -972,7 +973,7 @@ export default function EventDetailView({
             </div>
           )}
 
-          <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft max-h-[600px] overflow-y-auto space-y-3 font-mono text-xs">
+          <VScroller className="rounded-2xl border border-border bg-surface shadow-soft max-h-[600px]" trackClassName="p-4 space-y-3 font-mono text-xs">
             {transcript?.segments && transcript.segments.length > 0 ? (
               transcript.segments
                 .filter(
@@ -1001,7 +1002,7 @@ export default function EventDetailView({
                 {transcript?.full_text || "No transcript available."}
               </p>
             )}
-          </div>
+          </VScroller>
         </div>
       )}
 
