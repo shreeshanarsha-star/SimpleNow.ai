@@ -1,6 +1,5 @@
 import AppShell from "@/components/AppShell";
 import GlobalSearchBar from "@/components/GlobalSearchBar";
-import Logo from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
 
@@ -32,14 +31,7 @@ export default async function OverviewPage() {
           />
         </svg>
 
-        <div className="flex-1 flex flex-col items-center justify-center relative z-10 px-4 text-center">
-          <div className="flex flex-col items-center gap-2.5 select-none mb-4 animate-fadeIn">
-            <Logo height={44} variant="image" />
-            <p className="text-[13px] sm:text-[14px] font-medium text-ink-muted tracking-wide">
-              Simpler ways. Smarter work.
-            </p>
-          </div>
-        </div>
+        <div className="flex-1 flex flex-col items-center justify-center relative z-10" />
 
         <div className="relative z-10">
           <GlobalSearchBar />
