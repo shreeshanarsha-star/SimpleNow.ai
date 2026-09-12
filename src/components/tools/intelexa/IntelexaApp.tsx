@@ -70,6 +70,7 @@ export default function IntelexaApp({
 
   const [processingStep, setProcessingStep] = useState<string>("Initializing AI analysis pipeline...");
   const [searchQuery, setSearchQuery] = useState("");
+  const [quickStarting, setQuickStarting] = useState(false);
 
   // Handler to return directly to Intelexa.ai Home Page (Dashboard)
   const handleGoHome = useCallback(() => {
@@ -254,6 +255,33 @@ export default function IntelexaApp({
     });
 
     setView("recording");
+  }
+
+  // 4b. Immediate 1-Click Start Capture (Bypasses setup modal, begins capturing instantly)
+  async function handleQuickStart() {
+    if (quickStarting) return;
+    setQuickStarting(true);
+    try {
+      const now = new Date();
+      const dateStr = now.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      const defaultName = `Live Session • ${dateStr}, ${timeStr}`;
+
+      await handleStartEvent({
+        eventName: defaultName,
+        eventType: "Conference",
+        objectives: ["Find business opportunities", "Networking"],
+        watchFor: profile.what_matters_to_me || "",
+        location: "",
+        recipients: recipients || [],
+        audioFile: null,
+      });
+    } catch (err) {
+      console.error("Quick start error:", err);
+      alert("Could not start event capture. Please check microphone permissions.");
+    } finally {
+      setQuickStarting(false);
+    }
   }
 
   // 5. Stop Recording -> Verify Completeness -> Transcript Review Screen
@@ -617,13 +645,30 @@ export default function IntelexaApp({
                 Try Demo Event
               </button>
 
+              {/* Event Settings Button (Changed +New Event to Settings Icon) */}
               <button
                 type="button"
                 onClick={() => setNewEventModalOpen(true)}
-                className="px-6 py-2.5 rounded-2xl bg-brand text-white text-xs font-extrabold hover:bg-brand/90 transition shadow-button flex items-center justify-center gap-2"
+                className="p-2.5 sm:px-3 sm:py-2.5 rounded-2xl border border-border bg-surface text-ink hover:bg-page transition shadow-soft flex items-center justify-center gap-1.5 group"
+                title="Event Settings & Profile Goals"
+                aria-label="Event Settings"
               >
-                <span>+</span>
-                NEW EVENT
+                <Icon name="gear" className="w-4 h-4 text-ink-muted group-hover:text-ink transition group-hover:rotate-45" />
+                <span className="text-xs font-semibold text-ink-muted group-hover:text-ink transition hidden sm:inline">
+                  Settings
+                </span>
+              </button>
+
+              {/* Immediate One-Click Start Capture */}
+              <button
+                type="button"
+                onClick={handleQuickStart}
+                disabled={quickStarting}
+                className="px-6 py-2.5 rounded-2xl bg-critical text-white text-xs font-black tracking-wide hover:bg-critical/90 transition shadow-button flex items-center justify-center gap-2 disabled:opacity-50"
+                title="Immediately start capturing live event audio & intelligence"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+                <span>{quickStarting ? "STARTING..." : "START"}</span>
               </button>
             </div>
           </div>
