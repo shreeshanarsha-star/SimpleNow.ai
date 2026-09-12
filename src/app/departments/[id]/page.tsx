@@ -25,7 +25,6 @@ export default async function DepartmentPage({
 
   let visibleTools: Tool[] = d.tools;
   let gateMessage: string | null = null;
-  let filteredByLicense = false;
 
   const supabase = await createClient();
   const {
@@ -80,7 +79,6 @@ export default async function DepartmentPage({
           .eq("org_id", profile.org_id);
         const grantedKeys = new Set((grants || []).map((g) => g.feature_key));
         visibleTools = d.tools.filter((t) => t.bundled || grantedKeys.has(t.n));
-        filteredByLicense = true;
         if (visibleTools.length === 0) {
           gateMessage =
             "Your organization doesn't have access to any tools in this department yet. Ask the platform owner to grant access.";
@@ -154,11 +152,6 @@ export default async function DepartmentPage({
         <div>
           <h2 className="m-0 text-[19px] font-bold">{dept.name}</h2>
           <p className="m-0 mt-1 text-[13px] text-ink-2 max-w-xl">{dept.desc}</p>
-          {filteredByLicense && visibleTools.length > 0 && (
-            <p className="m-0 mt-1.5 text-[11.5px] text-ink-muted">
-              Showing {visibleTools.length} of {dept.tools.length} tools -- licensed to your organization.
-            </p>
-          )}
         </div>
         <span
           className={`ml-auto flex items-center gap-1.5 text-[11.5px] font-bold px-2.5 py-1 rounded-full ${

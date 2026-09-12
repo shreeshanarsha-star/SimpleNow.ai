@@ -208,7 +208,7 @@ export const PERSONAL_TOOLS: Department = {
   name: "Personal Tools",
   icon: "grid",
   status: "live",
-  desc: "Small, genuinely useful everyday tools — no AI key required, available to everyone regardless of department.",
+  desc: "Small, genuinely useful everyday tools.",
   tools: [
     { n: "Calculator", s: "live", href: "/tools/calculator", bundled: true },
     { n: "Quick Notes", s: "live", href: "/tools/notes", bundled: true },
