@@ -596,18 +596,10 @@ export default function IntelexaApp({
       {/* VIEW 4: MAIN DASHBOARD & EVENT LIBRARY */}
       {view === "dashboard" && (
         <div className="max-w-6xl mx-auto py-6 px-4 space-y-8 animate-fadeIn">
-          {/* Hero Banner */}
-          <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-surface via-brand-wash/40 to-surface border border-border shadow-soft flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-2.5 max-w-2xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-wash border border-brand/30 text-brand text-xs font-bold uppercase tracking-wider">
-                <span>⚡ INTELEXA.AI</span>
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight">
-                Turn live conversations into actionable intelligence.
-              </h1>
-              <p className="text-xs sm:text-sm text-ink-muted leading-relaxed">
-                Intelexa listens passively, extracts what matters, connects insights directly to your professional goals, and tells you what to do next.
-              </p>
+          {/* Header Bar */}
+          <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-surface via-brand-wash/30 to-surface border border-border shadow-soft flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-wash border border-brand/30 text-brand text-xs font-bold uppercase tracking-wider w-fit">
+              <span>⚡ INTELEXA.AI</span>
             </div>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-shrink-0">
