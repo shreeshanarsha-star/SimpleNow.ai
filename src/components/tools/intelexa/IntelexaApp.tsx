@@ -41,12 +41,16 @@ export default function IntelexaApp({
   const [events, setEvents] = useState<EventDetailData[]>([]);
   const [stats, setStats] = useState<{
     totalEvents: number;
-    highValueOpportunities: number;
-    keyPeopleConnected: number;
+    connections?: number;
+    keyConnections?: number;
+    highValueOpportunities?: number;
+    keyPeopleConnected?: number;
     actionItemsCreated?: number;
     avgCommercialYield?: number | null;
   }>({
     totalEvents: 0,
+    connections: 0,
+    keyConnections: 0,
     highValueOpportunities: 0,
     keyPeopleConnected: 0,
     actionItemsCreated: 0,
@@ -652,7 +656,7 @@ export default function IntelexaApp({
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft">
-                <div className="text-xs font-medium text-ink-muted">Personal Events</div>
+                <div className="text-xs font-medium text-ink-muted">My Events</div>
                 <div className="text-2xl font-extrabold text-ink mt-1">
                   {stats.totalEvents}
                 </div>
@@ -662,32 +666,42 @@ export default function IntelexaApp({
               </div>
 
               <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft">
-                <div className="text-xs font-medium text-ink-muted">High-Value Opportunities</div>
+                <div className="text-xs font-medium text-ink-muted">My connections</div>
                 <div className="text-2xl font-extrabold text-brand mt-1">
-                  {stats.highValueOpportunities > 0 ? `🔥 ${stats.highValueOpportunities}` : "0"}
+                  {(stats.connections ?? stats.keyPeopleConnected ?? 0) > 0
+                    ? `👥 ${stats.connections ?? stats.keyPeopleConnected}`
+                    : "0"}
                 </div>
                 <div className="text-[11px] text-ink-muted mt-0.5">
-                  {stats.highValueOpportunities > 0 ? "Mined from your events" : "Mined from conversations"}
+                  {(stats.connections ?? stats.keyPeopleConnected ?? 0) > 0
+                    ? "Identified during events"
+                    : "Identified during events"}
                 </div>
               </div>
 
               <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft">
-                <div className="text-xs font-medium text-ink-muted">Key People Connected</div>
-                <div className="text-2xl font-extrabold text-ink mt-1">
-                  {stats.keyPeopleConnected > 0 ? `👤 ${stats.keyPeopleConnected}` : "0"}
+                <div className="text-xs font-medium text-ink-muted">My key connections</div>
+                <div className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 mt-1">
+                  {(stats.keyConnections ?? stats.highValueOpportunities ?? 0) > 0
+                    ? `⭐ ${stats.keyConnections ?? stats.highValueOpportunities}`
+                    : "0"}
                 </div>
                 <div className="text-[11px] text-ink-muted mt-0.5">
-                  {stats.keyPeopleConnected > 0 ? "Stakeholders profiled" : "Identified during events"}
+                  {(stats.keyConnections ?? stats.highValueOpportunities ?? 0) > 0
+                    ? "High-priority stakeholders"
+                    : "High-priority stakeholders"}
                 </div>
               </div>
 
               <div className="p-4 rounded-2xl bg-surface border border-border shadow-soft">
-                <div className="text-xs font-medium text-ink-muted">Action Items Created</div>
+                <div className="text-xs font-medium text-ink-muted">My action items</div>
                 <div className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">
                   {(stats.actionItemsCreated || 0) > 0 ? `✅ ${stats.actionItemsCreated}` : "0"}
                 </div>
                 <div className="text-[11px] text-ink-muted mt-0.5">
-                  {(stats.actionItemsCreated || 0) > 0 ? "Prioritized tasks & follow-ups" : "Extracted from event decisions"}
+                  {(stats.actionItemsCreated || 0) > 0
+                    ? "Prioritized tasks & follow-ups"
+                    : "Extracted from event decisions"}
                 </div>
               </div>
             </div>

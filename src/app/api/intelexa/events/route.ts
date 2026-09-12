@@ -48,16 +48,19 @@ export async function GET() {
     .select("opportunities, people, action_plan")
     .eq("user_id", user.id);
 
-  let highValueOpportunities = 0;
-  let keyPeopleConnected = 0;
+  let totalConnections = 0;
+  let keyConnections = 0;
   let actionItemsCreated = 0;
 
   (intelligences || []).forEach((intel) => {
-    if (Array.isArray(intel.opportunities)) {
-      highValueOpportunities += intel.opportunities.filter((o: any) => o.priority === "HIGH").length;
-    }
     if (Array.isArray(intel.people)) {
-      keyPeopleConnected += intel.people.length;
+      totalConnections += intel.people.length;
+      keyConnections += intel.people.filter(
+        (p: any) =>
+          p.priority === "HIGH" ||
+          p.priority === "High" ||
+          (typeof p.interest === "string" && p.interest.toLowerCase().includes("high"))
+      ).length;
     }
     if (intel.action_plan && typeof intel.action_plan === "object") {
       const plan = intel.action_plan as any;
@@ -72,8 +75,10 @@ export async function GET() {
     events: events || [],
     stats: {
       totalEvents: (events || []).length,
-      highValueOpportunities,
-      keyPeopleConnected,
+      connections: totalConnections,
+      keyConnections,
+      keyPeopleConnected: totalConnections,
+      highValueOpportunities: keyConnections,
       actionItemsCreated,
     },
   });
