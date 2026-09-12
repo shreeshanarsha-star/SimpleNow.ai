@@ -23,6 +23,8 @@ export default function Topbar({
 }) {
   const toolHome = useToolHomeHandler();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [dropdownTab, setDropdownTab] = useState<"personal" | "enterprise">("personal");
+  const [dropdownPage, setDropdownPage] = useState(0);
   const [licensedTools, setLicensedTools] = useState<LicensedTool[]>(PERSONAL_TOOL_DEFS);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -110,61 +112,93 @@ export default function Topbar({
               <span className="text-[10px] lowercase text-brand font-semibold">Option 3</span>
             </div>
 
-            {/* Personal Tools */}
-            <div className="space-y-1">
-              <div className="text-[10px] font-semibold text-ink-muted uppercase px-1">
-                Personal Tools
+            {/* Category Segmented Selector */}
+            {enterpriseTools.length > 0 && (
+              <div className="flex items-center gap-1 p-0.5 rounded-xl bg-page border border-border/70 text-[11px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDropdownTab("personal");
+                    setDropdownPage(0);
+                  }}
+                  className={`flex-1 py-1 rounded-lg transition ${
+                    dropdownTab === "personal"
+                      ? "bg-surface text-ink font-bold shadow-soft-sm"
+                      : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  Personal ({personalTools.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDropdownTab("enterprise");
+                    setDropdownPage(0);
+                  }}
+                  className={`flex-1 py-1 rounded-lg transition ${
+                    dropdownTab === "enterprise"
+                      ? "bg-surface text-ink font-bold shadow-soft-sm"
+                      : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  Enterprise ({enterpriseTools.length})
+                </button>
               </div>
-              <div className="grid grid-cols-2 gap-1">
-                {personalTools.map((t) => {
-                  const isActive = title.toLowerCase().includes(t.name.toLowerCase()) || t.name.toLowerCase().includes(title.toLowerCase());
+            )}
+
+            {/* Zero-Scrollbar Tool Grid */}
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-1.5">
+                {(dropdownTab === "personal"
+                  ? personalTools
+                  : enterpriseTools.slice(dropdownPage * 8, (dropdownPage + 1) * 8)
+                ).map((t) => {
+                  const isActive =
+                    title.toLowerCase().includes(t.name.toLowerCase()) ||
+                    t.name.toLowerCase().includes(title.toLowerCase());
                   return (
                     <Link
                       key={t.href}
                       href={t.href}
                       onClick={() => setDropdownOpen(false)}
-                      className={`flex items-center gap-2 p-1.5 rounded-xl transition text-left ${
+                      className={`flex items-center gap-2 p-1.5 rounded-xl transition text-left border ${
                         isActive
-                          ? "bg-brand-wash text-brand font-bold ring-1 ring-brand/30"
-                          : "hover:bg-page text-ink-2 hover:text-ink"
+                          ? "bg-brand-wash border-brand/40 text-brand font-bold shadow-soft-sm"
+                          : "bg-surface hover:bg-page border-border/70 text-ink-2 hover:text-ink"
                       }`}
                     >
-                      <Icon name={t.icon} className="w-3.5 h-3.5 flex-shrink-0" />
+                      <Icon name={t.icon} className="w-3.5 h-3.5 flex-shrink-0 text-brand" />
                       <span className="text-[11.5px] truncate">{t.name}</span>
                     </Link>
                   );
                 })}
               </div>
-            </div>
 
-            {/* Licensed Enterprise Systems if available */}
-            {enterpriseTools.length > 0 && (
-              <div className="space-y-1 pt-1 border-t border-border/60">
-                <div className="text-[10px] font-semibold text-ink-muted uppercase px-1">
-                  Enterprise AI Systems
+              {/* Discrete Paging for Enterprise AI (No Scrollbar) */}
+              {dropdownTab === "enterprise" && enterpriseTools.length > 8 && (
+                <div className="flex items-center justify-between pt-1 border-t border-border/50 text-[10px]">
+                  <button
+                    type="button"
+                    disabled={dropdownPage === 0}
+                    onClick={() => setDropdownPage((p) => Math.max(0, p - 1))}
+                    className="px-2 py-0.5 rounded border border-border bg-page text-ink disabled:opacity-30"
+                  >
+                    ‹ Prev
+                  </button>
+                  <span className="text-ink-muted">
+                    Page {dropdownPage + 1} of {Math.ceil(enterpriseTools.length / 8)}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={dropdownPage >= Math.ceil(enterpriseTools.length / 8) - 1}
+                    onClick={() => setDropdownPage((p) => p + 1)}
+                    className="px-2 py-0.5 rounded border border-border bg-page text-ink disabled:opacity-30"
+                  >
+                    Next ›
+                  </button>
                 </div>
-                <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto pr-1">
-                  {enterpriseTools.map((t) => {
-                    const isActive = title.toLowerCase().includes(t.name.toLowerCase());
-                    return (
-                      <Link
-                        key={t.href}
-                        href={t.href}
-                        onClick={() => setDropdownOpen(false)}
-                        className={`flex items-center gap-2 p-1.5 rounded-xl transition text-left ${
-                          isActive
-                            ? "bg-brand-wash text-brand font-bold ring-1 ring-brand/30"
-                            : "hover:bg-page text-ink-2 hover:text-ink"
-                        }`}
-                      >
-                        <Icon name={t.icon} className="w-3.5 h-3.5 flex-shrink-0 text-brand" />
-                        <span className="text-[11.5px] truncate">{t.name}</span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Catalog Link */}
             <div className="pt-2 border-t border-border/70 flex items-center justify-between text-[11px]">
