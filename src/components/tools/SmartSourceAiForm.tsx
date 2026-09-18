@@ -235,6 +235,20 @@ export default function SmartSourceAiForm({
   const [commentDraft, setCommentDraft] = useState("");
   const [commentSaving, setCommentSaving] = useState(false);
 
+  // Bulk row-selection (checkbox column) for the candidate pipeline table.
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<Set<string>>(new Set());
+  const [bulkActionBusy, setBulkActionBusy] = useState(false);
+  const [showBulkMoveMenu, setShowBulkMoveMenu] = useState(false);
+
+  // List / Board (Kanban) toggle for the candidate pipeline.
+  const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "board">("list");
+
+  // Cmd/Ctrl+K command palette -- quick search across projects and the
+  // candidates in the currently open project.
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState("");
+  const [paletteActiveIndex, setPaletteActiveIndex] = useState(0);
+
   const [projectTableSearch, setProjectTableSearch] = useState("");
   const [projectFilterTab, setProjectFilterTab] = useState<"All" | "Active" | "Due Soon" | "Completed" | "On Hold">("All");
   const [projectSortBy, setProjectSortBy] = useState<"updated" | "deadline" | "candidates" | "name">("updated");
@@ -370,6 +384,37 @@ export default function SmartSourceAiForm({
       if (statusTimer.current) clearInterval(statusTimer.current);
     };
   }, []);
+
+  // Global Cmd/Ctrl+K shortcut to toggle the command palette.
+  useEffect(() => {
+    function handleGlobalKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteQuery("");
+        setPaletteActiveIndex(0);
+        setShowCommandPalette((prev) => !prev);
+      }
+    }
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
+
+  // Bulk-selected candidate ids should never outlive the candidates they
+  // point to -- prune any id that's no longer in the active project (e.g.
+  // it was removed) the same way `projectExpanded` gets reset elsewhere.
+  useEffect(() => {
+    setSelectedCandidateIds((prev) => {
+      if (prev.size === 0) return prev;
+      const validIds = new Set(activeProjectCandidates.map((c) => c.id));
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (validIds.has(id)) next.add(id);
+        else changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [activeProjectCandidates]);
 
   const JD_ACCEPTED_EXT = [".pdf", ".docx", ".txt"];
 
@@ -688,6 +733,9 @@ export default function SmartSourceAiForm({
     setEditingCommentId(null);
     setProjectExpanded(null);
     setProjectsError(null);
+    setSelectedCandidateIds(new Set());
+    setShowBulkMoveMenu(false);
+    setPipelineViewMode("list");
     setProjectDetailLoading(true);
     try {
       const res = await fetch(`/api/smart-source/projects/${id}`);
@@ -719,6 +767,31 @@ export default function SmartSourceAiForm({
     } catch (err) {
       console.error("Could not update candidate status:", err);
     }
+    // TODO(activity-log): once activity_log table exists, record a
+    // "status changed" event here (candidateId, previous/next status).
+  }
+
+  function toggleCandidateSelected(candidateId: string) {
+    setSelectedCandidateIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(candidateId)) next.delete(candidateId);
+      else next.add(candidateId);
+      return next;
+    });
+  }
+
+  function toggleSelectAllFiltered() {
+    setSelectedCandidateIds((prev) => {
+      const allSelected =
+        filteredProjectCandidates.length > 0 && filteredProjectCandidates.every((c) => prev.has(c.id));
+      const next = new Set(prev);
+      if (allSelected) {
+        filteredProjectCandidates.forEach((c) => next.delete(c.id));
+      } else {
+        filteredProjectCandidates.forEach((c) => next.add(c.id));
+      }
+      return next;
+    });
   }
 
   function startEditingComment(c: Candidate) {
@@ -794,6 +867,124 @@ export default function SmartSourceAiForm({
     } catch {
       // best-effort -- if this fails the candidate reappears on next open
     }
+  }
+
+  // Bulk remove: same one-call-per-candidate DELETE as removeFromActiveProject
+  // above, just fired for every selected id at once.
+  async function bulkRemoveFromProject() {
+    if (!activeProjectId) return;
+    // Act on every selected id, not just the ones the current filter still
+    // shows -- selection can outlive a filter change.
+    const ids = activeProjectCandidates.filter((c) => selectedCandidateIds.has(c.id)).map((c) => c.id);
+    if (!ids.length) return;
+    if (
+      !window.confirm(
+        `Remove ${ids.length} candidate${ids.length === 1 ? "" : "s"} from "${activeProjectName}"? This will not delete them from searches.`
+      )
+    ) {
+      return;
+    }
+    setBulkActionBusy(true);
+    setActiveProjectCandidates((prev) => prev.filter((c) => !ids.includes(c.id)));
+    setProjectsList((prev) =>
+      prev.map((p) =>
+        p.id === activeProjectId ? { ...p, candidateCount: Math.max(0, p.candidateCount - ids.length) } : p
+      )
+    );
+    setSelectedCandidateIds(new Set());
+    try {
+      await Promise.allSettled(
+        ids.map((id) =>
+          fetch(`/api/smart-source/projects/${activeProjectId}?candidateId=${encodeURIComponent(id)}`, {
+            method: "DELETE",
+          })
+        )
+      );
+    } catch {
+      // best-effort -- same tradeoff as removeFromActiveProject
+    } finally {
+      setBulkActionBusy(false);
+    }
+  }
+
+  // Bulk move: reuses the same add-to-project route used by "Add to Project"
+  // elsewhere (upsert into the target project), then removes the moved
+  // candidates from the current project via the existing per-candidate
+  // DELETE endpoint -- no new backend route.
+  async function bulkMoveCandidates(target: { listId?: string; newListName?: string }) {
+    if (!activeProjectId) return;
+    // Act on every selected id, not just the ones the current filter still
+    // shows -- selection can outlive a filter change.
+    const picked = activeProjectCandidates.filter((c) => selectedCandidateIds.has(c.id));
+    if (!picked.length) return;
+    setBulkActionBusy(true);
+    setShowBulkMoveMenu(false);
+    setError(null);
+    try {
+      const res = await fetch("/api/smart-source/add-to-project", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidates: picked.map((c) => ({
+            id: c.id,
+            profile_url: c.profile_url,
+            name: c.name,
+            designation: c.designation,
+            company: c.company,
+            location: c.location,
+            experience_years: c.experience_years,
+            qualification: c.qualification,
+            match_score: c.match_score,
+            internal_person_id: c.internal_person_id,
+          })),
+          listId: target.listId || undefined,
+          newListName: target.newListName || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok && res.status !== 207) throw new Error(data.error || "Could not move these candidates.");
+
+      const movedIds = picked.map((c) => c.id);
+      await Promise.allSettled(
+        movedIds.map((id) =>
+          fetch(`/api/smart-source/projects/${activeProjectId}?candidateId=${encodeURIComponent(id)}`, {
+            method: "DELETE",
+          })
+        )
+      );
+
+      setActiveProjectCandidates((prev) => prev.filter((c) => !movedIds.includes(c.id)));
+      setSelectedCandidateIds(new Set());
+
+      const destName =
+        data.projectName ||
+        target.newListName ||
+        projectsList.find((p) => p.id === target.listId)?.name ||
+        "the project";
+      setNotice(`Moved ${movedIds.length} candidate${movedIds.length === 1 ? "" : "s"} to "${destName}".`);
+      setTimeout(() => setNotice(null), 4000);
+
+      // Refresh both the projects overview list (counts) and the add-to-project
+      // source list -- reuses the same loaders already used elsewhere.
+      loadProjectSources();
+      try {
+        const listRes = await fetch("/api/smart-source/projects");
+        const listData = await listRes.json();
+        if (listRes.ok) setProjectsList(listData.projects || []);
+      } catch {
+        // best-effort refresh of counts
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not move these candidates.");
+    } finally {
+      setBulkActionBusy(false);
+    }
+  }
+
+  function bulkMoveToNewProject() {
+    const name = window.prompt("New project name:");
+    if (!name || !name.trim()) return;
+    bulkMoveCandidates({ newListName: name.trim() });
   }
 
   async function deleteActiveProject() {
@@ -1129,6 +1320,61 @@ export default function SmartSourceAiForm({
     }
     return list;
   }, [activeProjectCandidates, projectStatusFilter, projectSearchQuery, projectCandidateSort]);
+
+  // Command palette (Cmd/Ctrl+K) results -- searches loaded projects by name
+  // and the active project's candidates by name/designation/company, capped
+  // to ~8 results total across both groups.
+  const PALETTE_MAX_RESULTS = 8;
+  const paletteProjectResults = useMemo(() => {
+    const q = paletteQuery.trim().toLowerCase();
+    const matches = projectsList.filter((p) => !q || p.name.toLowerCase().includes(q));
+    return matches.slice(0, 4);
+  }, [projectsList, paletteQuery]);
+
+  const paletteCandidateResults = useMemo(() => {
+    if (!activeProjectId) return [];
+    const q = paletteQuery.trim().toLowerCase();
+    const matches = activeProjectCandidates.filter((c) => {
+      if (!q) return true;
+      return (
+        (c.name || "").toLowerCase().includes(q) ||
+        (c.designation || "").toLowerCase().includes(q) ||
+        (c.company || "").toLowerCase().includes(q)
+      );
+    });
+    return matches.slice(0, Math.max(0, PALETTE_MAX_RESULTS - paletteProjectResults.length));
+  }, [activeProjectId, activeProjectCandidates, paletteQuery, paletteProjectResults.length]);
+
+  const paletteFlatItems = useMemo(() => {
+    return [
+      ...paletteProjectResults.map((p) => ({ type: "project" as const, data: p })),
+      ...paletteCandidateResults.map((c) => ({ type: "candidate" as const, data: c })),
+    ];
+  }, [paletteProjectResults, paletteCandidateResults]);
+
+  function selectPaletteProject(p: ProjectSummary) {
+    setShowCommandPalette(false);
+    setShowProjectsPanel(true);
+    openProjectDetail(p.id, p.name);
+  }
+
+  function selectPaletteCandidate(c: Candidate) {
+    setShowCommandPalette(false);
+    setShowProjectsPanel(true);
+    setProjectStatusFilter("All");
+    setProjectSearchQuery("");
+    setProjectExpanded(c.id);
+    setTimeout(() => {
+      document.getElementById(`pipeline-row-${c.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+  }
+
+  function activatePaletteItem(index: number) {
+    const item = paletteFlatItems[index];
+    if (!item) return;
+    if (item.type === "project") selectPaletteProject(item.data);
+    else selectPaletteCandidate(item.data);
+  }
 
   const pageCount = Math.max(1, Math.ceil(sortedCandidates.length / PAGE_SIZE));
   const pageRows = sortedCandidates.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
@@ -1543,6 +1789,32 @@ export default function SmartSourceAiForm({
                 })}
               </div>
 
+              {/* List / Board toggle */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="inline-flex bg-page rounded-sm p-1 border border-border self-start">
+                  <button
+                    type="button"
+                    onClick={() => setPipelineViewMode("list")}
+                    className={`text-[11.5px] font-bold px-2.5 py-1 rounded-sm inline-flex items-center gap-1.5 transition-colors ${
+                      pipelineViewMode === "list" ? "bg-surface text-ink shadow-soft-sm" : "text-ink-muted hover:text-ink"
+                    }`}
+                  >
+                    <Icon name="menu" className="w-3.5 h-3.5" />
+                    <span>List</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPipelineViewMode("board")}
+                    className={`text-[11.5px] font-bold px-2.5 py-1 rounded-sm inline-flex items-center gap-1.5 transition-colors ${
+                      pipelineViewMode === "board" ? "bg-surface text-ink shadow-soft-sm" : "text-ink-muted hover:text-ink"
+                    }`}
+                  >
+                    <Icon name="columns" className="w-3.5 h-3.5" />
+                    <span>Board</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Quick Search & Filter Status */}
               <div className="flex flex-wrap items-center justify-between gap-3 bg-surface p-2.5 rounded-md border border-border">
                 <div className="relative flex-1 min-w-[240px]">
@@ -1566,6 +1838,20 @@ export default function SmartSourceAiForm({
                     </button>
                   )}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaletteQuery("");
+                    setPaletteActiveIndex(0);
+                    setShowCommandPalette(true);
+                  }}
+                  className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-bold text-ink-muted border border-border rounded-sm px-2 py-1.5 bg-page hover:border-brand/40 hover:text-brand transition-colors"
+                  title="Quick search projects & candidates"
+                >
+                  <Icon name="search" className="w-3 h-3" />
+                  <kbd className="font-mono text-[10px] not-italic">⌘K</kbd>
+                </button>
 
                 <div className="flex items-center gap-3">
                   {/* Score Sort Option */}
@@ -1645,14 +1931,35 @@ export default function SmartSourceAiForm({
                     Reset filters
                   </button>
                 </div>
+              ) : pipelineViewMode === "board" ? (
+                <ProjectKanbanBoard candidates={filteredProjectCandidates} onStatusChange={updateCandidateStatus} />
               ) : (
                 <div className="border border-border rounded-md bg-surface shadow-soft-sm overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse min-w-[980px]">
                       <thead>
                         <tr className="bg-page border-b border-border text-[11.5px] font-bold text-ink-muted uppercase tracking-wider">
-                          <th className="py-2.5 px-3.5 w-[30%]">Candidate & Role</th>
-                          <th className="py-2.5 px-3 w-[16%]">Location & Exp</th>
+                          <th className="py-2.5 px-2 w-[3%]">
+                            <input
+                              type="checkbox"
+                              checked={
+                                filteredProjectCandidates.length > 0 &&
+                                filteredProjectCandidates.every((c) => selectedCandidateIds.has(c.id))
+                              }
+                              ref={(el) => {
+                                if (el) {
+                                  el.indeterminate =
+                                    selectedCandidateIds.size > 0 &&
+                                    !filteredProjectCandidates.every((c) => selectedCandidateIds.has(c.id));
+                                }
+                              }}
+                              onChange={toggleSelectAllFiltered}
+                              aria-label="Select all currently filtered candidates"
+                              className="w-3.5 h-3.5 accent-brand cursor-pointer"
+                            />
+                          </th>
+                          <th className="py-2.5 px-3.5 w-[28%]">Candidate & Role</th>
+                          <th className="py-2.5 px-3 w-[15%]">Location & Exp</th>
                           <th
                             onClick={() => setProjectCandidateSort((s) => (s === "score_desc" ? "score_asc" : "score_desc"))}
                             className="py-2.5 px-3 w-[8%] text-center cursor-pointer hover:text-brand select-none transition-colors group"
@@ -1678,7 +1985,17 @@ export default function SmartSourceAiForm({
 
                           return (
                             <Fragment key={c.id}>
-                              <tr className="hover:bg-page/50 transition-colors group">
+                              <tr id={`pipeline-row-${c.id}`} className="hover:bg-page/50 transition-colors group">
+                                {/* Select row */}
+                                <td className="py-3 px-2 align-top">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedCandidateIds.has(c.id)}
+                                    onChange={() => toggleCandidateSelected(c.id)}
+                                    aria-label={`Select ${c.name || "candidate"}`}
+                                    className="w-3.5 h-3.5 accent-brand cursor-pointer mt-1"
+                                  />
+                                </td>
                                 {/* Candidate & Role */}
                                 <td className="py-3 px-3.5 align-top">
                                   <div className="flex items-start gap-2.5">
@@ -1880,7 +2197,7 @@ export default function SmartSourceAiForm({
                               {/* Evaluation Panel Drawer */}
                               {isExpanded && (
                                 <tr className="bg-page/70 border-b border-border">
-                                  <td colSpan={6} className="p-3.5">
+                                  <td colSpan={7} className="p-3.5">
                                     <div className="bg-surface rounded-md border border-border p-3 shadow-soft-sm">
                                       <div className="flex items-center justify-between mb-2">
                                         <div className="text-[12px] font-bold text-ink flex items-center gap-1.5">
@@ -1904,6 +2221,79 @@ export default function SmartSourceAiForm({
                         })}
                       </tbody>
                     </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Bulk row actions -- only meaningful in List mode, where the
+                  checkbox column lives. */}
+              {pipelineViewMode === "list" && selectedCandidateIds.size > 0 && (
+                <div className="sticky bottom-3 z-30 self-center w-full max-w-2xl">
+                  <div className="bg-ink text-surface rounded-lg shadow-soft-lg px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-[12.5px] font-bold whitespace-nowrap">
+                      {selectedCandidateIds.size} selected
+                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setShowBulkMoveMenu((v) => !v)}
+                          disabled={bulkActionBusy}
+                          className="text-[11.5px] font-bold px-2.5 py-1.5 rounded-sm bg-surface/10 hover:bg-surface/20 inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                        >
+                          <Icon name="briefcase" className="w-3.5 h-3.5" />
+                          <span>Move to project…</span>
+                          <Icon name="chevronDown" className="w-3 h-3" />
+                        </button>
+                        {showBulkMoveMenu && (
+                          <div className="absolute bottom-full mb-2 right-0 bg-surface text-ink border border-border rounded-md shadow-soft-lg w-60 max-h-64 overflow-y-auto p-1 z-40">
+                            {projectsList.filter((p) => p.id !== activeProjectId).length === 0 ? (
+                              <div className="px-2.5 py-2 text-[11.5px] text-ink-muted">No other projects yet.</div>
+                            ) : (
+                              projectsList
+                                .filter((p) => p.id !== activeProjectId)
+                                .map((p) => (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => bulkMoveCandidates({ listId: p.id })}
+                                    className="w-full text-left px-2.5 py-1.5 text-[12px] font-semibold rounded hover:bg-page truncate"
+                                  >
+                                    {p.name}
+                                  </button>
+                                ))
+                            )}
+                            <div className="border-t border-border my-1" />
+                            <button
+                              type="button"
+                              onClick={bulkMoveToNewProject}
+                              className="w-full text-left px-2.5 py-1.5 text-[12px] font-bold text-brand rounded hover:bg-page"
+                            >
+                              + New project…
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={bulkRemoveFromProject}
+                        disabled={bulkActionBusy}
+                        className="text-[11.5px] font-bold px-2.5 py-1.5 rounded-sm bg-surface/10 hover:bg-rose-500/20 text-rose-200 inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                      >
+                        <Icon name="trash" className="w-3.5 h-3.5" />
+                        <span>Remove from project</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCandidateIds(new Set());
+                          setShowBulkMoveMenu(false);
+                        }}
+                        className="text-[11.5px] font-bold px-2 py-1.5 text-surface/70 hover:text-surface transition-colors"
+                      >
+                        Clear selection
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -2744,6 +3134,118 @@ export default function SmartSourceAiForm({
         </div>
       )}
 
+      {showCommandPalette && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-xs p-4 pt-[12vh]"
+          onClick={() => setShowCommandPalette(false)}
+        >
+          <div
+            className="bg-surface border border-border rounded-lg shadow-soft-lg w-full max-w-lg flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 px-3.5 py-3 border-b border-border">
+              <Icon name="search" className="w-4 h-4 text-ink-muted shrink-0" />
+              <input
+                autoFocus
+                type="text"
+                value={paletteQuery}
+                onChange={(e) => {
+                  setPaletteQuery(e.target.value);
+                  setPaletteActiveIndex(0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setPaletteActiveIndex((i) => Math.min(i + 1, paletteFlatItems.length - 1));
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setPaletteActiveIndex((i) => Math.max(i - 1, 0));
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    activatePaletteItem(paletteActiveIndex);
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    setShowCommandPalette(false);
+                  }
+                }}
+                placeholder="Search projects or candidates in this project…"
+                className="flex-1 bg-transparent text-[13.5px] text-ink placeholder:text-ink-muted focus:outline-none"
+              />
+              <kbd className="text-[10px] font-bold text-ink-muted border border-border rounded px-1.5 py-0.5">Esc</kbd>
+            </div>
+
+            <div className="max-h-[50vh] overflow-y-auto py-1.5">
+              {paletteFlatItems.length === 0 ? (
+                <div className="px-3.5 py-6 text-center text-[12.5px] text-ink-muted">
+                  {paletteQuery.trim() ? "No matches." : "Type to search projects or candidates."}
+                </div>
+              ) : (
+                <>
+                  {paletteProjectResults.length > 0 && (
+                    <div>
+                      <div className="px-3.5 pt-1.5 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">
+                        Projects
+                      </div>
+                      {paletteProjectResults.map((p, idx) => {
+                        const isActive = idx === paletteActiveIndex;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => selectPaletteProject(p)}
+                            onMouseEnter={() => setPaletteActiveIndex(idx)}
+                            className={`w-full flex items-center gap-2 px-3.5 py-2 text-left text-[12.5px] transition-colors ${
+                              isActive ? "bg-brand-wash text-brand" : "text-ink hover:bg-page"
+                            }`}
+                          >
+                            <Icon name="grid" className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                            <span className="truncate font-semibold">{p.name}</span>
+                            <span className="ml-auto shrink-0 text-[11px] text-ink-muted">
+                              {p.candidateCount} candidate{p.candidateCount === 1 ? "" : "s"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {paletteCandidateResults.length > 0 && (
+                    <div>
+                      <div className="px-3.5 pt-2 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">
+                        Candidates in this project
+                      </div>
+                      {paletteCandidateResults.map((c, idx) => {
+                        const flatIdx = paletteProjectResults.length + idx;
+                        const isActive = flatIdx === paletteActiveIndex;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => selectPaletteCandidate(c)}
+                            onMouseEnter={() => setPaletteActiveIndex(flatIdx)}
+                            className={`w-full flex items-center gap-2 px-3.5 py-2 text-left text-[12.5px] transition-colors ${
+                              isActive ? "bg-brand-wash text-brand" : "text-ink hover:bg-page"
+                            }`}
+                          >
+                            <span className="w-5 h-5 rounded-full bg-brand/10 text-brand font-bold text-[9.5px] flex items-center justify-center shrink-0">
+                              {(c.name || "C").slice(0, 2).toUpperCase()}
+                            </span>
+                            <span className="truncate font-semibold">{c.name || "Unnamed Candidate"}</span>
+                            <span className="ml-auto truncate text-[11px] text-ink-muted max-w-[45%]">
+                              {[c.designation, c.company].filter(Boolean).join(" · ")}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx global>{`
         .input {
           width: 100%;
@@ -2758,6 +3260,93 @@ export default function SmartSourceAiForm({
           border-color: #2a78d6;
         }
       `}</style>
+    </div>
+  );
+}
+
+// Kanban board view for the candidate pipeline -- one column per
+// PIPELINE_STATUSES entry, native HTML5 drag-and-drop to move a candidate
+// between stages via the same `updateCandidateStatus` used by the List
+// view's status dropdown (no separate status-mutation path).
+function ProjectKanbanBoard({
+  candidates,
+  onStatusChange,
+}: {
+  candidates: Candidate[];
+  onStatusChange: (candidateId: string, status: string) => void;
+}) {
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+
+  return (
+    <div className="overflow-x-auto pb-2">
+      <div className="flex gap-3 min-w-max">
+        {PIPELINE_STATUSES.map((status) => {
+          const columnCandidates = candidates.filter((c) => (c.project_status || "CV Screened") === status);
+          const isDragOver = dragOverStatus === status;
+          return (
+            <div
+              key={status}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (dragOverStatus !== status) setDragOverStatus(status);
+              }}
+              onDragLeave={() => setDragOverStatus((prev) => (prev === status ? null : prev))}
+              onDrop={(e) => {
+                e.preventDefault();
+                const id = e.dataTransfer.getData("text/plain") || draggedId;
+                setDragOverStatus(null);
+                setDraggedId(null);
+                if (id) onStatusChange(id, status);
+              }}
+              className={`w-64 shrink-0 flex flex-col rounded-md border transition-colors ${
+                isDragOver ? "border-brand bg-brand-wash/40" : "border-border bg-page/40"
+              }`}
+            >
+              <div className={`px-2.5 py-2 border-b rounded-t-md flex items-center justify-between gap-2 ${statusBadgeClass(status)}`}>
+                <span className="text-[11.5px] font-bold truncate">{status}</span>
+                <span className="text-[10.5px] font-bold px-1.5 py-0.2 rounded-full bg-white/40 dark:bg-black/20 shrink-0">
+                  {columnCandidates.length}
+                </span>
+              </div>
+              <div className="flex flex-col gap-2 p-2 min-h-[70px] max-h-[65vh] overflow-y-auto">
+                {columnCandidates.length === 0 ? (
+                  <div className="text-[11px] text-ink-muted italic text-center py-3">No candidates</div>
+                ) : (
+                  columnCandidates.map((c) => (
+                    <div
+                      key={c.id}
+                      draggable
+                      onDragStart={(e) => {
+                        setDraggedId(c.id);
+                        e.dataTransfer.setData("text/plain", c.id);
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                      onDragEnd={() => {
+                        setDraggedId(null);
+                        setDragOverStatus(null);
+                      }}
+                      title={c.profile_url ? "Drag to a different stage, or open the profile from the List view" : "Drag to a different stage"}
+                      className={`bg-surface border border-border rounded-md p-2 shadow-soft-sm cursor-grab active:cursor-grabbing transition-opacity ${
+                        draggedId === c.id ? "opacity-40" : "opacity-100"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-1.5">
+                        <span className="font-bold text-ink text-[12px] truncate">{c.name || "Unnamed Candidate"}</span>
+                        <span className={`shrink-0 text-[10px] font-bold px-1.5 py-0.2 rounded-full ${scoreClass(c.match_score)}`}>
+                          {c.match_score ?? "—"}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-ink-2 truncate">{c.designation || "—"}</div>
+                      {c.company && <div className="text-[10.5px] text-ink-muted truncate">at {c.company}</div>}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
