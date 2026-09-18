@@ -39,6 +39,10 @@ export async function POST(request: Request) {
   const candidates: CandidateInput[] = Array.isArray(body?.candidates) ? body.candidates : [];
   const projectId = typeof body?.projectId === "string" && body.projectId ? body.projectId : null;
   const newProjectName = typeof body?.newProjectName === "string" ? body.newProjectName.trim() : "";
+  // Optional note typed in the extension popup at capture time — applied to
+  // every member row this request creates. Keeps recruiters from having to
+  // open the web app just to leave a first comment.
+  const comment = typeof body?.comment === "string" && body.comment.trim() ? body.comment.trim() : null;
 
   const validCandidates = candidates.filter((c) => typeof c?.profile_url === "string" && c.profile_url);
   if (!validCandidates.length) {
@@ -129,7 +133,12 @@ export async function POST(request: Request) {
 
       const { error: memberError } = await supabase
         .from("smart_source_project_members")
-        .insert({ project_id: targetProjectId, candidate_id: candidate.id, added_by: user.id });
+        .insert({
+          project_id: targetProjectId,
+          candidate_id: candidate.id,
+          added_by: user.id,
+          comments: comment,
+        });
 
       if (memberError) throw new Error(memberError.message);
 
