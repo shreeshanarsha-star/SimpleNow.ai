@@ -19,6 +19,12 @@ type CandidateInput = {
   company?: string | null;
   location?: string | null;
   experience_years?: number | null;
+  // Set by the popup from a prior GET /extension/contact-lookup call (run
+  // when the profile was first detected) -- never looked up again here, so
+  // capture stays a plain insert with no added external calls/latency.
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  contact_source_url?: string | null;
 };
 
 type CandidateResult = {
@@ -125,6 +131,10 @@ export async function POST(request: Request) {
           experience_years: typeof c.experience_years === "number" ? c.experience_years : null,
           profile_url: c.profile_url,
           source: "linkedin",
+          public_email: c.contact_email || null,
+          public_phone: c.contact_phone || null,
+          contact_source_url: c.contact_source_url || null,
+          contact_checked_at: c.contact_email || c.contact_phone || c.contact_source_url ? new Date().toISOString() : null,
         })
         .select()
         .single();
