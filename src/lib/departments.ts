@@ -221,6 +221,7 @@ export const PERSONAL_TOOLS: Department = {
     { n: "Intelexa.ai", s: "live", href: "/tools/intelexa", bundled: true },
     { n: "Shortlist.ai", s: "live", href: "/tools/shortlist-ai" },
     { n: "JD Studio.ai", s: "live", href: "/tools/jd-studio-ai" },
+    { n: "SimpleNow-Source", s: "live", href: "/tools/smartsource-clipper", bundled: true },
   ],
 };
 

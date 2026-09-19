@@ -1,5 +1,6 @@
 import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import SmartSourceAiForm from "@/components/tools/SmartSourceAiForm";
 
@@ -70,11 +71,43 @@ export default async function SmartSourceAiPage() {
   return (
     <AppShell title="Smart Source.ai">
       {hasAccess ? (
-        <SmartSourceAiForm isAdmin={!!profile?.is_admin} monthlySearchCount={monthlySearchCount} />
+        <div className="flex flex-col gap-3">
+          <ExtensionBanner />
+          <SmartSourceAiForm isAdmin={!!profile?.is_admin} monthlySearchCount={monthlySearchCount} />
+        </div>
       ) : (
         <AccessDenied reason='The admin hasn’t granted you access to "Smart Source.ai" yet.' />
       )}
     </AppShell>
+  );
+}
+
+// Surfaces the SimpleNow-Source Chrome extension right inside Smart
+// Source.ai itself -- the extension is what feeds this pipeline from
+// LinkedIn, so someone landing here for the first time should see it
+// without having to already know it lives under Personal Tools.
+function ExtensionBanner() {
+  return (
+    <Link
+      href="/tools/smartsource-clipper"
+      className="group flex items-center gap-3 rounded-md border border-border bg-page px-4 py-3 hover:border-brand/40 hover:bg-brand-wash transition-colors"
+    >
+      <span className="w-9 h-9 rounded-md bg-[#151221] flex items-center justify-center flex-shrink-0">
+        <Icon name="globe" className="w-4.5 h-4.5 text-[#C79A3E]" />
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-[12.5px] font-bold text-ink">
+          Get the SimpleNow-Source Chrome extension
+        </span>
+        <span className="block text-[11.5px] text-ink-muted leading-snug">
+          Clip candidates and their AI-found contact info straight from LinkedIn into this pipeline.
+        </span>
+      </span>
+      <span className="text-[11.5px] font-semibold text-brand flex-shrink-0 flex items-center gap-1">
+        Download
+        <Icon name="download" className="w-3.5 h-3.5" />
+      </span>
+    </Link>
   );
 }
 
