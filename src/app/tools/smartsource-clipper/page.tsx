@@ -99,8 +99,8 @@ export default async function SmartSourceClipperPage() {
             {[
               { n: "1", text: <>Download the extension <strong>.zip</strong> below, then unzip it</> },
               { n: "2", text: <>Open <code className="bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">chrome://extensions</code> and enable <strong>Developer Mode</strong> (toggle, top right)</> },
-              { n: "3", text: <>Click <strong>"Load unpacked"</strong> and select the unzipped folder</> },
-              { n: "4", text: <>Make sure you're signed in to SimpleNow.ai in that browser, then open any <code className="bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">linkedin.com/in/…</code> profile — the panel opens on the right automatically</> },
+              { n: "3", text: <>Click <strong>&quot;Load unpacked&quot;</strong> and select the unzipped folder</> },
+              { n: "4", text: <>Make sure you&apos;re signed in to SimpleNow.ai in that browser, then open any <code className="bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">linkedin.com/in/…</code> profile — the panel opens on the right automatically</> },
             ].map(step => (
               <li key={step.n} className="flex items-start gap-3">
                 <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-800 font-bold text-[12px] flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -111,8 +111,8 @@ export default async function SmartSourceClipperPage() {
             ))}
           </ol>
           <p className="text-[11.5px] text-ink-muted leading-relaxed border-t border-border pt-3">
-            Chrome will show a "developer mode extensions" notice occasionally since this isn't published
-            to the Chrome Web Store yet — that's expected and safe to dismiss.
+            Chrome will show a &quot;developer mode extensions&quot; notice occasionally since this isn&apos;t published
+            to the Chrome Web Store yet — that&apos;s expected and safe to dismiss.
           </p>
         </div>
 
