@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
+import { hasScorableData, profileText, scoreProfilesAgainstJd, type ScorableCandidate } from "@/lib/smartSourceDrop";
 
 const FEATURE_KEY = "Smart Source.ai";
 
@@ -31,6 +32,11 @@ type CandidateResult = {
   profile_url: string;
   status: "added" | "duplicate" | "failed";
   error?: string;
+  // Set when this was a duplicate AND a note was typed -- the note still
+  // gets saved (appended to whatever's already there) even though the
+  // candidate itself wasn't re-added. Lets the popup say "note added" rather
+  // than implying nothing happened.
+  noteAdded?: boolean;
 };
 
 export async function POST(request: Request) {
@@ -62,6 +68,10 @@ export async function POST(request: Request) {
   // /api/smart-source/add-to-project.
   let targetProjectId = projectId;
   let targetProjectName: string | null = null;
+  // A brand-new project has no JD yet; an existing one might -- fetched here
+  // so a freshly-added candidate can be scored against it immediately,
+  // rather than sitting unscored until someone happens to re-drop the JD.
+  let targetProjectJdText: string | null = null;
   if (!targetProjectId && newProjectName) {
     const { data: project, error: projectError } = await supabase
       .from("smart_source_projects")
@@ -74,13 +84,14 @@ export async function POST(request: Request) {
   } else {
     const { data: existingProject, error: findError } = await supabase
       .from("smart_source_projects")
-      .select("id, name")
+      .select("id, name, jd_text")
       .eq("id", targetProjectId)
       .maybeSingle();
     if (findError || !existingProject) {
       return NextResponse.json({ error: "That project couldn't be found." }, { status: 404 });
     }
     targetProjectName = existingProject.name;
+    targetProjectJdText = existingProject.jd_text || null;
   }
 
   // One stub search row per request — holds every candidate this call adds.
@@ -115,6 +126,29 @@ export async function POST(request: Request) {
         .maybeSingle();
 
       if (existingLink) {
+        // Candidate's already here -- but if the recruiter typed a note this
+        // time (e.g. revisiting the profile on LinkedIn later), save it
+        // rather than silently dropping it. Appended with a timestamp so
+        // earlier notes aren't overwritten.
+        if (comment) {
+          const { data: existingMember } = await supabase
+            .from("smart_source_project_members")
+            .select("comments")
+            .eq("id", existingLink.id)
+            .maybeSingle();
+          const stamp = new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+          const appended = existingMember?.comments
+            ? `${existingMember.comments}\n\n[${stamp}] ${comment}`
+            : `[${stamp}] ${comment}`;
+          const { error: noteError } = await supabase
+            .from("smart_source_project_members")
+            .update({ comments: appended, updated_at: new Date().toISOString() })
+            .eq("id", existingLink.id);
+          if (!noteError) {
+            results.push({ profile_url: c.profile_url, status: "duplicate", noteAdded: true });
+            continue;
+          }
+        }
         results.push({ profile_url: c.profile_url, status: "duplicate" });
         continue;
       }
@@ -141,16 +175,56 @@ export async function POST(request: Request) {
 
       if (candError || !candidate) throw new Error(candError?.message || "Could not save this candidate.");
 
-      const { error: memberError } = await supabase
+      const { data: member, error: memberError } = await supabase
         .from("smart_source_project_members")
         .insert({
           project_id: targetProjectId,
           candidate_id: candidate.id,
           added_by: user.id,
           comments: comment,
-        });
+        })
+        .select("id")
+        .single();
 
-      if (memberError) throw new Error(memberError.message);
+      if (memberError || !member) throw new Error(memberError?.message || "Could not add this candidate.");
+
+      // Best-effort: a scoring hiccup must not undo the add, so this never
+      // throws past this block -- the candidate just stays unscored, same
+      // fallback as the JD-drop box.
+      if (targetProjectJdText) {
+        try {
+          const scorable: ScorableCandidate = {
+            name: c.name || null,
+            designation: c.designation || null,
+            company: c.company || null,
+            location: c.location || null,
+            experience_years: typeof c.experience_years === "number" ? c.experience_years : null,
+            qualification: null,
+            skills: null,
+            evaluation_summary: null,
+            resume_text: null,
+          };
+          if (hasScorableData(scorable)) {
+            const [result] = await scoreProfilesAgainstJd(targetProjectJdText, [
+              { key: member.id, profile: profileText(scorable) },
+            ]);
+            if (result) {
+              await supabase
+                .from("smart_source_project_members")
+                .update({
+                  jd_score: result.score,
+                  jd_summary: result.summary,
+                  jd_strengths: result.strengths,
+                  jd_gaps: result.gaps,
+                  jd_scored_at: new Date().toISOString(),
+                })
+                .eq("id", member.id);
+            }
+          }
+        } catch (err) {
+          console.warn("Extension capture: scoring failed, candidate left unscored:", err);
+        }
+      }
 
       results.push({ profile_url: c.profile_url, status: "added" });
     } catch (err) {

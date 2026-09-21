@@ -94,6 +94,11 @@ export type CvFields = {
   email: string | null;
   phone: string | null;
   compensation: string | null;
+  // Only ever comes from a dropped resume (LinkedIn never shows pay) --
+  // manual entry in the web app is the fallback when a resume doesn't state
+  // these either.
+  expected_ctc: string | null;
+  notice_period: string | null;
 };
 
 export type DocumentAnalysis = {
@@ -123,7 +128,9 @@ Respond as JSON only (no markdown fences, no prose):
     "skills": array of up to 12 short strings (the candidate's main skills),
     "email": string or null,
     "phone": string or null,
-    "compensation": string or null (current CTC/salary only if explicitly stated)
+    "compensation": string or null (current CTC/salary only if explicitly stated),
+    "expected_ctc": string or null (expected/desired CTC or salary, only if explicitly stated),
+    "notice_period": string or null (notice period or availability to join, only if explicitly stated, e.g. "30 days", "immediate")
   }
 }
 Never invent details that aren't in the document -- use null.`;
@@ -162,6 +169,8 @@ export async function analyzeDocument(text: string): Promise<DocumentAnalysis> {
       email: cleanStr(c.email)?.toLowerCase() ?? null,
       phone: cleanStr(c.phone),
       compensation: cleanStr(c.compensation),
+      expected_ctc: cleanStr(c.expected_ctc),
+      notice_period: cleanStr(c.notice_period),
     };
   }
 

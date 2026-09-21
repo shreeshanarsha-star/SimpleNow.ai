@@ -151,7 +151,7 @@ async function render(profile, projects) {
     </div>
 
     <div class="label" style="margin-top:12px;">Note (optional)</div>
-    <textarea class="comment-input" id="comment-input" placeholder="e.g. Referred by Dr Sophiya"></textarea>
+    <textarea class="comment-input" id="comment-input" placeholder="e.g. Referred by Dr Sophiya (adds a new note even if already added)"></textarea>
 
     <button class="add-btn" id="add-btn">Add to Smart Source →</button>
     <div class="status" id="status"></div>
@@ -369,7 +369,14 @@ async function render(profile, projects) {
 
     const result = (res.data?.results || [])[0];
     const projectName = res.data?.projectName || "the project";
-    if (result?.status === "duplicate") {
+    if (result?.status === "duplicate" && result?.noteAdded) {
+      // Already a member, but the note the recruiter just typed was saved
+      // onto the existing record -- this is a normal, successful revisit,
+      // not an error, so it gets the same styling as a fresh add.
+      status.textContent = `Already in ${projectName} -- note added ✓`;
+      status.className = "status status--ok";
+      commentInput.value = "";
+    } else if (result?.status === "duplicate") {
       status.textContent = `Already in ${projectName}`;
       status.className = "status status--error";
     } else if (result?.status === "failed") {

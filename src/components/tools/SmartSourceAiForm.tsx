@@ -43,6 +43,15 @@ type Candidate = {
   project_status?: string;
   project_comments?: string;
   added_at?: string;
+  // Contact -- auto-populated from LinkedIn (public lookup) or a dropped CV
+  // when available, otherwise blank and manually editable.
+  public_email: string | null;
+  public_phone: string | null;
+  // CTC & Notice -- "compensation" (declared above) is shown as "Current
+  // CTC" in the UI. None of these ever come from LinkedIn (it doesn't show
+  // pay); only a dropped resume can auto-fill them, otherwise manual entry.
+  expected_ctc: string | null;
+  notice_period: string | null;
 };
 
 type Requisition = { id: string; title: string };
@@ -915,6 +924,33 @@ export default function SmartSourceAiForm({
     }
   }
 
+  // Saves one editable field on the shared candidate record (name, role,
+  // location, experience, contact, CTC/notice) -- optimistic update first,
+  // PATCH in the background. These live on smart_source_candidates, not the
+  // per-project member row, since they describe the person, not their status
+  // in this one project.
+  async function saveCandidateField(
+    candidateId: string,
+    field: keyof Candidate,
+    value: string | number | null
+  ) {
+    if (!activeProjectId) return;
+    setActiveProjectCandidates((prev) =>
+      prev.map((c) => (c.id === candidateId ? { ...c, [field]: value } : c))
+    );
+    try {
+      const res = await fetch(`/api/smart-source/projects/${activeProjectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidateId, candidate: { [field]: value } }),
+      });
+      if (!res.ok) throw new Error(`Save failed (${res.status})`);
+    } catch (err) {
+      console.error(`Could not save ${field}:`, err);
+      setNotice(`Couldn't save that change -- please try again.`);
+    }
+  }
+
   function exportProjectCsv() {
     if (!activeProjectCandidates.length) return;
     const headers = [
@@ -924,6 +960,11 @@ export default function SmartSourceAiForm({
       "Company",
       "Location",
       "Experience Years",
+      "Email",
+      "Phone",
+      "Current CTC",
+      "Expected CTC",
+      "Notice Period",
       "Pipeline Status",
       "Recruiter Comments",
       "LinkedIn URL",
@@ -935,6 +976,11 @@ export default function SmartSourceAiForm({
       csvEscape(c.company || ""),
       csvEscape(c.location || ""),
       csvEscape(c.experience_years ?? ""),
+      csvEscape(c.public_email || ""),
+      csvEscape(c.public_phone || ""),
+      csvEscape(c.compensation || ""),
+      csvEscape(c.expected_ctc || ""),
+      csvEscape(c.notice_period || ""),
       csvEscape(c.project_status || "CV Screened"),
       csvEscape(c.project_comments || ""),
       csvEscape(c.profile_url || ""),
@@ -2125,7 +2171,9 @@ export default function SmartSourceAiForm({
                                     className="w-3.5 h-3.5 accent-brand cursor-pointer mt-1"
                                   />
                                 </td>
-                                {/* Candidate & Role */}
+                                {/* Candidate & Role -- name/title/company and contact are all
+                                    click-to-edit, whether they came from the LinkedIn scrape,
+                                    an AI-parsed resume, or nothing at all yet. */}
                                 <td className="py-3 px-3.5 align-top">
                                   <div className="flex items-start gap-2.5">
                                     <div className="w-8 h-8 rounded-full bg-brand/10 text-brand font-bold text-[12px] flex items-center justify-center shrink-0 border border-brand/20">
@@ -2134,7 +2182,11 @@ export default function SmartSourceAiForm({
                                     <div className="min-w-0">
                                       <div className="flex items-center gap-1.5 flex-wrap">
                                         <span className="font-bold text-ink text-[13.5px]">
-                                          {c.name || "Unnamed Candidate"}
+                                          <EditableText
+                                            value={c.name || ""}
+                                            placeholder="Unnamed Candidate"
+                                            onSave={(v) => saveCandidateField(c.id, "name", v || null)}
+                                          />
                                         </span>
                                         {c.profile_url && (
                                           <a
@@ -2149,25 +2201,102 @@ export default function SmartSourceAiForm({
                                         )}
                                       </div>
                                       <div className="text-[12px] text-ink-2 font-medium truncate max-w-sm">
-                                        {c.designation || "—"}
+                                        <EditableText
+                                          value={c.designation || ""}
+                                          placeholder="add role"
+                                          onSave={(v) => saveCandidateField(c.id, "designation", v || null)}
+                                        />
                                       </div>
-                                      {c.company && (
-                                        <div className="text-[11.5px] text-ink-muted truncate max-w-sm">
-                                          at <span className="text-ink">{c.company}</span>
-                                        </div>
-                                      )}
+                                      <div className="text-[11.5px] text-ink-muted truncate max-w-sm">
+                                        at{" "}
+                                        <EditableText
+                                          value={c.company || ""}
+                                          placeholder="add company"
+                                          onSave={(v) => saveCandidateField(c.id, "company", v || null)}
+                                          className="text-ink"
+                                        />
+                                      </div>
+
+                                      {/* Contact -- auto-filled from the extension's public lookup
+                                          or a dropped CV when found, blank and editable otherwise. */}
+                                      <div className="flex items-center gap-2.5 mt-1 text-[11px]">
+                                        <span className="inline-flex items-center gap-1">
+                                          <Icon name="mail" className="w-3 h-3 text-ink-muted shrink-0" />
+                                          <EditableText
+                                            value={c.public_email || ""}
+                                            placeholder="add email"
+                                            onSave={(v) => saveCandidateField(c.id, "public_email", v || null)}
+                                            className="text-ink-2"
+                                          />
+                                        </span>
+                                        <span className="inline-flex items-center gap-1">
+                                          <Icon name="phone" className="w-3 h-3 text-ink-muted shrink-0" />
+                                          <EditableText
+                                            value={c.public_phone || ""}
+                                            placeholder="add phone"
+                                            onSave={(v) => saveCandidateField(c.id, "public_phone", v || null)}
+                                            className="text-ink-2"
+                                          />
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
                                 </td>
 
-                                {/* Location & Exp */}
+                                {/* Location & Exp, plus CTC & Notice -- LinkedIn never exposes
+                                    pay, so these three only ever auto-fill from a dropped resume;
+                                    otherwise they start blank for manual entry. */}
                                 <td className="py-3 px-3 align-top text-ink-2">
                                   <div className="flex flex-col gap-0.5">
-                                    <div className="truncate max-w-[170px]" title={c.location || ""}>
-                                      {c.location || "—"}
+                                    <div className="truncate max-w-[170px]">
+                                      <EditableText
+                                        value={c.location || ""}
+                                        placeholder="add location"
+                                        onSave={(v) => saveCandidateField(c.id, "location", v || null)}
+                                      />
                                     </div>
                                     <div className="text-[11.5px] text-ink-muted">
-                                      {c.experience_years != null ? `${c.experience_years} yrs exp` : "—"}
+                                      <EditableText
+                                        value={c.experience_years != null ? String(c.experience_years) : ""}
+                                        placeholder="add exp"
+                                        type="number"
+                                        onSave={(v) =>
+                                          saveCandidateField(
+                                            c.id,
+                                            "experience_years",
+                                            v.trim() === "" ? null : Number(v)
+                                          )
+                                        }
+                                      />
+                                      {c.experience_years != null ? " yrs exp" : ""}
+                                    </div>
+                                    <div className="mt-1.5 pt-1.5 border-t border-border/60 flex flex-col gap-0.5 text-[10.5px] leading-tight">
+                                      <div>
+                                        <span className="text-ink-muted font-bold uppercase tracking-wide text-[9.5px] mr-1">
+                                          CTC
+                                        </span>
+                                        <EditableText
+                                          value={c.compensation || ""}
+                                          placeholder="current"
+                                          onSave={(v) => saveCandidateField(c.id, "compensation", v || null)}
+                                        />
+                                        <span className="text-ink-muted mx-1">→</span>
+                                        <EditableText
+                                          value={c.expected_ctc || ""}
+                                          placeholder="expected"
+                                          onSave={(v) => saveCandidateField(c.id, "expected_ctc", v || null)}
+                                        />
+                                      </div>
+                                      <div>
+                                        <span className="text-ink-muted font-bold uppercase tracking-wide text-[9.5px] mr-1">
+                                          Notice
+                                        </span>
+                                        <EditableText
+                                          value={c.notice_period || ""}
+                                          placeholder="add notice period"
+                                          onSave={(v) => saveCandidateField(c.id, "notice_period", v || null)}
+                                        />
+                                      </div>
                                     </div>
                                   </div>
                                 </td>
@@ -2277,11 +2406,11 @@ export default function SmartSourceAiForm({
                                       <button
                                         type="button"
                                         onClick={() => openWhatsAppModal(c)}
-                                        className="text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 text-[11.5px] font-bold px-1.5 py-0.5 rounded hover:bg-emerald-50 dark:hover:bg-emerald-950/40 inline-flex items-center gap-1 transition-colors"
+                                        aria-label="Quick outreach via WhatsApp"
+                                        className="text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 w-6 h-6 rounded inline-flex items-center justify-center hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
                                         title="Quick outreach via WhatsApp"
                                       >
-                                        <Icon name="whatsapp" className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                                        <span>WhatsApp</span>
+                                        <Icon name="whatsapp" className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                                       </button>
                                       <button
                                         type="button"
@@ -3711,6 +3840,74 @@ function LinksRow({
         </button>
       )}
     </div>
+  );
+}
+
+// ---------- Inline click-to-edit text (pipeline table cells) ----------
+// Used for every candidate field that can be auto-populated (LinkedIn scrape
+// or AI resume parse) but must also stay manually editable when that source
+// has nothing -- name/role/company, location/experience, contact, CTC &
+// notice period. Click the text, type, Enter or blur to save, Escape to
+// cancel. Saving is the caller's job (onSave), so this stays a dumb input.
+function EditableText({
+  value,
+  placeholder,
+  onSave,
+  className = "",
+  type = "text",
+}: {
+  value: string;
+  placeholder: string;
+  onSave: (value: string) => void;
+  className?: string;
+  type?: "text" | "number";
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    if (!editing) setDraft(value);
+  }, [value, editing]);
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type={type}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={() => {
+          setEditing(false);
+          if (draft.trim() !== (value || "").trim()) onSave(draft.trim());
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            setDraft(value);
+            setEditing(false);
+          }
+        }}
+        onClick={(e) => e.stopPropagation()}
+        className={`bg-page border border-brand/50 rounded px-1 py-0 -mx-1 focus:outline-none ${className}`}
+        style={{ width: `${Math.max(draft.length, placeholder.length, 3) + 1}ch` }}
+      />
+    );
+  }
+
+  return (
+    <span
+      onClick={(e) => {
+        e.stopPropagation();
+        setEditing(true);
+      }}
+      title="Click to edit"
+      className={`cursor-text rounded px-0.5 -mx-0.5 hover:bg-page/70 transition-colors ${
+        value ? className : "text-ink-muted italic"
+      }`}
+    >
+      {value || placeholder}
+    </span>
   );
 }
 

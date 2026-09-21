@@ -175,6 +175,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         qualification: cv.qualification,
         skills: cv.skills.length ? cv.skills : null,
         compensation: cv.compensation,
+        expected_ctc: cv.expected_ctc,
+        notice_period: cv.notice_period,
         public_email: cv.email,
         public_phone: cv.phone,
         profile_url: null,

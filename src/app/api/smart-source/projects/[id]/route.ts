@@ -106,22 +106,66 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { id } = await params;
   const body = await request.json().catch(() => null);
 
-  // Case 1: Updating candidate member status or comments in this project
+  // Case 1: Updating candidate member status or comments in this project,
+  // and/or editable fields on the shared candidate record itself (name,
+  // role, contact, CTC/notice) -- those live on smart_source_candidates
+  // rather than the per-project member row, since they describe the person,
+  // not their status in this one project.
   if (body?.candidateId) {
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (typeof body.status === "string") updateData.status = body.status;
     if (typeof body.comments === "string") updateData.comments = body.comments;
 
-    const { error } = await supabase
-      .from("smart_source_project_members")
-      .update(updateData)
-      .eq("project_id", id)
-      .eq("candidate_id", body.candidateId);
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (Object.keys(updateData).length > 1) {
+      const { error } = await supabase
+        .from("smart_source_project_members")
+        .update(updateData)
+        .eq("project_id", id)
+        .eq("candidate_id", body.candidateId);
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
     }
-    return NextResponse.json({ ok: true, status: body.status, comments: body.comments });
+
+    // Candidate-level fields -- all optional, all manually editable
+    // regardless of whether they were auto-populated (LinkedIn scrape / AI
+    // resume parse) or left blank. Empty string clears a field.
+    let candidateUpdated = false;
+    if (body?.candidate && typeof body.candidate === "object") {
+      const c = body.candidate as Record<string, unknown>;
+      const candidateUpdates: Record<string, unknown> = {};
+      const strField = (key: string) => {
+        if (typeof c[key] === "string") candidateUpdates[key] = c[key].trim() || null;
+      };
+      strField("name");
+      strField("designation");
+      strField("company");
+      strField("location");
+      strField("public_email");
+      strField("public_phone");
+      strField("compensation");
+      strField("expected_ctc");
+      strField("notice_period");
+      if (c.experience_years === null || c.experience_years === "") {
+        candidateUpdates.experience_years = null;
+      } else if (c.experience_years !== undefined) {
+        const exp = Number(c.experience_years);
+        if (!isNaN(exp) && exp >= 0 && exp < 70) candidateUpdates.experience_years = exp;
+      }
+
+      if (Object.keys(candidateUpdates).length > 0) {
+        const { error: candError } = await supabase
+          .from("smart_source_candidates")
+          .update(candidateUpdates)
+          .eq("id", body.candidateId);
+        if (candError) {
+          return NextResponse.json({ error: candError.message }, { status: 500 });
+        }
+        candidateUpdated = true;
+      }
+    }
+
+    return NextResponse.json({ ok: true, status: body.status, comments: body.comments, candidateUpdated });
   }
 
   // Case 2: Updating project details (name, description, timelines, target_hires, status)
