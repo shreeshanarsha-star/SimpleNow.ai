@@ -1949,35 +1949,40 @@ export default function SmartSourceAiForm({
                 </button>
               </div>
 
-              {/* List / Board toggle */}
-              <div className="flex items-center justify-between gap-3">
-                <div className="inline-flex bg-page rounded-sm p-1 border border-border self-start">
+              {/* View toggle, search, quick-search, and filter reset -- one row.
+                  The standalone "Sort: Highest Score First" control was removed:
+                  the Score column header already toggles the same
+                  projectCandidateSort state with its own ▼/▲ indicator, so having
+                  both was redundant. The count text ("Showing X of Y") went too --
+                  Clear (the X button) still appears whenever a filter, search, or
+                  sort is active, so nothing is lost, just less always-on text. */}
+              <div className="flex flex-wrap items-center gap-2 bg-surface p-2.5 rounded-md border border-border">
+                <div className="inline-flex bg-page rounded-sm p-1 border border-border shrink-0">
                   <button
                     type="button"
                     onClick={() => setPipelineViewMode("list")}
-                    className={`text-[11.5px] font-bold px-2.5 py-1 rounded-sm inline-flex items-center gap-1.5 transition-colors ${
+                    aria-label="List view"
+                    title="List view"
+                    className={`w-7 h-7 rounded-sm inline-flex items-center justify-center transition-colors ${
                       pipelineViewMode === "list" ? "bg-surface text-ink shadow-soft-sm" : "text-ink-muted hover:text-ink"
                     }`}
                   >
                     <Icon name="menu" className="w-3.5 h-3.5" />
-                    <span>List</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setPipelineViewMode("board")}
-                    className={`text-[11.5px] font-bold px-2.5 py-1 rounded-sm inline-flex items-center gap-1.5 transition-colors ${
+                    aria-label="Board view"
+                    title="Board view"
+                    className={`w-7 h-7 rounded-sm inline-flex items-center justify-center transition-colors ${
                       pipelineViewMode === "board" ? "bg-surface text-ink shadow-soft-sm" : "text-ink-muted hover:text-ink"
                     }`}
                   >
                     <Icon name="columns" className="w-3.5 h-3.5" />
-                    <span>Board</span>
                   </button>
                 </div>
-              </div>
 
-              {/* Quick Search & Filter Status */}
-              <div className="flex flex-wrap items-center justify-between gap-3 bg-surface p-2.5 rounded-md border border-border">
-                <div className="relative flex-1 min-w-[240px]">
+                <div className="relative flex-1 min-w-[220px]">
                   <Icon
                     name="search"
                     className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-muted pointer-events-none"
@@ -1992,6 +1997,7 @@ export default function SmartSourceAiForm({
                   {projectSearchQuery && (
                     <button
                       onClick={() => setProjectSearchQuery("")}
+                      aria-label="Clear search text"
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink text-[11px]"
                     >
                       ✕
@@ -2006,65 +2012,28 @@ export default function SmartSourceAiForm({
                     setPaletteActiveIndex(0);
                     setShowCommandPalette(true);
                   }}
-                  className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-bold text-ink-muted border border-border rounded-sm px-2 py-1.5 bg-page hover:border-brand/40 hover:text-brand transition-colors"
-                  title="Quick search projects & candidates"
+                  aria-label="Quick search projects and candidates"
+                  className="shrink-0 inline-flex items-center justify-center w-7 h-7 text-ink-muted border border-border rounded-sm bg-page hover:border-brand/40 hover:text-brand transition-colors"
+                  title="Quick search projects & candidates (⌘K)"
                 >
-                  <Icon name="search" className="w-3 h-3" />
-                  <kbd className="font-mono text-[10px] not-italic">⌘K</kbd>
+                  <Icon name="search" className="w-3.5 h-3.5" />
                 </button>
 
-                <div className="flex items-center gap-3">
-                  {/* Score Sort Option */}
-                  <div className="inline-flex items-center gap-1.5 bg-page border border-border rounded-sm px-2.5 py-1 text-[12px]">
-                    <span className="text-ink-muted text-[11px] font-semibold uppercase tracking-wider">Sort:</span>
-                    <button
-                      type="button"
-                      onClick={() => setProjectCandidateSort((s) => (s === "score_desc" ? "score_asc" : "score_desc"))}
-                      className={`px-2 py-0.5 rounded text-[11.5px] font-bold inline-flex items-center gap-1 transition-all ${
-                        projectCandidateSort === "score_desc"
-                          ? "bg-brand text-white shadow-soft-sm"
-                          : projectCandidateSort === "score_asc"
-                          ? "bg-brand/15 text-brand"
-                          : "bg-surface text-ink-2 hover:text-ink"
-                      }`}
-                      title={projectCandidateSort === "score_desc" ? "Currently sorted: Highest score first (click to invert)" : "Sort by highest score first"}
-                    >
-                      <span>Highest Score First</span>
-                      <span className="text-[10.5px] font-mono">
-                        {projectCandidateSort === "score_desc" ? "▼" : projectCandidateSort === "score_asc" ? "▲" : "↕"}
-                      </span>
-                    </button>
-                    {projectCandidateSort !== "default" && (
-                      <button
-                        type="button"
-                        onClick={() => setProjectCandidateSort("default")}
-                        className="text-[11px] text-ink-muted hover:text-ink ml-0.5 hover:underline"
-                        title="Reset to default order"
-                      >
-                        Reset
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="text-[12px] text-ink-muted flex items-center gap-2">
-                    <span>
-                      Showing <strong className="text-ink">{filteredProjectCandidates.length}</strong> of{" "}
-                      {activeProjectCandidates.length} candidates
-                    </span>
-                    {(projectStatusFilter !== "All" || projectSearchQuery || projectCandidateSort !== "default") && (
-                      <button
-                        onClick={() => {
-                          setProjectStatusFilter("All");
-                          setProjectSearchQuery("");
-                          setProjectCandidateSort("default");
-                        }}
-                        className="text-[11.5px] font-bold text-brand hover:underline ml-1"
-                      >
-                        Clear filters
-                      </button>
-                    )}
-                  </div>
-                </div>
+                {(projectStatusFilter !== "All" || projectSearchQuery || projectCandidateSort !== "default") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProjectStatusFilter("All");
+                      setProjectSearchQuery("");
+                      setProjectCandidateSort("default");
+                    }}
+                    aria-label="Clear stage filter, search, and sort"
+                    className="shrink-0 inline-flex items-center justify-center w-7 h-7 text-ink-muted border border-border rounded-sm bg-page hover:border-rose-400/40 hover:text-rose-400 transition-colors"
+                    title={`Clear filters, search & sort (showing ${filteredProjectCandidates.length} of ${activeProjectCandidates.length})`}
+                  >
+                    <Icon name="x" className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               {/* Candidate Pipeline Table */}
