@@ -27,6 +27,8 @@ export async function GET() {
       target_date,
       target_hires,
       status,
+      jd_file_name,
+      jd_updated_at,
       smart_source_project_members(status)
     `)
     .order("created_at", { ascending: false });
@@ -90,6 +92,8 @@ export async function GET() {
       target_date: p.target_date || null,
       target_hires: targetHires,
       status: p.status || "Active",
+      jd_file_name: p.jd_file_name || null,
+      jd_updated_at: p.jd_updated_at || null,
       candidateCount,
       stageCounts: {
         screened,

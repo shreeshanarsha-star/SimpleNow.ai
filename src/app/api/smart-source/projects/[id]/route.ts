@@ -14,7 +14,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const { data: project, error: projectError } = await supabase
     .from("smart_source_projects")
-    .select("id, name, created_at, description, start_date, target_date, target_hires, status")
+    .select("id, name, created_at, description, start_date, target_date, target_hires, status, jd_file_name, jd_updated_at")
     .eq("id", id)
     .maybeSingle();
   if (projectError) return NextResponse.json({ error: projectError.message }, { status: 500 });
@@ -22,16 +22,39 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const { data: rows, error: membersError } = await supabase
     .from("smart_source_project_members")
-    .select("id, added_at, status, comments, smart_source_candidates(*)")
+    .select("id, added_at, status, comments, jd_score, jd_summary, jd_strengths, jd_gaps, smart_source_candidates(*)")
     .eq("project_id", id)
     .order("added_at", { ascending: false });
   if (membersError) return NextResponse.json({ error: membersError.message }, { status: 500 });
 
   const candidates = (rows || [])
-    .map((r: { id: string; added_at: string; status: string | null; comments: string | null; smart_source_candidates: unknown }) => {
+    .map((r: {
+      id: string;
+      added_at: string;
+      status: string | null;
+      comments: string | null;
+      jd_score: number | null;
+      jd_summary: string | null;
+      jd_strengths: string[] | null;
+      jd_gaps: string[] | null;
+      smart_source_candidates: unknown;
+    }) => {
       if (!r.smart_source_candidates || typeof r.smart_source_candidates !== "object") return null;
+      // A score against this project's JD (set by the drop box) takes
+      // precedence over whatever score the candidate row itself carries from
+      // a search; it lives on the member row so it stays per-project.
+      const jdScored =
+        r.jd_score != null
+          ? {
+              match_score: r.jd_score,
+              evaluation_summary: r.jd_summary,
+              evaluation_strengths: r.jd_strengths,
+              evaluation_gaps: r.jd_gaps,
+            }
+          : {};
       return {
         ...(r.smart_source_candidates as Record<string, unknown>),
+        ...jdScored,
         project_member_id: r.id,
         project_status: r.status || "CV Screened",
         project_comments: r.comments || "",

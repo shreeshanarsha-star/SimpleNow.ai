@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import { useRegisterToolHome } from "@/components/ToolHomeContext";
+import ProjectDropBox from "@/components/tools/ProjectDropBox";
 
 type Mode = "jd" | "describe" | "manual";
 type Step = "input" | "running" | "results";
@@ -62,12 +63,15 @@ export type ProjectSummary = {
   target_date?: string | null;
   target_hires?: number;
   status?: string;
+  jd_file_name?: string | null;
+  jd_updated_at?: string | null;
   candidateCount: number;
   stageCounts?: ProjectStageCounts;
   completionPercentage?: number;
 };
 
 export const PIPELINE_STATUSES = [
+  "CV Sourced",
   "CV Screened",
   "CV Shared",
   "L1 Interview Shortlist",
@@ -86,6 +90,8 @@ export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
 
 function statusBadgeClass(status: string | null | undefined): string {
   switch (status) {
+    case "CV Sourced":
+      return "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700";
     case "CV Screened":
       return "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800";
     case "CV Shared":
@@ -717,6 +723,18 @@ export default function SmartSourceAiForm({
       setProjectsError(err instanceof Error ? err.message : "Could not load your projects.");
     } finally {
       setProjectsLoading(false);
+    }
+  }
+
+  // Quiet refresh of the project table (no loading flash, keeps whatever
+  // the user is looking at) -- used after the drop box adds a JD or CVs.
+  async function refreshProjectsList() {
+    try {
+      const res = await fetch("/api/smart-source/projects");
+      const data = await res.json();
+      if (res.ok) setProjectsList(data.projects || []);
+    } catch {
+      /* the next full load will pick it up */
     }
   }
 
@@ -1634,6 +1652,12 @@ export default function SmartSourceAiForm({
                                       </span>
                                     )}
                                   </div>
+                                  <ProjectDropBox
+                                    projectId={p.id}
+                                    jdFileName={p.jd_file_name}
+                                    jdUpdatedAt={p.jd_updated_at}
+                                    onChanged={refreshProjectsList}
+                                  />
                                 </td>
 
                                 {/* Actions */}
