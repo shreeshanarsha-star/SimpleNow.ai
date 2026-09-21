@@ -213,3 +213,15 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* Hides the native scrollbar on a scrollable container while keeping it
+   scrollable (wheel/trackpad/touch/JS scrollBy all still work) -- used for
+   horizontal strips (e.g. the Smart Source.ai pipeline funnel) that provide
+   their own chevron-button navigation instead of a visible scrollbar track. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

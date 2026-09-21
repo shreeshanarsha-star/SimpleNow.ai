@@ -88,6 +88,78 @@ export const PIPELINE_STATUSES = [
 
 export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
 
+// ---------- Pipeline funnel (Workday strip replacement) ----------
+// The 9 forward-moving stages, in order -- this is a real funnel (each stage
+// is a subset of candidates who passed the one before it), so it's rendered
+// as a connected chevron chain with increasing brand-color intensity.
+// Rejected/Hold/Offer Drop/Backout are deliberately NOT funnel bands: a
+// candidate can exit to any of those from ANY stage, so stacking them at the
+// end of a "narrowing" funnel would misrepresent the flow (this is also how
+// Greenhouse/Lever separate a pipeline funnel from its exit reasons). They
+// render instead as small colored "Other outcomes" chips beside the funnel.
+const FUNNEL_STATUSES = [
+  "CV Sourced",
+  "CV Screened",
+  "CV Shared",
+  "L1 Interview Shortlist",
+  "L2 Interview Shortlist",
+  "HR Interview Shortlist",
+  "Offered",
+  "To Join",
+  "Joined",
+] as const;
+
+// Bands stay evenly sized (a stylized taper via color, not a to-scale
+// funnel) -- with small candidate counts, several stages sitting at 0 would
+// make a true proportional funnel collapse to invisible slivers. Intensity
+// increases stage-to-stage using the theme's own --brand-rgb, so this reads
+// correctly (and keeps contrast) in every one of the app's 4 color themes,
+// not just the one it was designed against.
+const FUNNEL_BANDS: { status: (typeof FUNNEL_STATUSES)[number]; short: string; bg: string; text: string }[] = [
+  { status: "CV Sourced", short: "CV Sourced", bg: "bg-brand/[0.14]", text: "text-ink" },
+  { status: "CV Screened", short: "CV Screened", bg: "bg-brand/[0.24]", text: "text-ink" },
+  { status: "CV Shared", short: "CV Shared", bg: "bg-brand/[0.34]", text: "text-ink" },
+  { status: "L1 Interview Shortlist", short: "L1 Interview", bg: "bg-brand/[0.45]", text: "text-ink" },
+  { status: "L2 Interview Shortlist", short: "L2 Interview", bg: "bg-brand/[0.58]", text: "text-white" },
+  { status: "HR Interview Shortlist", short: "HR Interview", bg: "bg-brand/[0.70]", text: "text-white" },
+  { status: "Offered", short: "Offered", bg: "bg-brand/[0.82]", text: "text-white" },
+  { status: "To Join", short: "To Join", bg: "bg-brand/[0.94]", text: "text-white" },
+  { status: "Joined", short: "Joined", bg: "bg-brand", text: "text-white" },
+];
+
+const EXIT_STATUSES = ["Hold", "Rejected", "Offer Drop", "Backout"] as const;
+const EXIT_DOT_CLASS: Record<(typeof EXIT_STATUSES)[number], string> = {
+  Hold: "bg-amber-400",
+  Rejected: "bg-rose-400",
+  "Offer Drop": "bg-orange-400",
+  Backout: "bg-red-400",
+};
+const EXIT_TEXT_CLASS: Record<(typeof EXIT_STATUSES)[number], string> = {
+  Hold: "text-amber-500 dark:text-amber-400",
+  Rejected: "text-rose-500 dark:text-rose-400",
+  "Offer Drop": "text-orange-500 dark:text-orange-400",
+  Backout: "text-red-500 dark:text-red-400",
+};
+
+// Interlocking chevron shape: a point on the outgoing (right) edge and a
+// matching notch on the incoming (left) edge, so consecutive segments (laid
+// out with a small negative margin) slot into one continuous arrow chain.
+// The first segment has a flat left edge (nothing feeds into it) and the
+// last has a flat right edge (the funnel's end, not a further hop).
+function funnelClipPath(index: number, total: number): string {
+  const notch = "12px";
+  const isFirst = index === 0;
+  const isLast = index === total - 1;
+  if (isFirst && isLast) return "none";
+  if (isFirst) {
+    return `polygon(0 0, calc(100% - ${notch}) 0, 100% 50%, calc(100% - ${notch}) 100%, 0 100%)`;
+  }
+  if (isLast) {
+    return `polygon(0 0, 100% 0, 100% 100%, 0 100%, ${notch} 50%)`;
+  }
+  return `polygon(0 0, calc(100% - ${notch}) 0, 100% 50%, calc(100% - ${notch}) 100%, 0 100%, ${notch} 50%)`;
+}
+
 function statusBadgeClass(status: string | null | undefined): string {
   switch (status) {
     case "CV Sourced":
@@ -1298,6 +1370,27 @@ export default function SmartSourceAiForm({
     }
   }
 
+  // ---------- Funnel scroll nav (replaces the visible horizontal scrollbar) ----------
+  // The funnel strip can overflow on narrow screens or with the "Other
+  // outcomes" chips visible; the container hides its native scrollbar
+  // (see .no-scrollbar in globals.css) and these two chevron buttons page it
+  // instead, fading out at each end once there's nothing further to scroll to.
+  const funnelScrollRef = useRef<HTMLDivElement | null>(null);
+  const [funnelScrollState, setFunnelScrollState] = useState({ atStart: true, atEnd: true });
+
+  const updateFunnelScrollState = useCallback(() => {
+    const el = funnelScrollRef.current;
+    if (!el) return;
+    setFunnelScrollState({
+      atStart: el.scrollLeft <= 4,
+      atEnd: el.scrollLeft >= el.scrollWidth - el.clientWidth - 4,
+    });
+  }, []);
+
+  function scrollFunnel(direction: -1 | 1) {
+    funnelScrollRef.current?.scrollBy({ left: direction * 220, behavior: "smooth" });
+  }
+
   const stageCounts = useMemo(() => {
     const counts: Record<string, number> = { All: activeProjectCandidates.length };
     for (const status of PIPELINE_STATUSES) {
@@ -1309,6 +1402,10 @@ export default function SmartSourceAiForm({
     }
     return counts;
   }, [activeProjectCandidates]);
+
+  useEffect(() => {
+    updateFunnelScrollState();
+  }, [activeProjectId, updateFunnelScrollState]);
 
   const filteredProjectCandidates = useMemo(() => {
     const list = activeProjectCandidates.filter((c) => {
@@ -1732,85 +1829,124 @@ export default function SmartSourceAiForm({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <button
                     onClick={exportProjectCsv}
                     disabled={activeProjectCandidates.length === 0}
-                    className="border border-border text-[12px] font-bold px-2.5 py-1.5 rounded-sm bg-surface hover:bg-page transition-colors inline-flex items-center gap-1.5 disabled:opacity-50"
+                    className="w-8 h-8 flex items-center justify-center border border-border text-ink-muted rounded-sm bg-surface hover:bg-page hover:text-ink transition-colors disabled:opacity-40"
                     title="Export candidate pipeline as CSV"
                   >
-                    <Icon name="download" className="w-3.5 h-3.5 text-ink-muted" />
-                    <span>Export CSV</span>
+                    <Icon name="download" className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => openRenameModal(activeProjectId, activeProjectName)}
-                    className="border border-border text-[12px] font-bold px-2.5 py-1.5 rounded-sm bg-surface hover:bg-page transition-colors inline-flex items-center gap-1.5 text-ink"
+                    className="w-8 h-8 flex items-center justify-center border border-border text-ink-muted rounded-sm bg-surface hover:bg-page hover:text-ink transition-colors"
+                    title="Rename project"
                   >
-                    <Icon name="edit" className="w-3.5 h-3.5 text-ink-muted" />
-                    <span>Rename</span>
+                    <Icon name="edit" className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={deleteActiveProject}
-                    className="border border-rose-200 dark:border-rose-900 text-[12px] font-bold px-2.5 py-1.5 rounded-sm bg-surface hover:bg-rose-50 dark:hover:bg-rose-950/40 text-critical transition-colors inline-flex items-center gap-1.5"
+                    className="w-8 h-8 flex items-center justify-center border border-rose-200 dark:border-rose-900 text-critical rounded-sm bg-surface hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                    title="Delete project"
                   >
                     <Icon name="trash" className="w-3.5 h-3.5" />
-                    <span>Delete</span>
                   </button>
                 </div>
               </div>
 
-              {/* Workday Pipeline Stages Metric Strip / Filter Ribbon */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin">
+              {/* Pipeline funnel + "Other outcomes" -- replaces the old flat
+                  pill ribbon. See FUNNEL_STATUSES / FUNNEL_BANDS / EXIT_STATUSES
+                  above for why the funnel and the exit statuses are split. */}
+              <div className="relative">
                 <button
-                  onClick={() => setProjectStatusFilter("All")}
-                  className={`shrink-0 text-[12px] font-bold px-2.5 py-1 rounded-full border transition-all inline-flex items-center gap-1.5 ${
-                    projectStatusFilter === "All"
-                      ? "bg-brand text-white border-brand shadow-soft-sm"
-                      : "bg-surface text-ink-2 border-border hover:border-brand/40"
+                  type="button"
+                  onClick={() => scrollFunnel(-1)}
+                  aria-label="Scroll stages left"
+                  className={`absolute left-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full border border-border bg-surface text-ink-2 shadow-soft-sm flex items-center justify-center transition-opacity ${
+                    funnelScrollState.atStart ? "opacity-0 pointer-events-none" : "opacity-100 hover:text-ink hover:border-brand/40"
                   }`}
                 >
-                  <span>All Stages</span>
-                  <span
-                    className={`text-[10.5px] px-1.5 py-0.2 rounded-full ${
-                      projectStatusFilter === "All"
-                        ? "bg-white/20 text-white font-bold"
-                        : "bg-page text-ink-muted"
-                    }`}
-                  >
-                    {activeProjectCandidates.length}
-                  </span>
+                  <Icon name="chevronLeft" className="w-3 h-3" />
                 </button>
 
-                {PIPELINE_STATUSES.map((status) => {
-                  const count = stageCounts[status] || 0;
-                  const isSelected = projectStatusFilter === status;
-                  return (
-                    <button
-                      key={status}
-                      onClick={() => setProjectStatusFilter(isSelected ? "All" : status)}
-                      className={`shrink-0 text-[11.5px] font-semibold px-2.5 py-1 rounded-full border transition-all inline-flex items-center gap-1.5 ${
-                        isSelected
-                          ? "bg-ink text-surface border-ink shadow-soft-sm font-bold"
-                          : count > 0
-                          ? "bg-surface text-ink border-border hover:border-ink-muted"
-                          : "bg-page/60 text-ink-muted border-transparent hover:border-border"
-                      }`}
-                    >
-                      <span>{status}</span>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                          isSelected
-                            ? "bg-surface/25 text-surface font-bold"
-                            : count > 0
-                            ? "bg-brand-wash text-brand font-bold"
-                            : "bg-border/60 text-ink-muted"
+                <div
+                  ref={funnelScrollRef}
+                  onScroll={updateFunnelScrollState}
+                  className="no-scrollbar flex items-stretch gap-0 overflow-x-auto px-6"
+                >
+                  <button
+                    onClick={() => setProjectStatusFilter("All")}
+                    className={`shrink-0 flex flex-col items-center justify-center gap-0.5 px-4 py-1.5 mr-2.5 rounded-md border text-[11px] font-bold transition-all ${
+                      projectStatusFilter === "All"
+                        ? "bg-brand text-white border-brand shadow-soft-sm"
+                        : "bg-page text-ink-2 border-border hover:border-brand/40"
+                    }`}
+                  >
+                    <span className="text-[13.5px] font-extrabold leading-none">{activeProjectCandidates.length}</span>
+                    <span>All Stages</span>
+                  </button>
+
+                  {FUNNEL_BANDS.map((band, i) => {
+                    const count = stageCounts[band.status] || 0;
+                    const isSelected = projectStatusFilter === band.status;
+                    return (
+                      <button
+                        key={band.status}
+                        onClick={() => setProjectStatusFilter(isSelected ? "All" : band.status)}
+                        style={{
+                          clipPath: funnelClipPath(i, FUNNEL_BANDS.length),
+                          marginLeft: i === 0 ? 0 : "-11px",
+                          zIndex: FUNNEL_BANDS.length - i,
+                          outline: isSelected ? "2px solid white" : undefined,
+                          outlineOffset: isSelected ? "-3px" : undefined,
+                        }}
+                        title={`${band.status} — ${count}`}
+                        className={`shrink-0 flex flex-col items-center justify-center gap-0.5 min-w-[86px] px-4 py-1.5 transition-[filter] hover:brightness-110 ${band.bg} ${band.text} ${
+                          count === 0 && !isSelected ? "opacity-70" : ""
                         }`}
                       >
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
+                        <span className="text-[11px] font-extrabold leading-none whitespace-nowrap">{band.short}</span>
+                        <span className="text-[13px] font-extrabold leading-none">{count}</span>
+                      </button>
+                    );
+                  })}
+
+                  <div className="shrink-0 w-px bg-border mx-3 my-1" />
+                  <span className="shrink-0 self-center text-[9.5px] font-extrabold uppercase tracking-wider text-ink-muted mr-2">
+                    Other
+                  </span>
+                  {EXIT_STATUSES.map((status) => {
+                    const count = stageCounts[status] || 0;
+                    const isSelected = projectStatusFilter === status;
+                    return (
+                      <button
+                        key={status}
+                        onClick={() => setProjectStatusFilter(isSelected ? "All" : status)}
+                        className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 mr-1.5 rounded-full border text-[11px] font-bold transition-all ${
+                          isSelected
+                            ? `bg-page border-current shadow-soft-sm ${EXIT_TEXT_CLASS[status]}`
+                            : `bg-page/60 border-transparent hover:border-border ${count > 0 ? EXIT_TEXT_CLASS[status] : "text-ink-muted"}`
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${EXIT_DOT_CLASS[status]}`} />
+                        <span>{status}</span>
+                        <span className="font-extrabold">{count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => scrollFunnel(1)}
+                  aria-label="Scroll stages right"
+                  className={`absolute right-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full border border-border bg-surface text-ink-2 shadow-soft-sm flex items-center justify-center transition-opacity ${
+                    funnelScrollState.atEnd ? "opacity-0 pointer-events-none" : "opacity-100 hover:text-ink hover:border-brand/40"
+                  }`}
+                >
+                  <Icon name="chevronRight" className="w-3 h-3" />
+                </button>
               </div>
 
               {/* List / Board toggle */}
