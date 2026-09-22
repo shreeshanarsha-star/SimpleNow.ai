@@ -51,7 +51,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         case "CHECK_DUPLICATE": {
           const params = new URLSearchParams({ profile_url: message.profileUrl || "" });
           const data = await apiGet(`/api/smart-source/extension/check?${params}`);
-          sendResponse({ ok: true, projects: data.projects || [] });
+          sendResponse({ ok: true, projects: data.projects || [], candidate: data.candidate || null });
           break;
         }
         case "CONTACT_LOOKUP": {

@@ -208,6 +208,49 @@ body {
   background: #2a2410; border: 1px solid #4a3f14; border-radius: 8px; padding: 8px 11px;
 }
 
+/* ---------- Editable candidate-details grid ----------
+   Role/Company/Location/Experience/Email/Phone/CTC/Notice -- pre-filled
+   from LinkedIn scraping, the AI contact lookup, or (when the profile is
+   already on file) the saved candidate record, and always editable so the
+   recruiter can fill a gap or fix something wrong. */
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 8px;
+  background: #1d1930;
+  border: 1px solid #2c2645;
+  border-radius: 9px;
+  padding: 11px;
+}
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field.full { grid-column: 1 / -1; }
+.field-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: #6f6790;
+}
+.field-input {
+  width: 100%; background: #151221; border: 1px solid #302a4d;
+  border-radius: 6px; padding: 6px 8px; color: #fff; font-size: 11.5px;
+  font-family: inherit;
+}
+.field-input::placeholder { color: #665f88; font-style: italic; }
+.field-input:focus { outline: none; border-color: #6d3ff0; }
+.field-with-icon { display: flex; align-items: center; gap: 6px; }
+.field-with-icon .field-input { flex: 1; min-width: 0; }
+.field-with-icon .icon-btn {
+  width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.ctc-row { display: flex; align-items: center; gap: 6px; }
+.ctc-row .field-input { flex: 1; min-width: 0; }
+.ctc-arrow { color: #6f6790; font-size: 11px; flex-shrink: 0; }
+.field-hint {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 9.5px; color: #7a72a0; margin-top: -2px;
+}
+.field-hint .spinner { width: 8px; height: 8px; }
+
 .comment-input {
   width: 100%; min-height: 44px; resize: vertical; background: #1d1930;
   border: 1px solid #2c2645; border-radius: 9px; padding: 10px 13px;

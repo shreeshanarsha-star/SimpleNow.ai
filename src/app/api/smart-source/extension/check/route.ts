@@ -21,16 +21,23 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "profile_url is required." }, { status: 400 });
   }
 
+  // Selecting full candidate columns (not just id) here -- when this
+  // profile is already on file, the extension prefills its editable
+  // details form with whatever's already saved instead of showing it
+  // blank, so revisiting a candidate corrects/completes a record rather
+  // than starting over.
   const { data: candidates, error: candidatesError } = await supabase
     .from("smart_source_candidates")
-    .select("id")
+    .select(
+      "id, name, designation, company, location, experience_years, public_email, public_phone, compensation, expected_ctc, notice_period"
+    )
     .eq("profile_url", profileUrl);
 
   if (candidatesError) {
     return NextResponse.json({ error: candidatesError.message }, { status: 500 });
   }
   if (!candidates?.length) {
-    return NextResponse.json({ projects: [] });
+    return NextResponse.json({ projects: [], candidate: null });
   }
 
   const { data: members, error: membersError } = await supabase
@@ -55,5 +62,25 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ projects });
+  // Multiple candidate rows can in principle share a profile_url (added
+  // independently via different flows); the first is a good-enough
+  // snapshot for prefilling the extension's form -- it's the same row the
+  // capture endpoint's own per-project duplicate check will find and
+  // update against.
+  const first = candidates[0];
+  const candidate = {
+    id: first.id,
+    name: first.name,
+    designation: first.designation,
+    company: first.company,
+    location: first.location,
+    experience_years: first.experience_years,
+    public_email: first.public_email,
+    public_phone: first.public_phone,
+    compensation: first.compensation,
+    expected_ctc: first.expected_ctc,
+    notice_period: first.notice_period,
+  };
+
+  return NextResponse.json({ projects, candidate });
 }

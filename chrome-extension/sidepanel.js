@@ -120,20 +120,61 @@ async function render(profile, projects) {
   const { lastProjectId } = await chrome.storage.local.get("lastProjectId");
   let selectedProjectId = projects.some((p) => p.id === lastProjectId) ? lastProjectId : projects[0]?.id || "";
 
+  const expValue = typeof profile.experience_years === "number" ? String(profile.experience_years) : "";
+
   app.innerHTML = `
     <div class="label">Detected from this page</div>
     <div class="candidate-card">
       <div class="avatar">${initials(profile.name)}</div>
       <div class="candidate-info">
         <div class="candidate-name">${escapeHtml(profile.name)}</div>
-        <div class="candidate-role">${escapeHtml(profile.designation || "")}</div>
-        <div class="candidate-meta">${escapeHtml([profile.company, profile.location].filter(Boolean).join(" · "))}</div>
-        <div class="contact-block" id="contact-block">
-          <div class="contact-loading"><span class="spinner"></span> Looking up public contact…</div>
-        </div>
       </div>
     </div>
     <div class="dup-note" id="dup-note" style="display:none;"></div>
+
+    <div class="label" style="margin-top:14px;">Candidate details</div>
+    <div class="field-grid">
+      <div class="field">
+        <label class="field-label" for="field-role">Role</label>
+        <input class="field-input" id="field-role" placeholder="add role" value="${escapeHtml(profile.designation || "")}" />
+      </div>
+      <div class="field">
+        <label class="field-label" for="field-company">Company</label>
+        <input class="field-input" id="field-company" placeholder="add company" value="${escapeHtml(profile.company || "")}" />
+      </div>
+      <div class="field">
+        <label class="field-label" for="field-location">Location</label>
+        <input class="field-input" id="field-location" placeholder="add location" value="${escapeHtml(profile.location || "")}" />
+      </div>
+      <div class="field">
+        <label class="field-label" for="field-experience">Experience (yrs)</label>
+        <input class="field-input" id="field-experience" type="number" min="0" max="60" step="0.5" placeholder="add exp" value="${escapeHtml(expValue)}" />
+      </div>
+      <div class="field">
+        <label class="field-label" for="field-email">Email</label>
+        <input class="field-input" id="field-email" type="email" placeholder="add email" value="" />
+      </div>
+      <div class="field">
+        <label class="field-label" for="field-phone">Phone</label>
+        <div class="field-with-icon">
+          <input class="field-input" id="field-phone" placeholder="add phone" value="" />
+          <a class="icon-btn icon-btn--whatsapp" id="field-phone-wa" href="#" target="_blank" rel="noopener noreferrer" title="Message on WhatsApp" style="display:none;">${ICONS.whatsapp}</a>
+        </div>
+      </div>
+      <div class="field-hint" id="contact-status"><span class="spinner"></span> Looking up public contact…</div>
+      <div class="field full">
+        <label class="field-label">CTC — current → expected</label>
+        <div class="ctc-row">
+          <input class="field-input" id="field-ctc-current" placeholder="current" />
+          <span class="ctc-arrow">→</span>
+          <input class="field-input" id="field-ctc-expected" placeholder="expected" />
+        </div>
+      </div>
+      <div class="field full">
+        <label class="field-label" for="field-notice">Notice period</label>
+        <input class="field-input" id="field-notice" placeholder="e.g. 30 days, immediate" />
+      </div>
+    </div>
 
     <div class="label" style="margin-top:16px;">Add to project</div>
     <div id="project-picker">
@@ -220,17 +261,68 @@ async function render(profile, projects) {
   const addBtn = document.getElementById("add-btn");
   const status = document.getElementById("status");
   const dupNote = document.getElementById("dup-note");
-  const contactBlock = document.getElementById("contact-block");
+  const contactStatus = document.getElementById("contact-status");
+  const fieldRole = document.getElementById("field-role");
+  const fieldCompany = document.getElementById("field-company");
+  const fieldLocation = document.getElementById("field-location");
+  const fieldExperience = document.getElementById("field-experience");
+  const fieldEmail = document.getElementById("field-email");
+  const fieldPhone = document.getElementById("field-phone");
+  const fieldPhoneWa = document.getElementById("field-phone-wa");
+  const fieldCtcCurrent = document.getElementById("field-ctc-current");
+  const fieldCtcExpected = document.getElementById("field-ctc-expected");
+  const fieldNotice = document.getElementById("field-notice");
+
+  // Only fills a field the recruiter hasn't already touched -- used by both
+  // the contact lookup and the duplicate-details prefill below, which race
+  // each other and shouldn't ever clobber something already showing.
+  function fillIfEmpty(input, value) {
+    if (input && !input.value.trim() && value) input.value = value;
+  }
+
+  function refreshWhatsAppIcon() {
+    const link = toWhatsAppLink(fieldPhone.value.trim());
+    if (link) {
+      fieldPhoneWa.href = link;
+      fieldPhoneWa.style.display = "flex";
+    } else {
+      fieldPhoneWa.style.display = "none";
+    }
+  }
+  fieldPhone.addEventListener("input", refreshWhatsAppIcon);
 
   // Check up front whether this candidate is already somewhere, rather than
   // only finding out after Add is clicked.
   if (profile.profile_url) {
     sendMessage({ type: "CHECK_DUPLICATE", profileUrl: profile.profile_url }).then((res) => {
       if (!document.body.contains(dupNote)) return; // panel moved on to a different profile
-      if (res?.ok && res.projects?.length) {
-        dupNote.textContent = `Already in ${res.projects.map((p) => p.name).join(", ")}`;
-        dupNote.style.display = "block";
+      if (!res?.ok || !res.projects?.length) return;
+
+      const names = res.projects.map((p) => p.name).join(", ");
+      const c = res.candidate;
+      if (c) {
+        // Already on file somewhere -- prefill with what's actually saved
+        // (not blank) so revisiting this profile corrects/completes a
+        // record instead of looking like a fresh, empty form. Only fills
+        // gaps: a value the recruiter already typed, or that the scrape/
+        // contact lookup already supplied, is left alone.
+        dupNote.textContent = `Already in ${names} — showing saved details below`;
+        fillIfEmpty(fieldRole, c.designation);
+        fillIfEmpty(fieldCompany, c.company);
+        fillIfEmpty(fieldLocation, c.location);
+        if (!fieldExperience.value.trim() && typeof c.experience_years === "number") {
+          fieldExperience.value = String(c.experience_years);
+        }
+        fillIfEmpty(fieldEmail, c.public_email);
+        fillIfEmpty(fieldPhone, c.public_phone);
+        fillIfEmpty(fieldCtcCurrent, c.compensation);
+        fillIfEmpty(fieldCtcExpected, c.expected_ctc);
+        fillIfEmpty(fieldNotice, c.notice_period);
+        refreshWhatsAppIcon();
+      } else {
+        dupNote.textContent = `Already in ${names}`;
       }
+      dupNote.style.display = "block";
     });
   }
 
@@ -238,8 +330,10 @@ async function render(profile, projects) {
   // Runs alongside the duplicate check, right when the profile is detected,
   // so it's ready by the time the recruiter picks a project. Only ever
   // surfaces something already public; "No public contact found" is the
-  // normal, expected result most of the time.
-  let foundContact = { email: null, phone: null, sourceUrl: null };
+  // normal, expected result most of the time. Fills the Email/Phone fields
+  // directly (only if still empty -- see fillIfEmpty) rather than showing a
+  // separate read-only block, since those fields are now editable inline.
+  let foundContactSourceUrl = null;
   if (profile.name) {
     sendMessage({
       type: "CONTACT_LOOKUP",
@@ -247,71 +341,27 @@ async function render(profile, projects) {
       company: profile.company || "",
       profileUrl: profile.profile_url || "",
     }).then((res) => {
-      if (!document.body.contains(contactBlock)) return; // panel moved on
+      if (!document.body.contains(contactStatus)) return; // panel moved on
 
       if (!res?.ok || (!res.email && !res.phone)) {
-        contactBlock.innerHTML = `<div class="contact-empty">No public contact found</div>`;
+        contactStatus.textContent = "No public contact found";
         return;
       }
 
-      foundContact = { email: res.email || null, phone: res.phone || null, sourceUrl: res.sourceUrl || null };
-      const waLink = toWhatsAppLink(res.phone);
+      fillIfEmpty(fieldEmail, res.email);
+      fillIfEmpty(fieldPhone, res.phone);
+      refreshWhatsAppIcon();
+      foundContactSourceUrl = res.sourceUrl || null;
+
       let sourceHost = "";
       try {
         sourceHost = res.sourceUrl ? new URL(res.sourceUrl).hostname.replace(/^www\./, "") : "";
       } catch {
         sourceHost = "";
       }
-
-      contactBlock.innerHTML = `
-        <div class="contact-tag">${ICONS.ai} AI-found contact</div>
-        ${
-          res.email
-            ? `<div class="contact-row">
-                <span class="contact-icon">${ICONS.email}</span>
-                <span class="contact-value" title="${escapeHtml(res.email)}">${escapeHtml(res.email)}</span>
-                <button type="button" class="icon-btn" data-copy="${escapeHtml(res.email)}" title="Copy email">${ICONS.copy}</button>
-              </div>`
-            : ""
-        }
-        ${
-          res.phone
-            ? `<div class="contact-row">
-                <span class="contact-icon">${ICONS.phone}</span>
-                <span class="contact-value" title="${escapeHtml(res.phone)}">${escapeHtml(res.phone)}</span>
-                <button type="button" class="icon-btn" data-copy="${escapeHtml(res.phone)}" title="Copy phone">${ICONS.copy}</button>
-                ${
-                  waLink
-                    ? `<a class="icon-btn icon-btn--whatsapp" href="${waLink}" target="_blank" rel="noopener noreferrer" title="Message on WhatsApp">${ICONS.whatsapp}</a>`
-                    : ""
-                }
-              </div>`
-            : ""
-        }
-        ${
-          sourceHost
-            ? `<div class="contact-source">Found via <span>${escapeHtml(sourceHost)}</span> — double-check before using</div>`
-            : ""
-        }
-      `;
-
-      contactBlock.querySelectorAll(".icon-btn[data-copy]").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-          try {
-            await navigator.clipboard.writeText(btn.dataset.copy);
-            btn.classList.add("icon-btn--copied");
-            const original = btn.innerHTML;
-            btn.innerHTML = ICONS.check;
-            setTimeout(() => {
-              btn.classList.remove("icon-btn--copied");
-              btn.innerHTML = original;
-            }, 1100);
-          } catch {
-            // Clipboard access can be blocked in some contexts -- the value
-            // is still right there in the row to select and copy by hand.
-          }
-        });
-      });
+      contactStatus.innerHTML = sourceHost
+        ? `${ICONS.ai} AI-found via ${escapeHtml(sourceHost)} — double-check before using`
+        : `${ICONS.ai} AI-found contact — double-check before using`;
     });
   }
 
@@ -327,10 +377,24 @@ async function render(profile, projects) {
   });
 
   addBtn.addEventListener("click", async () => {
-    const candidatePayload = { ...profile };
-    if (foundContact.email) candidatePayload.contact_email = foundContact.email;
-    if (foundContact.phone) candidatePayload.contact_phone = foundContact.phone;
-    if (foundContact.sourceUrl) candidatePayload.contact_source_url = foundContact.sourceUrl;
+    // Everything below is read live from the details form at the moment of
+    // Add -- whatever the recruiter typed or left as scraped/looked-up/
+    // saved-value wins, since these fields are all directly editable.
+    const expRaw = fieldExperience.value.trim();
+    const candidatePayload = {
+      profile_url: profile.profile_url,
+      name: profile.name || null,
+      designation: fieldRole.value.trim() || null,
+      company: fieldCompany.value.trim() || null,
+      location: fieldLocation.value.trim() || null,
+      experience_years: expRaw ? Number(expRaw) : null,
+      contact_email: fieldEmail.value.trim() || null,
+      contact_phone: fieldPhone.value.trim() || null,
+      contact_source_url: foundContactSourceUrl,
+      compensation: fieldCtcCurrent.value.trim() || null,
+      expected_ctc: fieldCtcExpected.value.trim() || null,
+      notice_period: fieldNotice.value.trim() || null,
+    };
 
     const payload = { candidates: [candidatePayload] };
     const comment = commentInput.value.trim();
@@ -369,13 +433,16 @@ async function render(profile, projects) {
 
     const result = (res.data?.results || [])[0];
     const projectName = res.data?.projectName || "the project";
-    if (result?.status === "duplicate" && result?.noteAdded) {
-      // Already a member, but the note the recruiter just typed was saved
-      // onto the existing record -- this is a normal, successful revisit,
-      // not an error, so it gets the same styling as a fresh add.
-      status.textContent = `Already in ${projectName} -- note added ✓`;
+    if (result?.status === "duplicate" && (result?.noteAdded || result?.detailsUpdated)) {
+      // Already a member, but something from this visit was still saved --
+      // an edited/filled-in detail, a new note, or both. A normal,
+      // successful revisit, not an error, so it gets "ok" styling.
+      const parts = [];
+      if (result.detailsUpdated) parts.push("details updated");
+      if (result.noteAdded) parts.push("note added");
+      status.textContent = `Already in ${projectName} -- ${parts.join(" & ")} ✓`;
       status.className = "status status--ok";
-      commentInput.value = "";
+      if (result.noteAdded) commentInput.value = "";
     } else if (result?.status === "duplicate") {
       status.textContent = `Already in ${projectName}`;
       status.className = "status status--error";

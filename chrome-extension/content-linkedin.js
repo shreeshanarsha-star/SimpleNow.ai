@@ -53,8 +53,75 @@ function scrapeProfilePage() {
     designation: designation || null,
     company: company || null,
     location: location || null,
-    experience_years: null,
+    experience_years: estimateExperienceYears(),
   };
+}
+
+// ---------- Best-effort total experience estimate ----------
+// LinkedIn doesn't publish a single "years of experience" figure anywhere,
+// and per-role durations aren't reliably parseable (concurrent roles at the
+// same company would double-count if summed). Instead this estimates total
+// career span: earliest start date found in the Experience section through
+// to "Present" or the latest end date. That's the same rough number a
+// recruiter would eyeball the section to get, and it degrades safely --
+// any uncertainty (section not found, fewer than two dates, an
+// implausible span) returns null and the field just stays manual, same as
+// every other best-effort field this scraper produces.
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function findExperienceSection() {
+  const anchor = document.getElementById("experience");
+  if (anchor) {
+    const section = anchor.closest("section");
+    if (section) return section;
+  }
+  // Fallback: a section heading whose text is exactly "Experience" --
+  // LinkedIn's section-header markup has changed shape more than once.
+  const headings = document.querySelectorAll("h2, div.pvs-header__container, span");
+  for (const h of headings) {
+    if (/^experience$/i.test(text(h) || "")) {
+      const section = h.closest("section");
+      if (section) return section;
+    }
+  }
+  return null;
+}
+
+function estimateExperienceYears() {
+  try {
+    const section = findExperienceSection();
+    if (!section) return null;
+
+    const monthGroup = MONTH_NAMES.join("|");
+    const dateRe = new RegExp(`(?:(${monthGroup})\s+(\d{4}))|\b((?:19|20)\d{2})\b|\bPresent\b`, "gi");
+    const raw = text(section) || "";
+    const found = raw.match(dateRe) || [];
+    if (found.length < 2) return null;
+
+    const now = new Date();
+    const toDate = (token) => {
+      if (/present/i.test(token)) return now;
+      const monthMatch = token.match(new RegExp(`(${monthGroup})\s+(\d{4})`, "i"));
+      if (monthMatch) {
+        const idx = MONTH_NAMES.findIndex((m) => m.toLowerCase() === monthMatch[1].toLowerCase());
+        return new Date(parseInt(monthMatch[2], 10), idx, 1);
+      }
+      const yearMatch = token.match(/\b(19|20)\d{2}\b/);
+      if (yearMatch) return new Date(parseInt(yearMatch[0], 10), 0, 1);
+      return null;
+    };
+
+    const dates = found.map(toDate).filter(Boolean);
+    if (dates.length < 2) return null;
+
+    const earliest = Math.min(...dates.map((d) => d.getTime()));
+    const latest = Math.max(...dates.map((d) => d.getTime()));
+    const years = (latest - earliest) / (365.25 * 24 * 3600 * 1000);
+    if (!isFinite(years) || years <= 0 || years > 55) return null;
+    return Math.round(years * 10) / 10;
+  } catch {
+    return null;
+  }
 }
 
 function location_href_no_query() {
