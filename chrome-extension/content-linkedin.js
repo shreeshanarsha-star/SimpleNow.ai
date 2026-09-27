@@ -247,9 +247,36 @@ function location_href_no_query() {
   return u.toString();
 }
 
+// LinkedIn keeps the tab "complete" (all initial resources loaded) well
+// before its own client-side rendering has actually painted the profile
+// top card -- the name/headline/location text streams in afterwards via
+// its own data fetch. A single synchronous scrape run right as the panel
+// opens can therefore run before that content exists yet (or before it
+// backfilled the SPA-style name-only render), producing a profile with a
+// missing name, or a name but no role/company/location, even though the
+// exact same extraction logic finds everything correctly a moment later.
+// Poll for up to a few seconds instead of scraping exactly once.
+function scrapeProfilePageWithRetry(maxWaitMs, intervalMs) {
+  maxWaitMs = maxWaitMs || 6000;
+  intervalMs = intervalMs || 300;
+  const start = Date.now();
+  return new Promise((resolve) => {
+    function attempt() {
+      const result = scrapeProfilePage();
+      const incomplete = !result.name || (!result.designation && !result.company && !result.location);
+      if (!incomplete || Date.now() - start >= maxWaitMs) {
+        resolve(result);
+      } else {
+        setTimeout(attempt, intervalMs);
+      }
+    }
+    attempt();
+  });
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "SCRAPE_PROFILE") {
-    sendResponse({ ok: true, profile: scrapeProfilePage() });
+    scrapeProfilePageWithRetry().then((profile) => sendResponse({ ok: true, profile }));
     return true;
   }
 });
