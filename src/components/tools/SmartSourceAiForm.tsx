@@ -4073,6 +4073,38 @@ function EvaluationPanel({
     }
   }
 
+  // "Ask about this candidate" -- a free-form one-line Q&A box (e.g. "how
+  // many employees does that company have?", "what does he sell?"). Not
+  // persisted -- local history only, same lifecycle as localSummary above.
+  const [askQuestion, setAskQuestion] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
+  const [askHistory, setAskHistory] = useState<{ question: string; answer: string }[]>([]);
+
+  async function handleAsk() {
+    const question = askQuestion.trim();
+    if (!question || asking) return;
+    setAsking(true);
+    setAskError(null);
+    try {
+      const res = await fetch(`/api/smart-source/candidates/${c.id}/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.answer) {
+        throw new Error(data?.error || "Couldn't answer that.");
+      }
+      setAskHistory((prev) => [{ question, answer: data.answer as string }, ...prev].slice(0, 5));
+      setAskQuestion("");
+    } catch (err) {
+      setAskError(err instanceof Error ? err.message : "Couldn't answer that.");
+    } finally {
+      setAsking(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className={`grid grid-cols-${cols || 3} gap-4`}>
@@ -4140,6 +4172,45 @@ function EvaluationPanel({
               approximate CTC from public data.
             </p>
           )
+        )}
+      </div>
+
+      <div className="border-t border-border/80 pt-2.5">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted mb-1">Ask About This Candidate</div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleAsk();
+          }}
+          className="flex items-center gap-2"
+        >
+          <input
+            type="text"
+            className="input flex-1"
+            value={askQuestion}
+            onChange={(e) => setAskQuestion(e.target.value)}
+            placeholder="e.g. How many employees does that company have?"
+            disabled={asking}
+          />
+          <button
+            type="submit"
+            disabled={asking || !askQuestion.trim()}
+            className="text-[11px] font-bold text-brand hover:text-brand-hover disabled:opacity-50 whitespace-nowrap"
+          >
+            {asking ? "Asking…" : "Ask"}
+          </button>
+        </form>
+        {askError && <p className="text-[11px] text-red-600 dark:text-red-400 mt-1">{askError}</p>}
+        {askHistory.length > 0 && (
+          <div className="mt-2 space-y-1.5">
+            {askHistory.map((qa, i) => (
+              <div key={i}>
+                <p className="text-ink-2 font-semibold">{qa.question}</p>
+                <p className="text-ink-2">{qa.answer}</p>
+              </div>
+            ))}
+            <p className="text-[10.5px] text-ink-muted">AI-estimated from live web search -- double-check before relying on it.</p>
+          </div>
         )}
       </div>
 
