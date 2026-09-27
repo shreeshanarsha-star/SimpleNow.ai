@@ -258,6 +258,21 @@ body {
 }
 .comment-input::placeholder { color: #7a72a0; }
 
+/* ---------- JD / CV drop box ---------- */
+.drop-box {
+  border: 1.5px dashed #3a3260; border-radius: 9px; padding: 14px 12px;
+  text-align: center; cursor: pointer; background: #1a1630;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.drop-box:hover:not(.drop-box--disabled) { border-color: #6d3ff0; background: #1d1930; }
+.drop-box--dragover { border-color: #6d3ff0; background: #23193f; }
+.drop-box--disabled { opacity: 0.45; cursor: default; }
+.drop-box-text { font-size: 11.5px; color: #9b93c2; }
+.drop-box-browse { color: #a78bfa; font-weight: 700; text-decoration: underline; }
+.drop-status { font-size: 10.5px; color: #7a72a0; margin-top: 6px; min-height: 12px; }
+.drop-status--ok { color: #4ade80; font-weight: 600; }
+.drop-status--error { color: #f87171; font-weight: 600; }
+
 .add-btn {
   width: 100%; padding: 12px 0; border: none; border-radius: 9px;
   background: #6d3ff0; color: #fff; font-size: 13px; font-weight: 700;

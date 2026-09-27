@@ -30,6 +30,34 @@ async function apiPost(path, payload) {
   return body;
 }
 
+// Rebuilds a Blob from the base64 the panel sent (File objects don't
+// reliably survive chrome.runtime.sendMessage's structured clone across
+// contexts, so the panel reads the file as a data URL and hands us the
+// base64 payload instead).
+function base64ToBlob(base64, mimeType) {
+  const byteChars = atob(base64);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType || "application/octet-stream" });
+}
+
+// The JD/CV drop endpoint takes multipart form data (a real file), not
+// JSON -- same one-file-per-request contract the web app's drop box uses.
+async function apiPostFile(path, { fileName, mimeType, base64, dropId }) {
+  const blob = base64ToBlob(base64, mimeType);
+  const form = new FormData();
+  form.append("file", blob, fileName || "upload");
+  if (dropId) form.append("dropId", dropId);
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error || `Request failed (${res.status})`);
+  return body;
+}
+
 // Briefly flashes a green checkmark on the toolbar icon so there's visible
 // confirmation of a successful add even after the popup has closed (e.g.
 // after a bulk add from the search-results bar).
@@ -72,6 +100,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           const data = await apiPost("/api/smart-source/extension/capture", message.payload);
           const addedCount = (data.results || []).filter((r) => r.status === "added").length;
           if (addedCount > 0) flashSuccessBadge(addedCount);
+          sendResponse({ ok: true, data });
+          break;
+        }
+        case "DROP_FILE": {
+          // message.payload: { projectId, dropId, fileName, mimeType, base64 }
+          const { projectId, ...file } = message.payload;
+          const data = await apiPostFile(`/api/smart-source/projects/${projectId}/drop`, file);
           sendResponse({ ok: true, data });
           break;
         }

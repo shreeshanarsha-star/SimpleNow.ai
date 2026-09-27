@@ -191,6 +191,13 @@ async function render(profile, projects) {
       </div>
     </div>
 
+    <div class="label" style="margin-top:16px;">Drop JD / CVs into this project</div>
+    <div class="drop-box" id="drop-box">
+      <input type="file" id="drop-file-input" multiple accept=".pdf,.doc,.docx,.txt" style="display:none;" />
+      <span class="drop-box-text">Drag a JD or CVs here, or <span class="drop-box-browse">browse</span></span>
+    </div>
+    <div class="drop-status" id="drop-status"></div>
+
     <div class="label" style="margin-top:12px;">Note (optional)</div>
     <textarea class="comment-input" id="comment-input" placeholder="e.g. Referred by Dr Sophiya (adds a new note even if already added)"></textarea>
 
@@ -244,6 +251,7 @@ async function render(profile, projects) {
     selectedProjectId = item.dataset.id;
     renderMenu();
     closeMenu();
+    updateDropBoxState();
   });
   document.addEventListener("click", (e) => {
     if (!dropdown.contains(e.target)) closeMenu();
@@ -253,6 +261,91 @@ async function render(profile, projects) {
   });
 
   renderMenu();
+
+  // ---------- JD / CV drop box ----------
+  // Same one-file-per-request contract as the web app's project drop box
+  // (see /api/smart-source/projects/[id]/drop): a JD replaces the
+  // project's active JD, a CV is parsed into a new candidate and scored
+  // against the JD if one is already on file. Requires an existing,
+  // already-selected project -- there's no project id yet while creating
+  // a new one, so it's disabled in that state.
+  const dropBox = document.getElementById("drop-box");
+  const dropFileInput = document.getElementById("drop-file-input");
+  const dropStatus = document.getElementById("drop-status");
+
+  function updateDropBoxState() {
+    const disabled = creatingNew || !selectedProjectId;
+    dropBox.classList.toggle("drop-box--disabled", disabled);
+  }
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleDropFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    if (creatingNew || !selectedProjectId) {
+      dropStatus.textContent = "Pick an existing project above first, then drop files.";
+      dropStatus.className = "drop-status drop-status--error";
+      return;
+    }
+
+    const dropId =
+      (crypto.randomUUID && crypto.randomUUID()) || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    let done = 0;
+    let failed = 0;
+    dropStatus.textContent = `Uploading ${files.length} file${files.length > 1 ? "s" : ""}…`;
+    dropStatus.className = "drop-status";
+
+    for (const file of files) {
+      try {
+        const base64 = await fileToBase64(file);
+        const res = await sendMessage({
+          type: "DROP_FILE",
+          payload: { projectId: selectedProjectId, dropId, fileName: file.name, mimeType: file.type, base64 },
+        });
+        if (res?.ok && res.data?.status !== "failed") {
+          done++;
+        } else {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    if (failed === 0) {
+      dropStatus.textContent = `${done} file${done > 1 ? "s" : ""} added ✓`;
+      dropStatus.className = "drop-status drop-status--ok";
+    } else {
+      dropStatus.textContent = `${done} added, ${failed} failed`;
+      dropStatus.className = "drop-status drop-status--error";
+    }
+    dropFileInput.value = "";
+  }
+
+  dropBox.addEventListener("click", () => {
+    if (dropBox.classList.contains("drop-box--disabled")) return;
+    dropFileInput.click();
+  });
+  dropFileInput.addEventListener("change", () => handleDropFiles(dropFileInput.files));
+  dropBox.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    if (!dropBox.classList.contains("drop-box--disabled")) dropBox.classList.add("drop-box--dragover");
+  });
+  dropBox.addEventListener("dragleave", () => dropBox.classList.remove("drop-box--dragover"));
+  dropBox.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropBox.classList.remove("drop-box--dragover");
+    if (!dropBox.classList.contains("drop-box--disabled")) handleDropFiles(e.dataTransfer?.files);
+  });
+  updateDropBoxState();
 
   const toggle = document.getElementById("new-project-toggle");
   const row = document.getElementById("new-project-row");
@@ -374,6 +467,7 @@ async function render(profile, projects) {
     if (creatingNew) closeMenu();
     toggle.textContent = creatingNew ? "or pick an existing project" : "or create a new project";
     if (creatingNew) nameInput.focus();
+    updateDropBoxState();
   });
 
   addBtn.addEventListener("click", async () => {
