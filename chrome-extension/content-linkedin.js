@@ -281,6 +281,26 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 });
 
+// LinkedIn is a single-page app: clicking from one profile to another (a
+// search result, "People also viewed", a connection's name, the profile
+// card in the feed) never triggers a real page load -- it's a pushState
+// route change inside the SAME document. Chrome only (re-)injects content
+// scripts on real navigations, so this one script instance keeps running
+// for as long as the tab stays on linkedin.com, across every profile the
+// recruiter clicks through to. Without this, the side panel only ever
+// re-scrapes when the TAB itself loads/activates -- so browsing profile to
+// profile inside one tab, which is how most people actually use LinkedIn,
+// would keep showing whichever profile was open when the tab last got a
+// full page load. Watching the URL and pinging the panel on every change
+// is what makes each newly-opened profile actually get picked up.
+let lastScrapeUrl = location.href;
+setInterval(() => {
+  if (location.href !== lastScrapeUrl) {
+    lastScrapeUrl = location.href;
+    chrome.runtime.sendMessage({ type: "PROFILE_URL_CHANGED" });
+  }
+}, 800);
+
 // ---------- Search-results page: bulk select ----------
 
 const isSearchResults = /\/search\/results\/people\//.test(window.location.pathname);

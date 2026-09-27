@@ -661,5 +661,12 @@ chrome.tabs.onActivated.addListener(() => refresh());
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   if (changeInfo.status === "complete" && tab.active) refresh();
 });
+// The content script pings this on every LinkedIn client-side route change
+// (profile A -> profile B without a real page load) -- see the URL watcher
+// in content-linkedin.js. Without this, browsing from profile to profile
+// inside one already-open tab would never re-trigger a scrape.
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === "PROFILE_URL_CHANGED") refresh();
+});
 
 refresh();
