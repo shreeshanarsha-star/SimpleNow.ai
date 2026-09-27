@@ -318,6 +318,12 @@ async function render(profile, projects) {
   const dropBox = document.getElementById("drop-box");
   const dropFileInput = document.getElementById("drop-file-input");
   const dropStatus = document.getElementById("drop-status");
+  // Declared here (not down by the toggle button that flips it) because
+  // updateDropBoxState() below reads it and is called synchronously later
+  // in this same function, before render() ever reaches that toggle code --
+  // a `let` declared there is in the temporal dead zone until execution
+  // gets there, which it never did.
+  let creatingNew = false;
 
   function updateDropBoxState() {
     const disabled = creatingNew || !selectedProjectId;
@@ -579,7 +585,6 @@ async function render(profile, projects) {
     });
   }
 
-  let creatingNew = false;
   toggle.addEventListener("click", () => {
     creatingNew = !creatingNew;
     row.style.display = creatingNew ? "block" : "none";

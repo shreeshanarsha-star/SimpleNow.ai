@@ -16,7 +16,7 @@ export default async function SmartSourceClipperPage() {
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1 text-[11px] font-semibold tracking-wide uppercase">
             <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-            Chrome Extension · v0.8.5
+            Chrome Extension · v0.8.6
           </span>
           <span className="text-[11px] text-ink-muted">Internal · SimpleNow.ai users only</span>
         </div>
@@ -130,7 +130,7 @@ export default async function SmartSourceClipperPage() {
               Download SimpleNow-Source (.zip)
             </a>
             <p className="text-center text-[11px] text-ink-muted">
-              For SimpleNow.ai users only · Internal release · v0.8.5
+              For SimpleNow.ai users only · Internal release · v0.8.6
             </p>
           </div>
         ) : (
