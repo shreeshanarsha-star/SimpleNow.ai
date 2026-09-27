@@ -26,8 +26,9 @@ export async function POST(request: Request) {
   const { name, designation, company, location, experience_years, qualification, raw_text } = body as Record<string, unknown>;
 
   let lines: string[];
+  let structured: Awaited<ReturnType<typeof summarizeCandidateProfile>>["structured"] = null;
   try {
-    lines = await summarizeCandidateProfile({
+    ({ lines, structured } = await summarizeCandidateProfile({
       name: typeof name === "string" ? name : null,
       designation: typeof designation === "string" ? designation : null,
       company: typeof company === "string" ? company : null,
@@ -35,10 +36,10 @@ export async function POST(request: Request) {
       experience_years: typeof experience_years === "number" ? experience_years : null,
       qualification: typeof qualification === "string" ? qualification : null,
       raw_text: typeof raw_text === "string" ? raw_text : null,
-    });
+    }));
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Couldn't generate a summary." }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, lines });
+  return NextResponse.json({ ok: true, lines, structured });
 }

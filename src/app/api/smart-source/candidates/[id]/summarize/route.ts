@@ -28,7 +28,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   let lines: string[];
   try {
-    lines = await summarizeCandidateProfile({
+    ({ lines } = await summarizeCandidateProfile({
       name: candidate.name,
       designation: candidate.designation,
       company: candidate.company,
@@ -36,7 +36,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       experience_years: candidate.experience_years,
       qualification: candidate.qualification,
       raw_text: candidate.resume_text,
-    });
+    }));
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Couldn't generate a summary." }, { status: 500 });
   }

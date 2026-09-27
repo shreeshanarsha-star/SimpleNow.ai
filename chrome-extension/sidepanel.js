@@ -55,6 +55,10 @@ const PROFILE_URL_RE = /^https:\/\/www\.linkedin\.com\/(in|talent\/profile)\//;
 // panel already moved on from can't clobber the current render with a
 // stale profile.
 let renderToken = 0;
+// Which tab+profile is currently shown -- lets the tab-switch listeners
+// below skip a redundant re-render when nothing actually changed (see
+// refreshIfNeeded below).
+let lastActiveKey = null;
 
 function showHint() {
   app.innerHTML = `<div class="hint">Open a LinkedIn profile to add it to a Smart Source project — this panel stays open and follows you as you browse.<br><br>On LinkedIn search results, select profiles with the checkboxes that appear on each result — a bar at the bottom adds them in bulk.<br><br>You can also right-click anywhere on a profile page, or right-click any LinkedIn profile link, and choose "Add to Smart Source".</div>`;
@@ -90,6 +94,7 @@ async function refresh() {
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (stale()) return;
+  lastActiveKey = tab ? `${tab.id}::${(tab.url || "").split("?")[0]}` : "none";
 
   if (!tab?.url || !PROFILE_URL_RE.test(tab.url)) {
     showHint();
@@ -416,6 +421,13 @@ async function render(profile, projects) {
         raw_text: profile.raw_text || null,
       },
     });
+    // Belt-and-suspenders: if the panel moved on to a different profile
+    // while this call was in flight, summarizeBtn is a detached node from a
+    // prior render -- writing to it would be a silent no-op the recruiter
+    // would just see as "nothing happened". The tab-switch listeners no
+    // longer force this in the common case (see refreshIfNeeded above), but
+    // this guard keeps a future regression from being invisible again.
+    if (!document.body.contains(summarizeBtn)) return;
     summarizeBtn.disabled = false;
     if (!res?.ok || !res.lines?.length) {
       summarizeBtn.textContent = "Summarize this profile";
@@ -427,6 +439,19 @@ async function render(profile, projects) {
     summaryHint.textContent = "AI-estimated — double-check before relying on it.";
     summaryLinesEl.style.display = "block";
     summaryLinesEl.innerHTML = aiSummaryLines.map((line) => `<div class="summary-line">${escapeHtml(line)}</div>`).join("");
+
+    // Auto-fill Experience / CTC / Notice from the same AI call -- only
+    // ever into a field the recruiter hasn't already typed something into
+    // (fillIfEmpty), so this never overwrites a deliberate manual entry.
+    const st = res.structured;
+    if (st) {
+      if (!fieldExperience.value.trim() && typeof st.experience_years === "number") {
+        fieldExperience.value = String(Math.round(st.experience_years * 10) / 10);
+      }
+      fillIfEmpty(fieldCtcCurrent, st.ctc_current_estimate);
+      fillIfEmpty(fieldCtcExpected, st.ctc_expected_estimate);
+      fillIfEmpty(fieldNotice, st.notice_period_estimate);
+    }
   });
 
   const toggle = document.getElementById("new-project-toggle");
@@ -657,14 +682,22 @@ async function render(profile, projects) {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.pendingCapture) refresh();
 });
-chrome.tabs.onActivated.addListener(() => refresh());
+async function refreshIfNeeded() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const key = tab ? `${tab.id}::${(tab.url || "").split("?")[0]}` : "none";
+  if (key === lastActiveKey) return; // same tab, same profile -- nothing to do, don't clobber in-flight work
+  refresh();
+}
+chrome.tabs.onActivated.addListener(() => refreshIfNeeded());
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
-  if (changeInfo.status === "complete" && tab.active) refresh();
+  if (changeInfo.status === "complete" && tab.active) refreshIfNeeded();
 });
 // The content script pings this on every LinkedIn client-side route change
 // (profile A -> profile B without a real page load) -- see the URL watcher
 // in content-linkedin.js. Without this, browsing from profile to profile
-// inside one already-open tab would never re-trigger a scrape.
+// inside one already-open tab would never re-trigger a scrape. Always
+// forced (not routed through refreshIfNeeded) since the content script only
+// sends this when the URL genuinely changed.
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === "PROFILE_URL_CHANGED") refresh();
 });
