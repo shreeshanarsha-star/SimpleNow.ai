@@ -491,7 +491,14 @@ async function render(profile, projects) {
     }).then((res) => {
       if (!document.body.contains(contactStatus)) return; // panel moved on
 
-      if (!res?.ok || (!res.email && !res.phone)) {
+      if (!res?.ok) {
+        // A real failure (network/timeout/server error) -- distinct from
+        // "we looked and found nothing", so it doesn't read as silently
+        // broken. res.error comes from background.js's catch-all.
+        contactStatus.textContent = `Contact lookup failed${res?.error ? `: ${res.error}` : ""} -- try again`;
+        return;
+      }
+      if (!res.email && !res.phone) {
         contactStatus.textContent = "No public contact found";
         return;
       }

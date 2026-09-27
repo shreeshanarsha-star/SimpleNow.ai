@@ -35,16 +35,26 @@ const PHONE_RE = /(\+?\d[\d\s().-]{6,}\d)/;
 
 type SerpResult = { title: string; snippet: string; link: string };
 
+// SerpApi occasionally hangs rather than erroring outright -- with no
+// timeout here, a slow request left every caller's UI stuck forever (the
+// extension's contact-lookup spinner, the AI summary's CTC line, the
+// per-candidate Ask box) instead of failing within a bounded time.
+const SEARCH_TIMEOUT_MS = 15_000;
+
 export async function searchGoogle(query: string): Promise<{ ok: true; results: SerpResult[] } | { ok: false; reason: string }> {
   const key = process.env.SERPAPI_KEY;
   if (!key) return { ok: false, reason: "not_configured" };
 
   const url = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(query)}&num=10&api_key=${encodeURIComponent(key)}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
   let res: Response;
   try {
-    res = await fetch(url);
+    res = await fetch(url, { signal: controller.signal });
   } catch {
     return { ok: false, reason: "search_failed" };
+  } finally {
+    clearTimeout(timer);
   }
   if (!res.ok) return { ok: false, reason: "search_failed" };
 
