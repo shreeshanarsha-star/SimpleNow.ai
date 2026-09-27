@@ -9,40 +9,114 @@ function text(el) {
 
 // ---------- Profile page scraping ----------
 
+// LinkedIn's profile top card now renders through an atomic, per-build CSS
+// system -- every class name is a short content hash ("c239a6d3 _42139a8b
+// ...") that changes across builds/experiments and carries no meaning, so
+// there is no stable ".text-body-medium" / ".text-body-small" class left to
+// match (verified live: those selectors now match nothing at all). What
+// *is* stable is structure: the name heading's nearest ancestor that also
+// contains the follower/connection count is always the top card, and
+// walking its text leaf-by-leaf in DOM order reliably surfaces the
+// headline, location and company lines regardless of what LinkedIn hashes
+// the classes to next.
+function findProfileTopCardRoot(name) {
+  const heading = Array.from(document.querySelectorAll("h1, h2")).find((el) => text(el) === name);
+  if (!heading) return null;
+  let node = heading;
+  for (let i = 0; i < 12 && node; i++) {
+    if (/followers|connections/i.test(text(node) || "")) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
+// Text LinkedIn always renders somewhere in the top card that carries no
+// candidate information -- connection-degree badges, action buttons, the
+// follower/connection counts themselves -- filtered out before hunting for
+// the headline/location/company lines.
+const TOP_CARD_NOISE_EXACT = new Set([
+  "Contact info", "Message", "View in Recruiter", "More", "Follow", "Connect",
+  "Save", "He/Him", "She/Her", "They/Them",
+]);
+const TOP_CARD_NOISE_PATTERN =
+  /^(·\s*)?(1st|2nd|3rd)$|^\d[\d,]*\+?\s+(followers|connections|mutual connections)$|^·$|^\d+\+\s+connections$/i;
+
+function getTopCardLines(root, name) {
+  const leaves = Array.from(root.querySelectorAll("*")).filter((el) => el.children.length === 0);
+  const lines = [];
+  const seen = new Set();
+  for (const el of leaves) {
+    const t = text(el);
+    if (!t || t === name || seen.has(t)) continue;
+    if (TOP_CARD_NOISE_EXACT.has(t) || TOP_CARD_NOISE_PATTERN.test(t)) continue;
+    seen.add(t);
+    lines.push(t);
+  }
+  return lines;
+}
+
 function scrapeProfilePage() {
   // Name: LinkedIn always sets the tab title to "Full Name | LinkedIn" —
-  // far more stable than any heading tag or class name. LinkedIn's newer
-  // profile layout renders the name in an <h2> with hashed, build-specific
-  // classes instead of the old <h1 class="text-heading-xlarge">, so relying
-  // on the title avoids chasing markup churn.
+  // far more stable than any heading tag or class name.
   let name = document.title.replace(/\s*\|\s*LinkedIn\s*$/i, "").trim() || null;
   if (!name) {
     name = text(document.querySelector("h1")) || text(document.querySelector("h2"));
   }
 
-  // LinkedIn's own class names churn often; try a few known shapes, in
-  // order. These are best-effort — if none match (as on the newer hashed-
-  // class layout), the fields come back null and the capture still
-  // succeeds with just the name and profile URL.
-  const h1 = document.querySelector("h1");
+  const root = name ? findProfileTopCardRoot(name) : null;
+  const lines = root ? getTopCardLines(root, name) : [];
+
   let designation = null;
-  const headlineEl =
-    document.querySelector(".text-body-medium.break-words") ||
-    (h1 ? h1.parentElement?.querySelector(".text-body-medium") : null);
-  designation = text(headlineEl);
-
   let location = null;
-  const locationCandidates = document.querySelectorAll(".text-body-small.inline.t-black--light");
-  if (locationCandidates.length) location = text(locationCandidates[0]);
-
   let company = null;
-  const expCompanyLink = document.querySelector(
-    '[data-view-name="profile-component-entity"] a[href*="/company/"]'
-  );
-  if (expCompanyLink) {
-    company = text(expCompanyLink);
-  } else if (designation && designation.includes(" at ")) {
-    company = designation.split(" at ").slice(1).join(" at ").trim();
+
+  if (lines.length) {
+    // LinkedIn's own condensed "Current company · School" summary line,
+    // when it renders one -- e.g. "Mobileum · Sir C.R.R. College Of Engg".
+    const companySchoolLine = lines.find((l) => /^.{2,40}\s+·\s+.{2,60}$/.test(l));
+    if (companySchoolLine) {
+      company = companySchoolLine.split(" · ")[0].trim() || null;
+    }
+
+    location =
+      lines.find((l) => l !== companySchoolLine && /,/.test(l) && l.length < 60 && !/^current:/i.test(l)) ||
+      null;
+
+    designation = lines.find((l) => l !== companySchoolLine && l !== location && l.length > 15) || null;
+
+    if (!company) {
+      // A short standalone entity name (no comma, no bullet) sitting
+      // before the location line -- e.g. a bare "Microsoft" under the
+      // headline, on profiles that don't render the combined line above.
+      const locIdx = location ? lines.indexOf(location) : -1;
+      const candidates = locIdx >= 0 ? lines.slice(0, locIdx) : lines;
+      company =
+        candidates.find((l) => l !== designation && l.length < 40 && !/,/.test(l) && !/·/.test(l)) || null;
+    }
+  }
+
+  // Fall back to the older class-name selectors in case LinkedIn ever
+  // serves that markup again to some accounts/experiments.
+  if (!designation) {
+    const h1 = document.querySelector("h1");
+    const headlineEl =
+      document.querySelector(".text-body-medium.break-words") ||
+      (h1 ? h1.parentElement?.querySelector(".text-body-medium") : null);
+    designation = text(headlineEl);
+  }
+  if (!location) {
+    const locationCandidates = document.querySelectorAll(".text-body-small.inline.t-black--light");
+    if (locationCandidates.length) location = text(locationCandidates[0]);
+  }
+  if (!company) {
+    const expCompanyLink = document.querySelector(
+      '[data-view-name="profile-component-entity"] a[href*="/company/"]'
+    );
+    if (expCompanyLink) company = text(expCompanyLink);
+  }
+  if (!company && designation && designation.includes(" at ")) {
+    const after = designation.split(/ at /i).slice(1).join(" at ");
+    company = after.split(/[*|,]/)[0].trim().replace(/^#/, "") || null;
   }
 
   const profile_url = location_href_no_query();
