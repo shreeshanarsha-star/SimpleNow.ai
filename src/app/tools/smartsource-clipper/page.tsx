@@ -16,7 +16,7 @@ export default async function SmartSourceClipperPage() {
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1 text-[11px] font-semibold tracking-wide uppercase">
             <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-            Chrome Extension · v0.3.0
+            Chrome Extension · v0.7.0
           </span>
           <span className="text-[11px] text-ink-muted">Internal · SimpleNow.ai users only</span>
         </div>
@@ -78,11 +78,13 @@ export default async function SmartSourceClipperPage() {
         </div>
 
         {/* Feature pills */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {[
             { icon: "🔎", title: "AI contact lookup", desc: "Searches for a public email & phone number for the candidate — never a guess." },
             { icon: "🗂️", title: "Side panel", desc: "Stays open as you browse profile to profile — no re-opening a popup each time." },
             { icon: "💬", title: "WhatsApp in one click", desc: "Message the number AI found without retyping or saving it first." },
+            { icon: "📎", title: "JD / CV drop box", desc: "Drop a job description or resume straight from the side panel into the project." },
+            { icon: "✨", title: "AI profile summary", desc: "One click: a 5-line read on location, experience, stability, gaps, and est. CTC." },
           ].map(f => (
             <div key={f.title} className="rounded-lg border border-border bg-white p-3 flex flex-col gap-1.5 shadow-sm">
               <span className="text-[20px]">{f.icon}</span>
@@ -128,7 +130,7 @@ export default async function SmartSourceClipperPage() {
               Download SimpleNow-Source (.zip)
             </a>
             <p className="text-center text-[11px] text-ink-muted">
-              For SimpleNow.ai users only · Internal release · v0.3.0
+              For SimpleNow.ai users only · Internal release · v0.7.0
             </p>
           </div>
         ) : (
