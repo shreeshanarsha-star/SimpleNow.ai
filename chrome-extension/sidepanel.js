@@ -217,9 +217,28 @@ async function render(profile, projects) {
   const trigger = document.getElementById("project-trigger");
   const triggerLabel = document.getElementById("project-trigger-label");
   const menu = document.getElementById("project-menu");
+  let projectFilter = "";
 
   function projectLabel(p) {
     return `${p.name} · ${p.candidateCount ?? 0} candidates`;
+  }
+
+  function renderMenuItems() {
+    const itemsEl = menu.querySelector("#project-menu-items");
+    if (!itemsEl) return;
+    const q = projectFilter.trim().toLowerCase();
+    const filtered = q ? projects.filter((p) => p.name.toLowerCase().includes(q)) : projects;
+    itemsEl.innerHTML = filtered.length
+      ? filtered
+          .map((p) => {
+            const active = p.id === selectedProjectId;
+            return `<div class="dropdown-item${active ? " dropdown-item--active" : ""}" data-id="${p.id}">
+              <span>${escapeHtml(projectLabel(p))}</span>
+              ${active ? `<span class="check">${ICONS.check}</span>` : ""}
+            </div>`;
+          })
+          .join("")
+      : `<div class="dropdown-empty">No projects match "${escapeHtml(projectFilter)}"</div>`;
   }
 
   function renderMenu() {
@@ -228,15 +247,21 @@ async function render(profile, projects) {
       triggerLabel.textContent = "No projects yet";
       return;
     }
-    menu.innerHTML = projects
-      .map((p) => {
-        const active = p.id === selectedProjectId;
-        return `<div class="dropdown-item${active ? " dropdown-item--active" : ""}" data-id="${p.id}">
-          <span>${escapeHtml(projectLabel(p))}</span>
-          ${active ? `<span class="check">${ICONS.check}</span>` : ""}
-        </div>`;
-      })
-      .join("");
+    // The search box is only built once and reused across re-renders --
+    // rebuilding it on every keystroke (e.g. via menu.innerHTML = ...)
+    // would steal focus back from the user mid-type. Only the filtered
+    // items list underneath it gets replaced.
+    if (!menu.querySelector("#project-search")) {
+      menu.innerHTML = `
+        <input type="text" id="project-search" class="dropdown-search" placeholder="Search projects…" autocomplete="off" />
+        <div class="dropdown-items" id="project-menu-items"></div>
+      `;
+      menu.querySelector("#project-search").addEventListener("input", (e) => {
+        projectFilter = e.target.value;
+        renderMenuItems();
+      });
+    }
+    renderMenuItems();
     const selected = projects.find((p) => p.id === selectedProjectId);
     triggerLabel.textContent = selected ? projectLabel(selected) : "Pick a project";
   }
@@ -247,6 +272,15 @@ async function render(profile, projects) {
   function openMenu() {
     if (!projects.length || trigger.disabled) return;
     dropdown.classList.add("dropdown--open");
+    const searchInput = menu.querySelector("#project-search");
+    if (searchInput) {
+      searchInput.value = "";
+      projectFilter = "";
+      renderMenuItems();
+      // Focus once the menu's display:flex has taken effect -- some
+      // browsers won't focus a still-hidden input.
+      setTimeout(() => searchInput.focus(), 0);
+    }
   }
 
   trigger.addEventListener("click", () => {
