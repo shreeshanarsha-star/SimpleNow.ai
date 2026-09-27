@@ -311,6 +311,10 @@ export default function SmartSourceAiForm({
     url: string | null;
     fileName: string | null;
   } | null>(null);
+  // Whether the resume viewer modal above is expanded to fill the
+  // viewport -- resumes routinely need more room than the default modal
+  // gives them (both horizontal and vertical scrolling otherwise).
+  const [resumeFullscreen, setResumeFullscreen] = useState(false);
 
   // Clicking a candidate's name: LinkedIn if we have it, otherwise whatever
   // CV file was captured for them (dropped in a project or via the
@@ -321,6 +325,7 @@ export default function SmartSourceAiForm({
       window.open(c.profile_url, "_blank", "noopener,noreferrer");
       return;
     }
+    setResumeFullscreen(false);
     setResumeModal({ candidateName: c.name || "this candidate", status: "loading", url: null, fileName: null });
     try {
       const res = await fetch(`/api/smart-source/candidates/${c.id}/resume`);
@@ -3171,18 +3176,38 @@ export default function SmartSourceAiForm({
           onClick={() => setResumeModal(null)}
         >
           <div
-            className="bg-surface border border-border rounded-lg shadow-soft-lg p-5 w-full max-w-lg flex flex-col gap-3"
+            className={`bg-surface border border-border rounded-lg shadow-soft-lg p-5 flex flex-col gap-3 ${
+              resumeFullscreen ? "w-full h-full max-w-none" : "w-full max-w-lg"
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-ink text-[15px]">{resumeModal.candidateName}&apos;s resume</h3>
-              <button
-                type="button"
-                onClick={() => setResumeModal(null)}
-                className="text-ink-muted hover:text-ink text-[18px] leading-none"
-              >
-                &times;
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setResumeFullscreen((v) => !v)}
+                  className="text-ink-muted hover:text-ink"
+                  title={resumeFullscreen ? "Exit full screen" : "Full screen"}
+                >
+                  {resumeFullscreen ? (
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 3v3a2 2 0 0 1-2 2H3 M21 8h-3a2 2 0 0 1-2-2V3 M3 16h3a2 2 0 0 1 2 2v3 M16 21v-3a2 2 0 0 1 2-2h3" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 3H5a2 2 0 0 0-2 2v3 M16 3h3a2 2 0 0 1 2 2v3 M21 16v3a2 2 0 0 1-2 2h-3 M3 16v3a2 2 0 0 0 2 2h3" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResumeModal(null)}
+                  className="text-ink-muted hover:text-ink text-[18px] leading-none"
+                >
+                  &times;
+                </button>
+              </div>
             </div>
 
             {resumeModal.status === "loading" && (
@@ -3199,7 +3224,11 @@ export default function SmartSourceAiForm({
             {resumeModal.status === "ready" && resumeModal.url && (
               <>
                 {(resumeModal.fileName || "").toLowerCase().endsWith(".pdf") ? (
-                  <iframe src={resumeModal.url} className="w-full h-[520px] border border-border rounded-sm" title="Resume" />
+                  <iframe
+                    src={resumeModal.url}
+                    className={`w-full border border-border rounded-sm ${resumeFullscreen ? "flex-1" : "h-[520px]"}`}
+                    title="Resume"
+                  />
                 ) : (
                   <p className="text-[12.5px] text-ink-muted py-6 text-center">
                     Preview isn&apos;t available for this file type — use Download.
