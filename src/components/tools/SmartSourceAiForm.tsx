@@ -47,6 +47,11 @@ type Candidate = {
   // when available, otherwise blank and manually editable.
   public_email: string | null;
   public_phone: string | null;
+  // The originally-dropped CV file, if any was captured -- used as the
+  // name-click fallback when there's no profile_url. Not fetched inline;
+  // resolved to a signed URL on demand via /api/smart-source/candidates/[id]/resume.
+  resume_file_path?: string | null;
+  resume_file_name?: string | null;
   // CTC & Notice -- "compensation" (declared above) is shown as "Current
   // CTC" in the UI. None of these ever come from LinkedIn (it doesn't show
   // pay); only a dropped resume can auto-fill them, otherwise manual entry.
@@ -293,6 +298,44 @@ export default function SmartSourceAiForm({
 
   const [showAddToProject, setShowAddToProject] = useState(false);
   const [candidateForProject, setCandidateForProject] = useState<Candidate[] | null>(null);
+  // Resume viewer -- opened when a candidate's name is clicked and there's
+  // no LinkedIn profile_url to open instead. `status` starts "loading"
+  // while the signed URL is fetched, then settles into "ready" (a file is
+  // on record) or "empty" (nothing stored for this candidate yet).
+  const [resumeModal, setResumeModal] = useState<{
+    candidateName: string;
+    status: "loading" | "ready" | "empty" | "error";
+    url: string | null;
+    fileName: string | null;
+  } | null>(null);
+
+  // Clicking a candidate's name: LinkedIn if we have it, otherwise whatever
+  // CV file was captured for them (dropped in a project or via the
+  // extension's own JD/CV drop box) -- and if neither, a plain empty state
+  // rather than doing nothing.
+  async function openProfileOrResume(c: Candidate) {
+    if (c.profile_url) {
+      window.open(c.profile_url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    setResumeModal({ candidateName: c.name || "this candidate", status: "loading", url: null, fileName: null });
+    try {
+      const res = await fetch(`/api/smart-source/candidates/${c.id}/resume`);
+      const data = await res.json();
+      if (data.resumeFileUrl) {
+        setResumeModal({
+          candidateName: c.name || "this candidate",
+          status: "ready",
+          url: data.resumeFileUrl,
+          fileName: data.resumeFileName || null,
+        });
+      } else {
+        setResumeModal({ candidateName: c.name || "this candidate", status: "empty", url: null, fileName: null });
+      }
+    } catch {
+      setResumeModal({ candidateName: c.name || "this candidate", status: "error", url: null, fileName: null });
+    }
+  }
   const [showExport, setShowExport] = useState(false);
   const [showEmail, setShowEmail] = useState(false);
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
@@ -2186,6 +2229,8 @@ export default function SmartSourceAiForm({
                                             value={c.name || ""}
                                             placeholder="Unnamed Candidate"
                                             onSave={(v) => saveCandidateField(c.id, "name", v || null)}
+                                            onClickIdle={() => openProfileOrResume(c)}
+                                            title="Click to open LinkedIn / resume — double-click to rename"
                                           />
                                         </span>
                                         {c.profile_url && (
@@ -3117,6 +3162,64 @@ export default function SmartSourceAiForm({
         </div>
       )}
 
+      {resumeModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
+          onClick={() => setResumeModal(null)}
+        >
+          <div
+            className="bg-surface border border-border rounded-lg shadow-soft-lg p-5 w-full max-w-lg flex flex-col gap-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-ink text-[15px]">{resumeModal.candidateName}&apos;s resume</h3>
+              <button
+                type="button"
+                onClick={() => setResumeModal(null)}
+                className="text-ink-muted hover:text-ink text-[18px] leading-none"
+              >
+                &times;
+              </button>
+            </div>
+
+            {resumeModal.status === "loading" && (
+              <p className="text-[12.5px] text-ink-muted py-6 text-center">Looking up their resume…</p>
+            )}
+            {resumeModal.status === "error" && (
+              <p className="text-[12.5px] text-ink-muted py-6 text-center">Couldn&apos;t open the resume right now — try again.</p>
+            )}
+            {resumeModal.status === "empty" && (
+              <p className="text-[12.5px] text-ink-muted py-6 text-center">
+                No LinkedIn profile or resume on file for this candidate yet.
+              </p>
+            )}
+            {resumeModal.status === "ready" && resumeModal.url && (
+              <>
+                {(resumeModal.fileName || "").toLowerCase().endsWith(".pdf") ? (
+                  <iframe src={resumeModal.url} className="w-full h-[520px] border border-border rounded-sm" title="Resume" />
+                ) : (
+                  <p className="text-[12.5px] text-ink-muted py-6 text-center">
+                    Preview isn&apos;t available for this file type — use Download.
+                  </p>
+                )}
+                <div className="flex items-center justify-between text-[11.5px] text-ink-muted">
+                  <span className="truncate">{resumeModal.fileName}</span>
+                  <a
+                    href={resumeModal.url}
+                    download={resumeModal.fileName || undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brand font-bold hover:text-brand-hover shrink-0 ml-2"
+                  >
+                    Download
+                  </a>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {renamingProject && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
@@ -3855,12 +3958,19 @@ function EditableText({
   onSave,
   className = "",
   type = "text",
+  onClickIdle,
+  title,
 }: {
   value: string;
   placeholder: string;
   onSave: (value: string) => void;
   className?: string;
   type?: "text" | "number";
+  // When provided, a single click calls this instead of entering edit mode
+  // (double-click still edits) -- used where the text is itself a link,
+  // like a candidate's name opening their profile/resume.
+  onClickIdle?: () => void;
+  title?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -3899,12 +4009,21 @@ function EditableText({
     <span
       onClick={(e) => {
         e.stopPropagation();
+        if (onClickIdle) {
+          onClickIdle();
+          return;
+        }
         setEditing(true);
       }}
-      title="Click to edit"
-      className={`cursor-text rounded px-0.5 -mx-0.5 hover:bg-page/70 transition-colors ${
-        value ? className : "text-ink-muted italic"
-      }`}
+      onDoubleClick={(e) => {
+        if (!onClickIdle) return;
+        e.stopPropagation();
+        setEditing(true);
+      }}
+      title={title || "Click to edit"}
+      className={`rounded px-0.5 -mx-0.5 hover:bg-page/70 transition-colors ${
+        onClickIdle ? "cursor-pointer" : "cursor-text"
+      } ${value ? className : "text-ink-muted italic"}`}
     >
       {value || placeholder}
     </span>

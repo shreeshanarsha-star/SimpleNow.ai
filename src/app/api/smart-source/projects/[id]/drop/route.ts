@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   MAX_UPLOAD_BYTES,
   analyzeDocument,
@@ -162,6 +163,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       searchId = search.id;
     }
 
+    // Keep the original file, not just its parsed text, so the recruiter
+    // can open/download the real CV later (e.g. from the pipeline table) --
+    // same shared "resumes" bucket and best-effort-only philosophy as
+    // talent.ai's upload (a storage hiccup here must not block adding the
+    // candidate; they just end up without a stored file, same as any
+    // candidate added before this existed).
+    let resumeFilePath: string | null = null;
+    try {
+      const admin = createAdminClient();
+      const ext = (file.name.split(".").pop() || "bin").toLowerCase().slice(0, 10);
+      const safeName = `${crypto.randomUUID()}.${ext}`;
+      const path = `smart-source/${projectId}/${safeName}`;
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const { error: uploadError } = await admin.storage
+        .from("resumes")
+        .upload(path, bytes, { contentType: file.type || "application/octet-stream" });
+      if (!uploadError) resumeFilePath = path;
+    } catch {
+      // Storage upload is best-effort -- resumeFilePath stays null.
+    }
+
     const { data: candidate, error: candError } = await supabase
       .from("smart_source_candidates")
       .insert({
@@ -183,6 +205,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         source: "cv_upload",
         resume_text: text.slice(0, 30_000),
         cv_file_name: file.name,
+        resume_file_path: resumeFilePath,
+        resume_file_name: resumeFilePath ? file.name : null,
       })
       .select("id")
       .single();
