@@ -52,6 +52,9 @@ type Candidate = {
   // resolved to a signed URL on demand via /api/smart-source/candidates/[id]/resume.
   resume_file_path?: string | null;
   resume_file_name?: string | null;
+  // Newline-separated 5-line AI profile summary -- see EvaluationPanel's
+  // "Summarize" button. AI-estimated, not verified fact.
+  ai_summary?: string | null;
   // CTC & Notice -- "compensation" (declared above) is shown as "Current
   // CTC" in the UI. None of these ever come from LinkedIn (it doesn't show
   // pay); only a dropped resume can auto-fill them, otherwise manual entry.
@@ -4043,6 +4046,33 @@ function EvaluationPanel({
   onWhatsApp?: (c: Candidate) => void;
   onFindLookalikes?: (c: Candidate) => void;
 }) {
+  // Local, not lifted to the parent's candidate list -- the value is
+  // already persisted server-side by the API call below, so a later
+  // reload/refetch picks it up via c.ai_summary; this just avoids having
+  // to plumb an update callback through all four places this panel is used.
+  const [localSummary, setLocalSummary] = useState<string[] | null>(
+    c.ai_summary ? c.ai_summary.split("\n").filter(Boolean) : null
+  );
+  const [summarizing, setSummarizing] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  async function handleSummarize() {
+    setSummarizing(true);
+    setSummaryError(null);
+    try {
+      const res = await fetch(`/api/smart-source/candidates/${c.id}/summarize`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data.lines) || !data.lines.length) {
+        throw new Error(data?.error || "Couldn't generate a summary.");
+      }
+      setLocalSummary(data.lines);
+    } catch (err) {
+      setSummaryError(err instanceof Error ? err.message : "Couldn't generate a summary.");
+    } finally {
+      setSummarizing(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className={`grid grid-cols-${cols || 3} gap-4`}>
@@ -4081,6 +4111,38 @@ function EvaluationPanel({
           )}
         </div>
       </div>
+      <div className="border-t border-border/80 pt-2.5">
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">AI Profile Summary</div>
+          <button
+            type="button"
+            onClick={handleSummarize}
+            disabled={summarizing}
+            className="text-[11px] font-bold text-brand hover:text-brand-hover disabled:opacity-50"
+          >
+            {summarizing ? "Summarizing…" : localSummary ? "Regenerate" : "Summarize"}
+          </button>
+        </div>
+        {summaryError && <p className="text-[11px] text-red-600 dark:text-red-400 mb-1">{summaryError}</p>}
+        {localSummary ? (
+          <>
+            <ol className="text-ink-2 space-y-1 list-decimal list-inside">
+              {localSummary.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ol>
+            <p className="text-[10.5px] text-ink-muted mt-1.5">AI-estimated -- double-check before relying on it.</p>
+          </>
+        ) : (
+          !summarizing && (
+            <p className="text-ink-muted">
+              Not generated yet -- estimates location, age, experience, expertise, stability, career gaps, and an
+              approximate CTC from public data.
+            </p>
+          )
+        )}
+      </div>
+
       <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-border/80 flex-wrap">
         {onWhatsApp && (
           <button

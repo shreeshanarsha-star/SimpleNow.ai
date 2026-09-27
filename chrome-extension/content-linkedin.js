@@ -54,7 +54,49 @@ function scrapeProfilePage() {
     company: company || null,
     location: location || null,
     experience_years: estimateExperienceYears(),
+    // Raw About/Experience/Education text, bounded -- feeds the AI
+    // "Summarize" button server-side rather than trying to parse each
+    // role/degree into structured fields here (LinkedIn's markup churns
+    // too often for that to hold up; letting the model read the same
+    // prose a recruiter would is far more robust).
+    raw_text: scrapeRawProfileText(),
   };
+}
+
+// ---------- Raw text for the AI summary ----------
+function findSectionByAnchorOrHeading(anchorId, headingText) {
+  const anchor = document.getElementById(anchorId);
+  if (anchor) {
+    const section = anchor.closest("section");
+    if (section) return section;
+  }
+  const headings = document.querySelectorAll("h2, div.pvs-header__container, span");
+  for (const h of headings) {
+    if (new RegExp(`^${headingText}$`, "i").test(text(h) || "")) {
+      const section = h.closest("section");
+      if (section) return section;
+    }
+  }
+  return null;
+}
+
+function scrapeRawProfileText() {
+  try {
+    const parts = [];
+    const about = findSectionByAnchorOrHeading("about", "about");
+    if (about) parts.push(`About:
+${text(about) || ""}`);
+    const experience = findExperienceSection();
+    if (experience) parts.push(`Experience:
+${text(experience) || ""}`);
+    const education = findSectionByAnchorOrHeading("education", "education");
+    if (education) parts.push(`Education:
+${text(education) || ""}`);
+    const raw = parts.join("\n\n").trim();
+    return raw ? raw.slice(0, 8000) : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------- Best-effort total experience estimate ----------

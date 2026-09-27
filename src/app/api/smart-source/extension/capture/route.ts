@@ -31,6 +31,14 @@ type CandidateInput = {
   compensation?: string | null;
   expected_ctc?: string | null;
   notice_period?: string | null;
+  // Raw scraped LinkedIn text (About/Experience/Education), kept as the
+  // candidate's resume_text so a later "Summarize"/"Regenerate" from the
+  // web app has something to work from even without a dropped CV.
+  raw_text?: string | null;
+  // The extension's own "Summarize" button already ran before Add was
+  // clicked -- pass its result straight through rather than re-running it
+  // server-side a second time.
+  ai_summary?: string | null;
 };
 
 // Every editable detail field the extension can send, keyed to its column
@@ -50,6 +58,13 @@ const DETAIL_FIELD_MAP: Record<string, keyof CandidateInput> = {
   compensation: "compensation",
   expected_ctc: "expected_ctc",
   notice_period: "notice_period",
+  // Refreshed on every revisit where the extension generated one -- unlike
+  // the fields above, an AI summary is meant to reflect the latest run, not
+  // be preserved from whenever it was first captured. Deliberately NOT
+  // mapping raw_text/resume_text here: overwriting an existing CV-parsed
+  // resume_text with a shorter LinkedIn scrape on a routine revisit would
+  // be a regression, so that only gets set once, at insert time below.
+  ai_summary: "ai_summary",
 };
 
 function buildNonDestructiveCandidateUpdates(c: CandidateInput): Record<string, string | number> {
@@ -229,6 +244,9 @@ export async function POST(request: Request) {
           compensation: c.compensation || null,
           expected_ctc: c.expected_ctc || null,
           notice_period: c.notice_period || null,
+          resume_text: c.raw_text ? c.raw_text.slice(0, 30_000) : null,
+          ai_summary: c.ai_summary || null,
+          ai_summary_generated_at: c.ai_summary ? new Date().toISOString() : null,
         })
         .select()
         .single();

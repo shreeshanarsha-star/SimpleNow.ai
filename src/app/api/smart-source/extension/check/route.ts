@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   const { data: candidates, error: candidatesError } = await supabase
     .from("smart_source_candidates")
     .select(
-      "id, name, designation, company, location, experience_years, public_email, public_phone, compensation, expected_ctc, notice_period"
+      "id, name, designation, company, location, experience_years, public_email, public_phone, compensation, expected_ctc, notice_period, ai_summary"
     )
     .eq("profile_url", profileUrl);
 

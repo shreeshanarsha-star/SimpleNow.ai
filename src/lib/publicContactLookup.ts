@@ -35,7 +35,7 @@ const PHONE_RE = /(\+?\d[\d\s().-]{6,}\d)/;
 
 type SerpResult = { title: string; snippet: string; link: string };
 
-async function searchGoogle(query: string): Promise<{ ok: true; results: SerpResult[] } | { ok: false; reason: string }> {
+export async function searchGoogle(query: string): Promise<{ ok: true; results: SerpResult[] } | { ok: false; reason: string }> {
   const key = process.env.SERPAPI_KEY;
   if (!key) return { ok: false, reason: "not_configured" };
 

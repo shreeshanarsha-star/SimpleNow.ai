@@ -103,6 +103,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse({ ok: true, data });
           break;
         }
+        case "SUMMARIZE_PROFILE": {
+          // message.payload: { name, designation, company, location, experience_years, raw_text }
+          const data = await apiPost("/api/smart-source/extension/summarize", message.payload);
+          sendResponse({ ok: true, lines: data.lines || [] });
+          break;
+        }
         case "DROP_FILE": {
           // message.payload: { projectId, dropId, fileName, mimeType, base64 }
           const { projectId, ...file } = message.payload;

@@ -176,6 +176,13 @@ async function render(profile, projects) {
       </div>
     </div>
 
+    <div class="label" style="margin-top:16px;">AI Profile Summary</div>
+    <div class="summary-box" id="summary-box">
+      <button type="button" class="summarize-btn" id="summarize-btn">Summarize this profile</button>
+      <div class="summary-lines" id="summary-lines" style="display:none;"></div>
+      <div class="summary-hint" id="summary-hint"></div>
+    </div>
+
     <div class="label" style="margin-top:16px;">Add to project</div>
     <div id="project-picker">
       <div class="dropdown" id="project-dropdown">
@@ -347,6 +354,47 @@ async function render(profile, projects) {
   });
   updateDropBoxState();
 
+  // ---------- AI profile summary ----------
+  // A 5-line, explicitly-estimated read on the candidate (location/age/
+  // experience/qualification, expertise+industry, stability, red flags,
+  // approx CTC) -- generated on demand rather than automatically, since it
+  // costs a model call (and a market-rate search) per click. Whatever's
+  // generated here rides along on Add so it's saved without a second,
+  // redundant call from the server.
+  const summarizeBtn = document.getElementById("summarize-btn");
+  const summaryLinesEl = document.getElementById("summary-lines");
+  const summaryHint = document.getElementById("summary-hint");
+  let aiSummaryLines = null;
+
+  summarizeBtn.addEventListener("click", async () => {
+    summarizeBtn.disabled = true;
+    summarizeBtn.textContent = "Summarizing…";
+    summaryHint.textContent = "";
+    const expRaw = fieldExperience.value.trim();
+    const res = await sendMessage({
+      type: "SUMMARIZE_PROFILE",
+      payload: {
+        name: profile.name || null,
+        designation: fieldRole.value.trim() || null,
+        company: fieldCompany.value.trim() || null,
+        location: fieldLocation.value.trim() || null,
+        experience_years: expRaw ? Number(expRaw) : null,
+        raw_text: profile.raw_text || null,
+      },
+    });
+    summarizeBtn.disabled = false;
+    if (!res?.ok || !res.lines?.length) {
+      summarizeBtn.textContent = "Summarize this profile";
+      summaryHint.textContent = res?.error || "Couldn't generate a summary — try again.";
+      return;
+    }
+    aiSummaryLines = res.lines;
+    summarizeBtn.textContent = "Regenerate";
+    summaryHint.textContent = "AI-estimated — double-check before relying on it.";
+    summaryLinesEl.style.display = "block";
+    summaryLinesEl.innerHTML = aiSummaryLines.map((line) => `<div class="summary-line">${escapeHtml(line)}</div>`).join("");
+  });
+
   const toggle = document.getElementById("new-project-toggle");
   const row = document.getElementById("new-project-row");
   const nameInput = document.getElementById("new-project-name");
@@ -412,6 +460,13 @@ async function render(profile, projects) {
         fillIfEmpty(fieldCtcExpected, c.expected_ctc);
         fillIfEmpty(fieldNotice, c.notice_period);
         refreshWhatsAppIcon();
+        if (c.ai_summary && !aiSummaryLines) {
+          aiSummaryLines = c.ai_summary.split("\n").filter(Boolean);
+          summarizeBtn.textContent = "Regenerate";
+          summaryHint.textContent = "Saved summary — click Regenerate for a fresh one.";
+          summaryLinesEl.style.display = "block";
+          summaryLinesEl.innerHTML = aiSummaryLines.map((line) => `<div class="summary-line">${escapeHtml(line)}</div>`).join("");
+        }
       } else {
         dupNote.textContent = `Already in ${names}`;
       }
@@ -488,6 +543,8 @@ async function render(profile, projects) {
       compensation: fieldCtcCurrent.value.trim() || null,
       expected_ctc: fieldCtcExpected.value.trim() || null,
       notice_period: fieldNotice.value.trim() || null,
+      raw_text: profile.raw_text || null,
+      ai_summary: aiSummaryLines ? aiSummaryLines.join("\n") : null,
     };
 
     const payload = { candidates: [candidatePayload] };

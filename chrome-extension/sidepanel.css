@@ -258,6 +258,25 @@ body {
 }
 .comment-input::placeholder { color: #7a72a0; }
 
+/* ---------- AI profile summary ---------- */
+.summary-box {
+  background: #1a1630; border: 1px solid #2c2645; border-radius: 9px; padding: 10px 11px;
+}
+.summarize-btn {
+  width: 100%; padding: 8px 0; border: 1px solid #3a3260; border-radius: 7px;
+  background: #201b38; color: #c3b0ff; font-size: 11.5px; font-weight: 700;
+  cursor: pointer; font-family: inherit; transition: border-color 0.15s ease;
+}
+.summarize-btn:hover:not(:disabled) { border-color: #6d3ff0; }
+.summarize-btn:disabled { opacity: 0.6; cursor: default; }
+.summary-lines { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+.summary-line {
+  font-size: 11px; line-height: 1.45; color: #d8d3ee;
+  padding-left: 12px; position: relative;
+}
+.summary-line::before { content: "•"; position: absolute; left: 0; color: #6f6790; }
+.summary-hint { font-size: 9.5px; color: #7a72a0; margin-top: 6px; }
+
 /* ---------- JD / CV drop box ---------- */
 .drop-box {
   border: 1.5px dashed #3a3260; border-radius: 9px; padding: 14px 12px;
