@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
+import { exitKind } from "@/lib/smartSourcePipeline";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
+
+// Stages that count as "shortlisted / in interviews" for the project card.
+const INTERVIEW_STAGES = new Set(["l1", "l2", "l3", "assessment", "hr_interview"]);
 
 const FEATURE_KEY = "Smart Source.ai";
 
@@ -29,7 +33,8 @@ export async function GET() {
       status,
       jd_file_name,
       jd_updated_at,
-      smart_source_project_members(status)
+      stage_template,
+      smart_source_project_members(pipeline_stage, pipeline_status)
     `)
     .order("created_at", { ascending: false });
 
@@ -44,7 +49,9 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const projects = (data || []).map((p: any) => {
-    const members: { status: string | null }[] = Array.isArray(p.smart_source_project_members)
+    const members: { pipeline_stage: string | null; pipeline_status: string | null }[] = Array.isArray(
+      p.smart_source_project_members
+    )
       ? p.smart_source_project_members
       : [];
     const candidateCount = members.length;
@@ -56,19 +63,16 @@ export async function GET() {
     let inactive = 0;
 
     for (const m of members) {
-      const st = m.status || "CV Screened";
-      if (st === "Joined") {
-        joined++;
-      } else if (st === "Offered" || st === "To Join") {
-        offered++;
-      } else if (
-        st === "L1 Interview Shortlist" ||
-        st === "L2 Interview Shortlist" ||
-        st === "HR Interview Shortlist"
-      ) {
-        shortlisted++;
-      } else if (st === "Hold" || st === "Rejected" || st === "Offer Drop" || st === "Backout") {
+      const stage = m.pipeline_stage || "sourcing";
+      const status = m.pipeline_status || "yet_to_contact";
+      if (exitKind(status)) {
         inactive++;
+      } else if (status === "joined") {
+        joined++;
+      } else if (stage === "offer" || stage === "joining") {
+        offered++;
+      } else if (INTERVIEW_STAGES.has(stage)) {
+        shortlisted++;
       } else {
         screened++;
       }
@@ -94,6 +98,7 @@ export async function GET() {
       status: p.status || "Active",
       jd_file_name: p.jd_file_name || null,
       jd_updated_at: p.jd_updated_at || null,
+      stage_template: Array.isArray(p.stage_template) ? p.stage_template : null,
       candidateCount,
       stageCounts: {
         screened,

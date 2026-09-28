@@ -16,8 +16,9 @@ const FEATURE_KEY = "Smart Source.ai";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// New CVs land in the first stage of the pipeline.
-const NEW_CV_STAGE = "CV Sourced";
+// New CVs land in the first stage of the pipeline (Sourcing · Yet to contact).
+const NEW_CV_STAGE = "sourcing";
+const NEW_CV_STATUS = "yet_to_contact";
 
 // Per-project drop box, one file per request (the browser fans a multi-file
 // drop out into several calls, which keeps each request under the platform's
@@ -218,7 +219,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         project_id: projectId,
         candidate_id: candidate.id,
         added_by: user.id,
-        status: NEW_CV_STAGE,
+        pipeline_stage: NEW_CV_STAGE,
+        pipeline_status: NEW_CV_STATUS,
       })
       .select("id")
       .single();

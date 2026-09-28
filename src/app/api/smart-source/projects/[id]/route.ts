@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
+import { STAGES } from "@/lib/smartSourcePipeline";
 
 const FEATURE_KEY = "Smart Source.ai";
 
@@ -14,7 +15,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const { data: project, error: projectError } = await supabase
     .from("smart_source_projects")
-    .select("id, name, created_at, description, start_date, target_date, target_hires, status, jd_file_name, jd_updated_at")
+    .select("id, name, created_at, description, start_date, target_date, target_hires, status, jd_file_name, jd_updated_at, stage_template")
     .eq("id", id)
     .maybeSingle();
   if (projectError) return NextResponse.json({ error: projectError.message }, { status: 500 });
@@ -22,7 +23,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const { data: rows, error: membersError } = await supabase
     .from("smart_source_project_members")
-    .select("id, added_at, status, comments, jd_score, jd_summary, jd_strengths, jd_gaps, smart_source_candidates(*)")
+    .select(
+      "id, added_at, comments, jd_score, jd_summary, jd_strengths, jd_gaps, pipeline_stage, pipeline_status, status_reason, hold_until, bgv_status, pipeline_details, stage_changed_at, status_changed_at, smart_source_candidates(*)"
+    )
     .eq("project_id", id)
     .order("added_at", { ascending: false });
   if (membersError) return NextResponse.json({ error: membersError.message }, { status: 500 });
@@ -31,8 +34,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     .map((r: {
       id: string;
       added_at: string;
-      status: string | null;
       comments: string | null;
+      pipeline_stage: string;
+      pipeline_status: string;
+      status_reason: string | null;
+      hold_until: string | null;
+      bgv_status: string | null;
+      pipeline_details: Record<string, unknown> | null;
+      stage_changed_at: string;
+      status_changed_at: string;
       jd_score: number | null;
       jd_summary: string | null;
       jd_strengths: string[] | null;
@@ -56,7 +66,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         ...(r.smart_source_candidates as Record<string, unknown>),
         ...jdScored,
         project_member_id: r.id,
-        project_status: r.status || "CV Screened",
+        pipeline_stage: r.pipeline_stage,
+        pipeline_status: r.pipeline_status,
+        status_reason: r.status_reason,
+        hold_until: r.hold_until,
+        bgv_status: r.bgv_status,
+        pipeline_details: r.pipeline_details || {},
+        stage_changed_at: r.stage_changed_at,
+        status_changed_at: r.status_changed_at,
         project_comments: r.comments || "",
         added_at: r.added_at,
       };
@@ -106,14 +123,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { id } = await params;
   const body = await request.json().catch(() => null);
 
-  // Case 1: Updating candidate member status or comments in this project,
+  // Case 1: Updating candidate member comments in this project,
   // and/or editable fields on the shared candidate record itself (name,
   // role, contact, CTC/notice) -- those live on smart_source_candidates
   // rather than the per-project member row, since they describe the person,
   // not their status in this one project.
   if (body?.candidateId) {
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (typeof body.status === "string") updateData.status = body.status;
+    // Stage/Status changes go through ./pipeline (validation + history).
     if (typeof body.comments === "string") updateData.comments = body.comments;
 
     if (Object.keys(updateData).length > 1) {
@@ -165,7 +182,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
-    return NextResponse.json({ ok: true, status: body.status, comments: body.comments, candidateUpdated });
+    return NextResponse.json({ ok: true, comments: body.comments, candidateUpdated });
   }
 
   // Case 2: Updating project details (name, description, timelines, target_hires, status)
@@ -195,6 +212,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (typeof body?.status === "string" && body.status.trim()) {
     updates.status = body.status.trim();
   }
+  // Optional stages this project uses (mandatory ones are always on).
+  // null resets to "all stages".
+  if (body?.stage_template !== undefined) {
+    if (body.stage_template === null) {
+      updates.stage_template = null;
+    } else if (Array.isArray(body.stage_template)) {
+      const optional = new Set<string>(STAGES.filter((s) => s.optional).map((s) => s.key));
+      updates.stage_template = body.stage_template.filter(
+        (k: unknown): k is string => typeof k === "string" && optional.has(k)
+      );
+    }
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No fields to update." }, { status: 400 });
@@ -204,7 +233,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .from("smart_source_projects")
     .update(updates)
     .eq("id", id)
-    .select("id, name, created_at, description, start_date, target_date, target_hires, status")
+    .select("id, name, created_at, description, start_date, target_date, target_hires, status, stage_template")
     .single();
 
   if (error) {

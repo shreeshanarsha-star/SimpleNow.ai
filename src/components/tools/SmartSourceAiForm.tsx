@@ -4,6 +4,24 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Icon from "@/components/Icon";
 import { useRegisterToolHome } from "@/components/ToolHomeContext";
 import ProjectDropBox from "@/components/tools/ProjectDropBox";
+import {
+  STAGES,
+  defaultStatusFor,
+  enabledStages as resolveEnabledStages,
+  notifyTemplate,
+  stageLabel,
+  statusDef,
+  statusLabel,
+  type StageKey,
+  type StatusKey,
+} from "@/lib/smartSourcePipeline";
+import type { PipelineChange, PipelineFields } from "@/components/tools/smart-source/pipelineUi";
+import { StageSelect, StatusCell } from "@/components/tools/smart-source/StageStatusCell";
+import StatusChangeDialog from "@/components/tools/smart-source/StatusChangeDialog";
+import PipelineFunnel, { matchesPipelineFilter } from "@/components/tools/smart-source/PipelineFunnel";
+import PipelineKanban from "@/components/tools/smart-source/PipelineKanban";
+import CandidatePipelinePanel from "@/components/tools/smart-source/CandidatePipelinePanel";
+import NotifyCandidateBar, { type NotifyPrompt } from "@/components/tools/smart-source/NotifyCandidateBar";
 
 type Mode = "jd" | "describe" | "manual";
 type Step = "input" | "running" | "results";
@@ -22,7 +40,7 @@ type SearchRow = {
   } | null;
 };
 
-type Candidate = {
+type Candidate = PipelineFields & {
   id: string;
   name: string | null;
   designation: string | null;
@@ -40,7 +58,6 @@ type Candidate = {
   internal_person_id: string | null;
   already_in_pipeline: boolean;
   project_member_id?: string;
-  project_status?: string;
   project_comments?: string;
   added_at?: string;
   // Contact -- auto-populated from LinkedIn (public lookup) or a dropped CV
@@ -82,133 +99,11 @@ export type ProjectSummary = {
   status?: string;
   jd_file_name?: string | null;
   jd_updated_at?: string | null;
+  stage_template?: string[] | null;
   candidateCount: number;
   stageCounts?: ProjectStageCounts;
   completionPercentage?: number;
 };
-
-export const PIPELINE_STATUSES = [
-  "CV Sourced",
-  "CV Screened",
-  "CV Shared",
-  "L1 Interview Shortlist",
-  "L2 Interview Shortlist",
-  "HR Interview Shortlist",
-  "Offered",
-  "To Join",
-  "Joined",
-  "Hold",
-  "Rejected",
-  "Offer Drop",
-  "Backout",
-] as const;
-
-export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
-
-// ---------- Pipeline funnel (Workday strip replacement) ----------
-// The 9 forward-moving stages, in order -- this is a real funnel (each stage
-// is a subset of candidates who passed the one before it), so it's rendered
-// as a connected chevron chain with increasing brand-color intensity.
-// Rejected/Hold/Offer Drop/Backout are deliberately NOT funnel bands: a
-// candidate can exit to any of those from ANY stage, so stacking them at the
-// end of a "narrowing" funnel would misrepresent the flow (this is also how
-// Greenhouse/Lever separate a pipeline funnel from its exit reasons). They
-// render instead as small colored "Other outcomes" chips beside the funnel.
-const FUNNEL_STATUSES = [
-  "CV Sourced",
-  "CV Screened",
-  "CV Shared",
-  "L1 Interview Shortlist",
-  "L2 Interview Shortlist",
-  "HR Interview Shortlist",
-  "Offered",
-  "To Join",
-  "Joined",
-] as const;
-
-// Bands stay evenly sized (a stylized taper via color, not a to-scale
-// funnel) -- with small candidate counts, several stages sitting at 0 would
-// make a true proportional funnel collapse to invisible slivers. Intensity
-// increases stage-to-stage using the theme's own --brand-rgb, so this reads
-// correctly (and keeps contrast) in every one of the app's 4 color themes,
-// not just the one it was designed against.
-const FUNNEL_BANDS: { status: (typeof FUNNEL_STATUSES)[number]; short: string; bg: string; text: string }[] = [
-  { status: "CV Sourced", short: "CV Sourced", bg: "bg-brand/[0.14]", text: "text-ink" },
-  { status: "CV Screened", short: "CV Screened", bg: "bg-brand/[0.24]", text: "text-ink" },
-  { status: "CV Shared", short: "CV Shared", bg: "bg-brand/[0.34]", text: "text-ink" },
-  { status: "L1 Interview Shortlist", short: "L1 Interview", bg: "bg-brand/[0.45]", text: "text-ink" },
-  { status: "L2 Interview Shortlist", short: "L2 Interview", bg: "bg-brand/[0.58]", text: "text-white" },
-  { status: "HR Interview Shortlist", short: "HR Interview", bg: "bg-brand/[0.70]", text: "text-white" },
-  { status: "Offered", short: "Offered", bg: "bg-brand/[0.82]", text: "text-white" },
-  { status: "To Join", short: "To Join", bg: "bg-brand/[0.94]", text: "text-white" },
-  { status: "Joined", short: "Joined", bg: "bg-brand", text: "text-white" },
-];
-
-const EXIT_STATUSES = ["Hold", "Rejected", "Offer Drop", "Backout"] as const;
-const EXIT_DOT_CLASS: Record<(typeof EXIT_STATUSES)[number], string> = {
-  Hold: "bg-amber-400",
-  Rejected: "bg-rose-400",
-  "Offer Drop": "bg-orange-400",
-  Backout: "bg-red-400",
-};
-const EXIT_TEXT_CLASS: Record<(typeof EXIT_STATUSES)[number], string> = {
-  Hold: "text-amber-500 dark:text-amber-400",
-  Rejected: "text-rose-500 dark:text-rose-400",
-  "Offer Drop": "text-orange-500 dark:text-orange-400",
-  Backout: "text-red-500 dark:text-red-400",
-};
-
-// Interlocking chevron shape: a point on the outgoing (right) edge and a
-// matching notch on the incoming (left) edge, so consecutive segments (laid
-// out with a small negative margin) slot into one continuous arrow chain.
-// The first segment has a flat left edge (nothing feeds into it) and the
-// last has a flat right edge (the funnel's end, not a further hop).
-function funnelClipPath(index: number, total: number): string {
-  const notch = "12px";
-  const isFirst = index === 0;
-  const isLast = index === total - 1;
-  if (isFirst && isLast) return "none";
-  if (isFirst) {
-    return `polygon(0 0, calc(100% - ${notch}) 0, 100% 50%, calc(100% - ${notch}) 100%, 0 100%)`;
-  }
-  if (isLast) {
-    return `polygon(0 0, 100% 0, 100% 100%, 0 100%, ${notch} 50%)`;
-  }
-  return `polygon(0 0, calc(100% - ${notch}) 0, 100% 50%, calc(100% - ${notch}) 100%, 0 100%, ${notch} 50%)`;
-}
-
-function statusBadgeClass(status: string | null | undefined): string {
-  switch (status) {
-    case "CV Sourced":
-      return "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700";
-    case "CV Screened":
-      return "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800";
-    case "CV Shared":
-      return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800";
-    case "L1 Interview Shortlist":
-      return "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800";
-    case "L2 Interview Shortlist":
-      return "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800";
-    case "HR Interview Shortlist":
-      return "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-950/60 dark:text-fuchsia-300 dark:border-fuchsia-800";
-    case "Offered":
-      return "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-800";
-    case "To Join":
-      return "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800";
-    case "Joined":
-      return "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800";
-    case "Hold":
-      return "bg-yellow-50 text-yellow-800 border-yellow-200 dark:bg-yellow-950/60 dark:text-yellow-400 dark:border-yellow-800";
-    case "Rejected":
-      return "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800";
-    case "Offer Drop":
-      return "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800";
-    case "Backout":
-      return "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/60 dark:text-red-300 dark:border-red-800";
-    default:
-      return "bg-page text-ink-muted border-border";
-  }
-}
 
 const STATUS_STEPS = [
   "Reading the input",
@@ -381,6 +276,21 @@ export default function SmartSourceAiForm({
   // List / Board (Kanban) toggle for the candidate pipeline.
   const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "board">("list");
 
+  // Stage + Status pipeline (see @/lib/smartSourcePipeline).
+  const [activeProjectTemplate, setActiveProjectTemplate] = useState<string[] | null>(null);
+  const activeEnabledStages = useMemo(() => resolveEnabledStages(activeProjectTemplate), [activeProjectTemplate]);
+  const [statusDialog, setStatusDialog] = useState<{
+    candidateIds: string[];
+    title: string;
+    subtitle?: string;
+    stage: StageKey;
+    status: StatusKey;
+    allowStagePick: boolean;
+    details?: PipelineFields["pipeline_details"];
+  } | null>(null);
+  const [notifyPrompt, setNotifyPrompt] = useState<NotifyPrompt | null>(null);
+  const [pipelineHistoryTick, setPipelineHistoryTick] = useState(0);
+
   // Cmd/Ctrl+K command palette -- quick search across projects and the
   // candidates in the currently open project.
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -398,6 +308,7 @@ export default function SmartSourceAiForm({
     target_date: string;
     target_hires: number;
     status: string;
+    optional_stages: string[];
   }>({
     name: "",
     description: "",
@@ -405,6 +316,7 @@ export default function SmartSourceAiForm({
     target_date: "",
     target_hires: 1,
     status: "Active",
+    optional_stages: STAGES.filter((st) => st.optional).map((st) => st.key),
   });
   const [editProjectSaving, setEditProjectSaving] = useState(false);
 
@@ -886,12 +798,16 @@ export default function SmartSourceAiForm({
     setSelectedCandidateIds(new Set());
     setShowBulkMoveMenu(false);
     setPipelineViewMode("list");
+    setActiveProjectTemplate(null);
+    setStatusDialog(null);
+    setNotifyPrompt(null);
     setProjectDetailLoading(true);
     try {
       const res = await fetch(`/api/smart-source/projects/${id}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not load this project.");
       setActiveProjectCandidates(data.candidates || []);
+      setActiveProjectTemplate(Array.isArray(data.project?.stage_template) ? data.project.stage_template : null);
     } catch (err) {
       setProjectsError(err instanceof Error ? err.message : "Could not load this project.");
     } finally {
@@ -899,26 +815,129 @@ export default function SmartSourceAiForm({
     }
   }
 
-  async function updateCandidateStatus(candidateId: string, status: string) {
-    if (!activeProjectId) return;
-    setActiveProjectCandidates((prev) =>
-      prev.map((c) => (c.id === candidateId ? { ...c, project_status: status } : c))
-    );
+  // Sends a Stage/Status (or BGV) change for one or more candidates and
+  // merges the server's resolved position back into the list (the server
+  // may auto-advance, e.g. Shortlist -> next stage). Returns an error message
+  // or null.
+  async function applyPipelineChange(
+    candidateIds: string[],
+    change: PipelineChange | { bgv_status: string | null }
+  ): Promise<string | null> {
+    if (!activeProjectId || candidateIds.length === 0) return "No candidates selected.";
     try {
-      const res = await fetch(`/api/smart-source/projects/${activeProjectId}`, {
-        method: "PATCH",
+      const res = await fetch(`/api/smart-source/projects/${activeProjectId}/pipeline`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ candidateId, status }),
+        body: JSON.stringify({ candidateIds, ...change }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to update status");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return data.error || "Couldn't update the pipeline. Please try again.";
+      const byId = new Map<string, Partial<Candidate>>();
+      for (const u of (data.updated || []) as (Partial<Candidate> & { candidateId: string })[]) {
+        const { candidateId, ...fields } = u;
+        const clean = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
+        byId.set(candidateId, clean as Partial<Candidate>);
       }
-    } catch (err) {
-      console.error("Could not update candidate status:", err);
+      setActiveProjectCandidates((prev) => prev.map((c) => (byId.has(c.id) ? { ...c, ...byId.get(c.id) } : c)));
+      setPipelineHistoryTick((t) => t + 1);
+
+      if (data.autoAdvanced && "stage" in change) {
+        setNotice(
+          `${candidateIds.length > 1 ? `${candidateIds.length} candidates` : "Candidate"} shortlisted and moved to ${stageLabel(
+            data.autoAdvanced.stage
+          )}.`
+        );
+        setTimeout(() => setNotice(null), 3500);
+      }
+
+      // Offer to message the candidate for single changes that have a template.
+      if (candidateIds.length === 1 && "stage" in change) {
+        const c = activeProjectCandidates.find((x) => x.id === candidateIds[0]);
+        const final = (data.updated || [])[0] as Candidate | undefined;
+        if (c && final?.pipeline_stage && final?.pipeline_status) {
+          const message = notifyTemplate({
+            name: c.name,
+            role: activeProjectName || c.designation,
+            stage: final.pipeline_stage,
+            status: final.pipeline_status,
+            details: final.pipeline_details,
+          });
+          if (message && (c.public_phone || c.public_email)) {
+            setNotifyPrompt({
+              candidateName: c.name || "the candidate",
+              phone: c.public_phone,
+              email: c.public_email,
+              stage: final.pipeline_stage,
+              status: final.pipeline_status,
+              message,
+            });
+          }
+        }
+      }
+      return null;
+    } catch {
+      return "Couldn't reach the server. Please try again.";
     }
-    // TODO(activity-log): once activity_log table exists, record a
-    // "status changed" event here (candidateId, previous/next status).
+  }
+
+  async function applyOrReport(candidateIds: string[], change: PipelineChange | { bgv_status: string | null }) {
+    const err = await applyPipelineChange(candidateIds, change);
+    if (err) {
+      setNotice(err);
+      setTimeout(() => setNotice(null), 4000);
+    }
+  }
+
+  // Stage dropdown / board drop: land on the new stage's default status
+  // (never needs extra input).
+  function requestStageChange(c: Candidate, stage: StageKey) {
+    if (stage === c.pipeline_stage) return;
+    applyOrReport([c.id], { stage, status: defaultStatusFor(stage) });
+  }
+
+  // Status dropdown: statuses that need details (reason, slot, feedback,
+  // CTC, DOJ) open the dialog; the rest save straight away.
+  function requestStatusChange(c: Candidate, status: StatusKey) {
+    const stage = (c.pipeline_stage || "sourcing") as StageKey;
+    if (status === c.pipeline_status) return;
+    if ((statusDef(status).needs ?? []).length > 0) {
+      setStatusDialog({
+        candidateIds: [c.id],
+        title: `${stageLabel(stage)} · ${statusLabel(status)}`,
+        subtitle: c.name || undefined,
+        stage,
+        status,
+        allowStagePick: false,
+        details: c.pipeline_details,
+      });
+      return;
+    }
+    applyOrReport([c.id], { stage, status });
+  }
+
+  function openBulkStatusDialog() {
+    const ids = Array.from(selectedCandidateIds);
+    if (!ids.length) return;
+    const first = activeProjectCandidates.find((c) => c.id === ids[0]);
+    const stage = (first?.pipeline_stage || "sourcing") as StageKey;
+    setStatusDialog({
+      candidateIds: ids,
+      title: "Update stage / status",
+      subtitle: `${ids.length} candidate${ids.length === 1 ? "" : "s"} selected`,
+      stage,
+      status: defaultStatusFor(stage),
+      allowStagePick: true,
+    });
+  }
+
+  async function submitStatusDialog(change: PipelineChange): Promise<string | null> {
+    if (!statusDialog) return null;
+    const err = await applyPipelineChange(statusDialog.candidateIds, change);
+    if (!err) {
+      if (statusDialog.candidateIds.length > 1) setSelectedCandidateIds(new Set());
+      setStatusDialog(null);
+    }
+    return err;
   }
 
   function toggleCandidateSelected(candidateId: string) {
@@ -1016,7 +1035,12 @@ export default function SmartSourceAiForm({
       "Current CTC",
       "Expected CTC",
       "Notice Period",
-      "Pipeline Status",
+      "Stage",
+      "Status",
+      "Reason",
+      "Hold Review Date",
+      "Days In Stage",
+      "BGV",
       "Recruiter Comments",
       "LinkedIn URL",
     ];
@@ -1032,7 +1056,14 @@ export default function SmartSourceAiForm({
       csvEscape(c.compensation || ""),
       csvEscape(c.expected_ctc || ""),
       csvEscape(c.notice_period || ""),
-      csvEscape(c.project_status || "CV Screened"),
+      csvEscape(stageLabel(c.pipeline_stage)),
+      csvEscape(statusLabel(c.pipeline_status)),
+      csvEscape(c.status_reason || ""),
+      csvEscape(c.hold_until || ""),
+      csvEscape(
+        c.stage_changed_at ? Math.max(0, Math.floor((Date.now() - new Date(c.stage_changed_at).getTime()) / 86_400_000)) : ""
+      ),
+      csvEscape(c.bgv_status || ""),
       csvEscape(c.project_comments || ""),
       csvEscape(c.profile_url || ""),
     ]);
@@ -1230,6 +1261,9 @@ export default function SmartSourceAiForm({
       target_date: p.target_date || "",
       target_hires: p.target_hires || 1,
       status: p.status || "Active",
+      optional_stages: resolveEnabledStages(
+        p.id === activeProjectId ? activeProjectTemplate : p.stage_template ?? null
+      ).filter((k) => STAGES.find((st) => st.key === k)?.optional),
     });
   }
 
@@ -1256,6 +1290,12 @@ export default function SmartSourceAiForm({
           target_date: editProjectForm.target_date || null,
           target_hires: Number(editProjectForm.target_hires) || 1,
           status: editProjectForm.status,
+          // All optional stages on = no template (null), so newly added
+          // stages show up automatically for "standard" projects.
+          stage_template:
+            editProjectForm.optional_stages.length === STAGES.filter((st) => st.optional).length
+              ? null
+              : editProjectForm.optional_stages,
         }),
       });
       const data = await res.json();
@@ -1272,12 +1312,14 @@ export default function SmartSourceAiForm({
                 target_date: data.project.target_date,
                 target_hires: data.project.target_hires,
                 status: data.project.status,
+                stage_template: data.project.stage_template ?? null,
               }
             : p
         )
       );
       if (activeProjectId === editingProjectModal.id) {
         setActiveProjectName(data.project.name);
+        setActiveProjectTemplate(data.project.stage_template ?? null);
       }
       closeEditProjectModal();
       setNotice(`Updated "${data.project.name}".`);
@@ -1467,49 +1509,9 @@ export default function SmartSourceAiForm({
     }
   }
 
-  // ---------- Funnel scroll nav (replaces the visible horizontal scrollbar) ----------
-  // The funnel strip can overflow on narrow screens or with the "Other
-  // outcomes" chips visible; the container hides its native scrollbar
-  // (see .no-scrollbar in globals.css) and these two chevron buttons page it
-  // instead, fading out at each end once there's nothing further to scroll to.
-  const funnelScrollRef = useRef<HTMLDivElement | null>(null);
-  const [funnelScrollState, setFunnelScrollState] = useState({ atStart: true, atEnd: true });
-
-  const updateFunnelScrollState = useCallback(() => {
-    const el = funnelScrollRef.current;
-    if (!el) return;
-    setFunnelScrollState({
-      atStart: el.scrollLeft <= 4,
-      atEnd: el.scrollLeft >= el.scrollWidth - el.clientWidth - 4,
-    });
-  }, []);
-
-  function scrollFunnel(direction: -1 | 1) {
-    funnelScrollRef.current?.scrollBy({ left: direction * 220, behavior: "smooth" });
-  }
-
-  const stageCounts = useMemo(() => {
-    const counts: Record<string, number> = { All: activeProjectCandidates.length };
-    for (const status of PIPELINE_STATUSES) {
-      counts[status] = 0;
-    }
-    for (const c of activeProjectCandidates) {
-      const st = c.project_status || "CV Screened";
-      counts[st] = (counts[st] || 0) + 1;
-    }
-    return counts;
-  }, [activeProjectCandidates]);
-
-  useEffect(() => {
-    updateFunnelScrollState();
-  }, [activeProjectId, updateFunnelScrollState]);
-
   const filteredProjectCandidates = useMemo(() => {
     const list = activeProjectCandidates.filter((c) => {
-      if (projectStatusFilter !== "All") {
-        const st = c.project_status || "CV Screened";
-        if (st !== projectStatusFilter) return false;
-      }
+      if (!matchesPipelineFilter(c, projectStatusFilter)) return false;
       if (projectSearchQuery.trim()) {
         const q = projectSearchQuery.trim().toLowerCase();
         const matchesName = (c.name || "").toLowerCase().includes(q);
@@ -1952,99 +1954,14 @@ export default function SmartSourceAiForm({
                 </div>
               </div>
 
-              {/* Pipeline funnel + "Other outcomes" -- replaces the old flat
-                  pill ribbon. See FUNNEL_STATUSES / FUNNEL_BANDS / EXIT_STATUSES
-                  above for why the funnel and the exit statuses are split. */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => scrollFunnel(-1)}
-                  aria-label="Scroll stages left"
-                  className={`absolute left-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full border border-border bg-surface text-ink-2 shadow-soft-sm flex items-center justify-center transition-opacity ${
-                    funnelScrollState.atStart ? "opacity-0 pointer-events-none" : "opacity-100 hover:text-ink hover:border-brand/40"
-                  }`}
-                >
-                  <Icon name="chevronLeft" className="w-3 h-3" />
-                </button>
-
-                <div
-                  ref={funnelScrollRef}
-                  onScroll={updateFunnelScrollState}
-                  className="no-scrollbar flex items-stretch gap-0 overflow-x-auto px-6"
-                >
-                  <button
-                    onClick={() => setProjectStatusFilter("All")}
-                    className={`shrink-0 flex flex-col items-center justify-center gap-0.5 px-4 py-1.5 mr-2.5 rounded-md border text-[11px] font-bold transition-all ${
-                      projectStatusFilter === "All"
-                        ? "bg-brand text-white border-brand shadow-soft-sm"
-                        : "bg-page text-ink-2 border-border hover:border-brand/40"
-                    }`}
-                  >
-                    <span className="text-[13.5px] font-extrabold leading-none">{activeProjectCandidates.length}</span>
-                    <span>All Stages</span>
-                  </button>
-
-                  {FUNNEL_BANDS.map((band, i) => {
-                    const count = stageCounts[band.status] || 0;
-                    const isSelected = projectStatusFilter === band.status;
-                    return (
-                      <button
-                        key={band.status}
-                        onClick={() => setProjectStatusFilter(isSelected ? "All" : band.status)}
-                        style={{
-                          clipPath: funnelClipPath(i, FUNNEL_BANDS.length),
-                          marginLeft: i === 0 ? 0 : "-11px",
-                          zIndex: FUNNEL_BANDS.length - i,
-                          outline: isSelected ? "2px solid white" : undefined,
-                          outlineOffset: isSelected ? "-3px" : undefined,
-                        }}
-                        title={`${band.status} — ${count}`}
-                        className={`shrink-0 flex flex-col items-center justify-center gap-0.5 min-w-[86px] px-4 py-1.5 transition-[filter] hover:brightness-110 ${band.bg} ${band.text} ${
-                          count === 0 && !isSelected ? "opacity-70" : ""
-                        }`}
-                      >
-                        <span className="text-[11px] font-extrabold leading-none whitespace-nowrap">{band.short}</span>
-                        <span className="text-[13px] font-extrabold leading-none">{count}</span>
-                      </button>
-                    );
-                  })}
-
-                  <div className="shrink-0 w-px bg-border mx-3 my-1" />
-                  <span className="shrink-0 self-center text-[9.5px] font-extrabold uppercase tracking-wider text-ink-muted mr-2">
-                    Other
-                  </span>
-                  {EXIT_STATUSES.map((status) => {
-                    const count = stageCounts[status] || 0;
-                    const isSelected = projectStatusFilter === status;
-                    return (
-                      <button
-                        key={status}
-                        onClick={() => setProjectStatusFilter(isSelected ? "All" : status)}
-                        className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 mr-1.5 rounded-full border text-[11px] font-bold transition-all ${
-                          isSelected
-                            ? `bg-page border-current shadow-soft-sm ${EXIT_TEXT_CLASS[status]}`
-                            : `bg-page/60 border-transparent hover:border-border ${count > 0 ? EXIT_TEXT_CLASS[status] : "text-ink-muted"}`
-                        }`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${EXIT_DOT_CLASS[status]}`} />
-                        <span>{status}</span>
-                        <span className="font-extrabold">{count}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => scrollFunnel(1)}
-                  aria-label="Scroll stages right"
-                  className={`absolute right-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full border border-border bg-surface text-ink-2 shadow-soft-sm flex items-center justify-center transition-opacity ${
-                    funnelScrollState.atEnd ? "opacity-0 pointer-events-none" : "opacity-100 hover:text-ink hover:border-brand/40"
-                  }`}
-                >
-                  <Icon name="chevronRight" className="w-3 h-3" />
-                </button>
-              </div>
+              {/* Stage funnel (active candidates) + Other outcomes + attention
+                  chips; hover a stage for its status breakdown. */}
+              <PipelineFunnel
+                candidates={activeProjectCandidates}
+                enabledStages={activeEnabledStages}
+                filter={projectStatusFilter}
+                onFilter={setProjectStatusFilter}
+              />
 
               {/* View toggle, search, quick-search, and filter reset -- one row.
                   The standalone "Sort: Highest Score First" control was removed:
@@ -2158,11 +2075,19 @@ export default function SmartSourceAiForm({
                   </button>
                 </div>
               ) : pipelineViewMode === "board" ? (
-                <ProjectKanbanBoard candidates={filteredProjectCandidates} onStatusChange={updateCandidateStatus} />
+                <PipelineKanban
+                  candidates={filteredProjectCandidates}
+                  enabledStages={activeEnabledStages}
+                  scoreClass={scoreClass}
+                  onStageChange={(id, stage) => {
+                    const c = activeProjectCandidates.find((x) => x.id === id);
+                    if (c) requestStageChange(c, stage);
+                  }}
+                />
               ) : (
                 <div className="border border-border rounded-md bg-surface shadow-soft-sm overflow-hidden">
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse min-w-[980px]">
+                    <table className="w-full text-left border-collapse min-w-[1080px]">
                       <thead>
                         <tr className="bg-page border-b border-border text-[11.5px] font-bold text-ink-muted uppercase tracking-wider">
                           <th className="py-2.5 px-2 w-[3%]">
@@ -2184,8 +2109,8 @@ export default function SmartSourceAiForm({
                               className="w-3.5 h-3.5 accent-brand cursor-pointer"
                             />
                           </th>
-                          <th className="py-2.5 px-3.5 w-[28%]">Candidate & Role</th>
-                          <th className="py-2.5 px-3 w-[15%]">Location & Exp</th>
+                          <th className="py-2.5 px-3.5 w-[25%]">Candidate & Role</th>
+                          <th className="py-2.5 px-3 w-[14%]">Location & Exp</th>
                           <th
                             onClick={() => setProjectCandidateSort((s) => (s === "score_desc" ? "score_asc" : "score_desc"))}
                             className="py-2.5 px-3 w-[8%] text-center cursor-pointer hover:text-brand select-none transition-colors group"
@@ -2198,15 +2123,15 @@ export default function SmartSourceAiForm({
                               </span>
                             </div>
                           </th>
-                          <th className="py-2.5 px-3 w-[18%]">Pipeline Status</th>
-                          <th className="py-2.5 px-3 w-[20%]">Recruiter Comments</th>
+                          <th className="py-2.5 px-3 w-[11%]">Stage</th>
+                          <th className="py-2.5 px-3 w-[14%]">Status</th>
+                          <th className="py-2.5 px-3 w-[17%]">Recruiter Comments</th>
                           <th className="py-2.5 px-3 w-[8%] text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border text-[12.5px]">
                         {filteredProjectCandidates.map((c) => {
                           const isEditingComment = editingCommentId === c.id;
-                          const currentStatus = c.project_status || "CV Screened";
                           const isExpanded = projectExpanded === c.id;
 
                           return (
@@ -2365,37 +2290,29 @@ export default function SmartSourceAiForm({
                                   </span>
                                 </td>
 
-                                {/* Pipeline Status Dropdown */}
+                                {/* Stage */}
                                 <td className="py-3 px-3 align-top">
                                   <div className="flex flex-col gap-1">
-                                    <div className="relative inline-block">
-                                      <select
-                                        value={currentStatus}
-                                        onChange={(e) => updateCandidateStatus(c.id, e.target.value)}
-                                        className={`text-[11.5px] font-bold py-1 px-2.5 pr-6 rounded-md border appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-brand ${statusBadgeClass(
-                                          currentStatus
-                                        )}`}
-                                      >
-                                        {PIPELINE_STATUSES.map((st) => (
-                                          <option
-                                            key={st}
-                                            value={st}
-                                            className="bg-surface text-ink font-medium"
-                                          >
-                                            {st}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-current opacity-70">
-                                        <Icon name="chevronDown" className="w-3 h-3" />
-                                      </div>
-                                    </div>
+                                    <StageSelect
+                                      stage={(c.pipeline_stage || "sourcing") as StageKey}
+                                      enabledStages={activeEnabledStages}
+                                      onChange={(stage) => requestStageChange(c, stage)}
+                                    />
                                     {c.added_at && (
                                       <span className="text-[10.5px] text-ink-muted">
                                         Added {new Date(c.added_at).toLocaleDateString()}
                                       </span>
                                     )}
                                   </div>
+                                </td>
+
+                                {/* Status (scoped to the stage) */}
+                                <td className="py-3 px-3 align-top">
+                                  <StatusCell
+                                    c={c}
+                                    onStatusPick={(status) => requestStatusChange(c, status)}
+                                    onBgvChange={(bgv) => applyOrReport([c.id], { bgv_status: bgv })}
+                                  />
                                 </td>
 
                                 {/* Recruiter Comments */}
@@ -2485,9 +2402,9 @@ export default function SmartSourceAiForm({
                                             ? "bg-brand/10 text-brand"
                                             : "text-ink-muted hover:text-ink hover:bg-page"
                                         }`}
-                                        title="Toggle AI Fit Evaluation drawer"
+                                        title="Pipeline details, history and AI fit"
                                       >
-                                        <span>Fit</span>
+                                        <span>Details</span>
                                         <Icon
                                           name={isExpanded ? "chevronUp" : "chevronDown"}
                                           className="w-3 h-3"
@@ -2508,7 +2425,21 @@ export default function SmartSourceAiForm({
                               {/* Evaluation Panel Drawer */}
                               {isExpanded && (
                                 <tr className="bg-page/70 border-b border-border">
-                                  <td colSpan={7} className="p-3.5">
+                                  <td colSpan={8} className="p-3.5">
+                                    {activeProjectId && (
+                                      <div className="bg-surface rounded-md border border-border p-3 shadow-soft-sm mb-3">
+                                        <div className="text-[12px] font-bold text-ink flex items-center gap-1.5 mb-2">
+                                          <Icon name="clock" className="w-3.5 h-3.5 text-brand" />
+                                          <span>Pipeline for {c.name || "Candidate"}</span>
+                                        </div>
+                                        <CandidatePipelinePanel
+                                          projectId={activeProjectId}
+                                          candidateId={c.id}
+                                          c={c}
+                                          refreshKey={`${pipelineHistoryTick}`}
+                                        />
+                                      </div>
+                                    )}
                                     <div className="bg-surface rounded-md border border-border p-3 shadow-soft-sm">
                                       <div className="flex items-center justify-between mb-2">
                                         <div className="text-[12px] font-bold text-ink flex items-center gap-1.5">
@@ -2545,6 +2476,15 @@ export default function SmartSourceAiForm({
                       {selectedCandidateIds.size} selected
                     </span>
                     <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={openBulkStatusDialog}
+                        disabled={bulkActionBusy}
+                        className="text-[11.5px] font-bold px-2.5 py-1.5 rounded-sm bg-surface/10 hover:bg-surface/20 inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                      >
+                        <Icon name="filter" className="w-3.5 h-3.5" />
+                        <span>Set stage / status…</span>
+                      </button>
                       <div className="relative">
                         <button
                           type="button"
@@ -3412,6 +3352,23 @@ export default function SmartSourceAiForm({
         </div>
       )}
 
+      {statusDialog && (
+        <StatusChangeDialog
+          key={statusDialog.candidateIds.join(",") + statusDialog.status}
+          title={statusDialog.title}
+          subtitle={statusDialog.subtitle}
+          initialStage={statusDialog.stage}
+          initialStatus={statusDialog.status}
+          allowStagePick={statusDialog.allowStagePick}
+          enabledStages={activeEnabledStages}
+          details={statusDialog.details}
+          onCancel={() => setStatusDialog(null)}
+          onSubmit={submitStatusDialog}
+        />
+      )}
+
+      {notifyPrompt && <NotifyCandidateBar prompt={notifyPrompt} onClose={() => setNotifyPrompt(null)} />}
+
       {editingProjectModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
@@ -3491,6 +3448,42 @@ export default function SmartSourceAiForm({
                     <option value="Completed">Completed</option>
                   </select>
                 </label>
+              </div>
+
+              <div>
+                <span className="block text-[12px] font-bold text-ink mb-1">Hiring stages for this role</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {STAGES.map((st) => {
+                    const on = !st.optional || editProjectForm.optional_stages.includes(st.key);
+                    return (
+                      <button
+                        key={st.key}
+                        type="button"
+                        disabled={!st.optional}
+                        onClick={() =>
+                          setEditProjectForm((f) => ({
+                            ...f,
+                            optional_stages: f.optional_stages.includes(st.key)
+                              ? f.optional_stages.filter((k) => k !== st.key)
+                              : [...f.optional_stages, st.key],
+                          }))
+                        }
+                        title={st.optional ? (on ? "Click to skip this stage" : "Click to use this stage") : "Always on"}
+                        className={`text-[11.5px] font-bold px-2 py-1 rounded-sm border transition-colors inline-flex items-center gap-1 ${
+                          on
+                            ? "bg-brand/10 text-ink border-brand/30"
+                            : "bg-page text-ink-muted border-border line-through"
+                        } ${st.optional ? "hover:border-brand/50" : "opacity-80 cursor-default"}`}
+                      >
+                        {on && <Icon name="check" className="w-3 h-3 text-brand" />}
+                        {st.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <span className="block text-[10.5px] text-ink-muted mt-1">
+                  Sourcing, Offer and Joining are always on. Shortlisting skips stages you switch off.
+                </span>
               </div>
 
               <label className="block">
@@ -3653,93 +3646,6 @@ export default function SmartSourceAiForm({
           border-color: #2a78d6;
         }
       `}</style>
-    </div>
-  );
-}
-
-// Kanban board view for the candidate pipeline -- one column per
-// PIPELINE_STATUSES entry, native HTML5 drag-and-drop to move a candidate
-// between stages via the same `updateCandidateStatus` used by the List
-// view's status dropdown (no separate status-mutation path).
-function ProjectKanbanBoard({
-  candidates,
-  onStatusChange,
-}: {
-  candidates: Candidate[];
-  onStatusChange: (candidateId: string, status: string) => void;
-}) {
-  const [draggedId, setDraggedId] = useState<string | null>(null);
-  const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
-
-  return (
-    <div className="overflow-x-auto pb-2">
-      <div className="flex gap-3 min-w-max">
-        {PIPELINE_STATUSES.map((status) => {
-          const columnCandidates = candidates.filter((c) => (c.project_status || "CV Screened") === status);
-          const isDragOver = dragOverStatus === status;
-          return (
-            <div
-              key={status}
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (dragOverStatus !== status) setDragOverStatus(status);
-              }}
-              onDragLeave={() => setDragOverStatus((prev) => (prev === status ? null : prev))}
-              onDrop={(e) => {
-                e.preventDefault();
-                const id = e.dataTransfer.getData("text/plain") || draggedId;
-                setDragOverStatus(null);
-                setDraggedId(null);
-                if (id) onStatusChange(id, status);
-              }}
-              className={`w-64 shrink-0 flex flex-col rounded-md border transition-colors ${
-                isDragOver ? "border-brand bg-brand-wash/40" : "border-border bg-page/40"
-              }`}
-            >
-              <div className={`px-2.5 py-2 border-b rounded-t-md flex items-center justify-between gap-2 ${statusBadgeClass(status)}`}>
-                <span className="text-[11.5px] font-bold truncate">{status}</span>
-                <span className="text-[10.5px] font-bold px-1.5 py-0.2 rounded-full bg-white/40 dark:bg-black/20 shrink-0">
-                  {columnCandidates.length}
-                </span>
-              </div>
-              <div className="flex flex-col gap-2 p-2 min-h-[70px] max-h-[65vh] overflow-y-auto">
-                {columnCandidates.length === 0 ? (
-                  <div className="text-[11px] text-ink-muted italic text-center py-3">No candidates</div>
-                ) : (
-                  columnCandidates.map((c) => (
-                    <div
-                      key={c.id}
-                      draggable
-                      onDragStart={(e) => {
-                        setDraggedId(c.id);
-                        e.dataTransfer.setData("text/plain", c.id);
-                        e.dataTransfer.effectAllowed = "move";
-                      }}
-                      onDragEnd={() => {
-                        setDraggedId(null);
-                        setDragOverStatus(null);
-                      }}
-                      title={c.profile_url ? "Drag to a different stage, or open the profile from the List view" : "Drag to a different stage"}
-                      className={`bg-surface border border-border rounded-md p-2 shadow-soft-sm cursor-grab active:cursor-grabbing transition-opacity ${
-                        draggedId === c.id ? "opacity-40" : "opacity-100"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-1.5">
-                        <span className="font-bold text-ink text-[12px] truncate">{c.name || "Unnamed Candidate"}</span>
-                        <span className={`shrink-0 text-[10px] font-bold px-1.5 py-0.2 rounded-full ${scoreClass(c.match_score)}`}>
-                          {c.match_score ?? "—"}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-ink-2 truncate">{c.designation || "—"}</div>
-                      {c.company && <div className="text-[10.5px] text-ink-muted truncate">at {c.company}</div>}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
