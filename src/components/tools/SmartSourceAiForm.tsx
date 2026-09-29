@@ -69,6 +69,10 @@ type Candidate = PipelineFields & {
   // resolved to a signed URL on demand via /api/smart-source/candidates/[id]/resume.
   resume_file_path?: string | null;
   resume_file_name?: string | null;
+  // Original upload name and the text extracted from it -- older CV drops
+  // kept only these (no stored file), so the viewer falls back to the text.
+  cv_file_name?: string | null;
+  resume_text?: string | null;
   // Newline-separated 5-line AI profile summary -- see EvaluationPanel's
   // "Summarize" button. AI-estimated, not verified fact.
   ai_summary?: string | null;
@@ -205,6 +209,7 @@ export default function SmartSourceAiForm({
     status: "loading" | "ready" | "empty" | "error";
     url: string | null;
     fileName: string | null;
+    text?: string | null;
   } | null>(null);
   // Whether the resume viewer modal above is expanded to fill the
   // viewport -- resumes routinely need more room than the default modal
@@ -220,23 +225,36 @@ export default function SmartSourceAiForm({
       window.open(c.profile_url, "_blank", "noopener,noreferrer");
       return;
     }
+    openResume(c);
+  }
+
+  function hasCvOnFile(c: Candidate): boolean {
+    return !!(c.resume_file_path || c.cv_file_name || (c.resume_text && c.resume_text.trim()));
+  }
+
+  // CV viewer: the stored file when there is one (PDF previews inline),
+  // otherwise the text extracted from the CV at drop time.
+  async function openResume(c: Candidate) {
+    const candidateName = c.name || "this candidate";
     setResumeFullscreen(false);
-    setResumeModal({ candidateName: c.name || "this candidate", status: "loading", url: null, fileName: null });
+    setResumeModal({ candidateName, status: "loading", url: null, fileName: null });
     try {
       const res = await fetch(`/api/smart-source/candidates/${c.id}/resume`);
-      const data = await res.json();
-      if (data.resumeFileUrl) {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "failed");
+      if (data.resumeFileUrl || data.resumeText) {
         setResumeModal({
-          candidateName: c.name || "this candidate",
+          candidateName,
           status: "ready",
-          url: data.resumeFileUrl,
+          url: data.resumeFileUrl || null,
           fileName: data.resumeFileName || null,
+          text: data.resumeText || null,
         });
       } else {
-        setResumeModal({ candidateName: c.name || "this candidate", status: "empty", url: null, fileName: null });
+        setResumeModal({ candidateName, status: "empty", url: null, fileName: null });
       }
     } catch {
-      setResumeModal({ candidateName: c.name || "this candidate", status: "error", url: null, fileName: null });
+      setResumeModal({ candidateName, status: "error", url: null, fileName: null });
     }
   }
   const [showExport, setShowExport] = useState(false);
@@ -2177,6 +2195,17 @@ export default function SmartSourceAiForm({
                                             <Icon name="externalLink" className="w-3.5 h-3.5" />
                                           </a>
                                         )}
+                                        {hasCvOnFile(c) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openResume(c)}
+                                            className="inline-flex items-center gap-0.5 text-[10.5px] font-bold px-1.5 py-0.5 rounded-sm border border-brand/30 text-brand bg-brand/[0.06] hover:bg-brand/[0.12]"
+                                            title="View CV"
+                                          >
+                                            <Icon name="book" className="w-3 h-3" />
+                                            CV
+                                          </button>
+                                        )}
                                       </div>
                                       <div className="text-[12px] text-ink-2 font-medium truncate max-w-sm">
                                         <EditableText
@@ -3117,7 +3146,7 @@ export default function SmartSourceAiForm({
         >
           <div
             className={`bg-surface border border-border rounded-lg shadow-soft-lg p-5 flex flex-col gap-3 ${
-              resumeFullscreen ? "w-full h-full max-w-none" : "w-full max-w-lg"
+              resumeFullscreen ? "w-full h-full max-w-none" : "w-full max-w-3xl max-h-[90vh]"
             }`}
             onClick={(e) => e.stopPropagation()}
           >
@@ -3161,14 +3190,30 @@ export default function SmartSourceAiForm({
                 No LinkedIn profile or resume on file for this candidate yet.
               </p>
             )}
-            {resumeModal.status === "ready" && resumeModal.url && (
+            {resumeModal.status === "ready" && (
               <>
-                {(resumeModal.fileName || "").toLowerCase().endsWith(".pdf") ? (
+                {resumeModal.url && (resumeModal.fileName || "").toLowerCase().endsWith(".pdf") ? (
                   <iframe
                     src={resumeModal.url}
                     className={`w-full border border-border rounded-sm ${resumeFullscreen ? "flex-1" : "h-[520px]"}`}
                     title="Resume"
                   />
+                ) : resumeModal.text ? (
+                  <div className="flex flex-col gap-1.5 min-h-0 flex-1">
+                    {!resumeModal.url && (
+                      <p className="text-[11px] text-ink-muted">
+                        The original file wasn&apos;t stored for this candidate, so this is the text read from their CV.
+                        Re-drop the CV in the project to keep the file.
+                      </p>
+                    )}
+                    <pre
+                      className={`w-full overflow-auto whitespace-pre-wrap break-words font-sans text-[12.5px] leading-relaxed text-ink bg-page border border-border rounded-sm p-3 ${
+                        resumeFullscreen ? "flex-1" : "h-[520px]"
+                      }`}
+                    >
+                      {resumeModal.text}
+                    </pre>
+                  </div>
                 ) : (
                   <p className="text-[12.5px] text-ink-muted py-6 text-center">
                     Preview isn&apos;t available for this file type — use Download.
@@ -3176,15 +3221,17 @@ export default function SmartSourceAiForm({
                 )}
                 <div className="flex items-center justify-between text-[11.5px] text-ink-muted">
                   <span className="truncate">{resumeModal.fileName}</span>
-                  <a
-                    href={resumeModal.url}
-                    download={resumeModal.fileName || undefined}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-brand font-bold hover:text-brand-hover shrink-0 ml-2"
-                  >
-                    Download
-                  </a>
+                  {resumeModal.url && (
+                    <a
+                      href={resumeModal.url}
+                      download={resumeModal.fileName || undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-brand font-bold hover:text-brand-hover shrink-0 ml-2"
+                    >
+                      Download
+                    </a>
+                  )}
                 </div>
               </>
             )}

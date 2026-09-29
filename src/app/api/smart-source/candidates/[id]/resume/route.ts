@@ -21,25 +21,37 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const { data: candidate, error } = await supabase
     .from("smart_source_candidates")
-    .select("resume_file_path, resume_file_name")
+    .select("resume_file_path, resume_file_name, cv_file_name, resume_text")
     .eq("id", id)
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!candidate) return NextResponse.json({ error: "Candidate not found." }, { status: 404 });
 
-  const resumeFilePath = (candidate as { resume_file_path?: string | null }).resume_file_path;
-  if (!resumeFilePath) {
-    return NextResponse.json({ resumeFileUrl: null, resumeFileName: null });
-  }
+  const c = candidate as {
+    resume_file_path?: string | null;
+    resume_file_name?: string | null;
+    cv_file_name?: string | null;
+    resume_text?: string | null;
+  };
+  const resumeText = c.resume_text?.trim() ? c.resume_text.trim().slice(0, 60_000) : null;
+  const fallback = {
+    resumeFileUrl: null,
+    resumeFileName: c.resume_file_name || c.cv_file_name || null,
+    resumeText,
+  };
+
+  if (!c.resume_file_path) return NextResponse.json(fallback);
 
   const admin = createAdminClient();
-  const { data: signed, error: signError } = await admin.storage.from("resumes").createSignedUrl(resumeFilePath, 600);
+  const { data: signed, error: signError } = await admin.storage.from("resumes").createSignedUrl(c.resume_file_path, 600);
   if (signError || !signed) {
-    return NextResponse.json({ resumeFileUrl: null, resumeFileName: null });
+    console.warn("smart-source resume: signing failed:", signError?.message);
+    return NextResponse.json(fallback);
   }
 
   return NextResponse.json({
     resumeFileUrl: signed.signedUrl,
-    resumeFileName: (candidate as { resume_file_name?: string | null }).resume_file_name || null,
+    resumeFileName: c.resume_file_name || c.cv_file_name || null,
+    resumeText,
   });
 }
