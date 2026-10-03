@@ -5,7 +5,7 @@ import type { NrsStringKey } from "./i18n/en";
 // `built`: flip to true when a module ships. Until then the tab is shown to
 // HR only (marked "soon"); employees never see unbuilt tabs.
 
-export type NrsTabKey = "home" | "time" | "money" | "projects" | "people" | "knowledge" | "help" | "team" | "admin";
+export type NrsTabKey = "home" | "time" | "money" | "projects" | "people" | "knowledge" | "help" | "team";
 
 export interface NrsTabDef {
   key: NrsTabKey;
@@ -29,8 +29,14 @@ export const NRS_TABS: readonly NrsTabDef[] = [
   { key: "knowledge", href: `${NRS_BASE}/knowledge`, label: "nav.knowledge", icon: "book", feature: "knowledge", audience: "all", built: true },
   { key: "help", href: `${NRS_BASE}/help`, label: "nav.help", icon: "headset", feature: "help", audience: "all", built: true },
   { key: "team", href: `${NRS_BASE}/team`, label: "nav.team", icon: "check", audience: "manager", built: true },
-  { key: "admin", href: `${NRS_BASE}/admin`, label: "nav.admin", icon: "gear", audience: "hr", built: true },
 ];
+
+/**
+ * The separate NR Synergy Admin Console (own path, layout and sign-in).
+ * Deliberately NOT an employee tab: the employee app never links to it,
+ * except the HR-only "Open Admin Console" global-search result.
+ */
+export const NRS_ADMIN_BASE = "/nr-synergy-admin";
 
 export function nrsTab(key: NrsTabKey): NrsTabDef {
   const tab = NRS_TABS.find((t) => t.key === key);
