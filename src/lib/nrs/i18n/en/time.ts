@@ -1,0 +1,105 @@
+// NR Synergy · Time module strings (English).
+// Imported directly by the Time components; placeholders use {name}.
+
+export const time = {
+  title: "Time",
+  titleWorkLog: "Work log",
+  titleAttendance: "Attendance",
+  subtitleWorkLog: "Log your working days, ask for time off and see public holidays.",
+  subtitleAttendance: "Check in and out, request leave and see public holidays.",
+  noMember: "Your HR account isn't linked to a member profile, so there's nothing to log here.",
+
+  todayHeading: "Today",
+  checkIn: "Check in",
+  checkOut: "Check out",
+  checkingIn: "Checking in…",
+  checkingOut: "Checking out…",
+  logStart: "Start work log",
+  logEnd: "End work log",
+  checkedInAt: "Checked in at {time}",
+  checkedOutAt: "Checked out at {time}",
+  notCheckedIn: "You haven't checked in today.",
+  notLogged: "You haven't started a work log today.",
+  doneForDay: "Done for the day · {hours}",
+  workMode: "Work mode",
+  shareCity: "Add my city (uses your location once, only the city is saved)",
+  locating: "Finding your city…",
+  locationDenied: "Location wasn't shared, so no city was saved.",
+  locationFailed: "We couldn't look up your city. Saved without it.",
+  at: "in {city}",
+  travelBadge: "Travelling",
+
+  modes: {
+    office: "Office",
+    client_visit: "Client visit",
+    home: "Home",
+    travel: "Travel",
+    trade_fair: "Trade fair",
+  },
+
+  monthHeading: "Month",
+  prevMonth: "Previous month",
+  nextMonth: "Next month",
+  thisMonth: "This month",
+  weekdaysShort: "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
+  legendWorked: "Logged",
+  legendLeave: "Leave",
+  legendPendingLeave: "Leave (pending)",
+  legendHoliday: "Holiday",
+  legendOff: "Non-working day",
+  monthEntries: "Entries this month",
+  monthEmpty: "No entries this month.",
+  openLog: "open",
+  hours: "{h} h",
+
+  leaveHeading: "Request time off",
+  leaveType: "Type",
+  leaveTypes: {
+    annual: "Annual leave",
+    sick: "Sick leave",
+    personal: "Personal leave",
+    unavailable: "Unavailable",
+    unpaid: "Unpaid leave",
+  },
+  leaveFrom: "From",
+  leaveTo: "To",
+  leaveNote: "Note (optional)",
+  leaveWorkingDays: "{count} working days",
+  leaveWorkingDaysOne: "1 working day",
+  leaveNoWorkingDays: "These dates have no working days.",
+  leaveSubmit: "Send request",
+  leaveSent: "Request sent for approval.",
+  leaveSentApproved: "Request approved automatically.",
+
+  correctionHeading: "Fix a day",
+  correctionHint: "Forgot to check in or out? Ask your manager to correct it.",
+  correctionDay: "Day",
+  correctionIn: "Check-in time",
+  correctionOut: "Check-out time",
+  correctionReason: "Reason",
+  correctionSubmit: "Send correction",
+  correctionSent: "Correction sent for approval.",
+  correctionNeedTime: "Enter a check-in or check-out time.",
+
+  requestsHeading: "My requests",
+  requestsEmpty: "You haven't made any requests yet.",
+  requestLeave: "{type} · {from} – {to}",
+  requestCorrection: "Correction · {day}",
+  status: {
+    pending: "Pending",
+    approved: "Approved",
+    rejected: "Rejected",
+    cancelled: "Cancelled",
+    sent_back: "Sent back",
+    applied: "Applied",
+  },
+
+  holidaysHeading: "Holidays in {country}",
+  holidaysEmpty: "No holidays are listed for the rest of this year.",
+
+  errorGeneric: "Something went wrong. Please try again.",
+} as const;
+
+export function fillTime(s: string, vars: Record<string, string | number>): string {
+  return s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
+}

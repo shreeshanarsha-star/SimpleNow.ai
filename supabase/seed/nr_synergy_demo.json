@@ -1,0 +1,1134 @@
+{
+  "_comment": "NR Synergy demo data. Loaded by Admin > Demo data into the current org with is_demo=true; references use symbolic refs (m1, v1, d1, p1) resolved by the loader. All people, emails and links are fictional placeholders.",
+  "version": 1,
+  "brand": {
+    "display_name": "NR Synergy",
+    "reporting_currency": "USD"
+  },
+  "countries": [
+    {
+      "code": "US",
+      "name": "United States",
+      "timezone": "America/New_York",
+      "currency": "USD"
+    },
+    {
+      "code": "MX",
+      "name": "Mexico",
+      "timezone": "America/Mexico_City",
+      "currency": "MXN"
+    },
+    {
+      "code": "BR",
+      "name": "Brazil",
+      "timezone": "America/Sao_Paulo",
+      "currency": "BRL"
+    },
+    {
+      "code": "DE",
+      "name": "Germany",
+      "timezone": "Europe/Berlin",
+      "currency": "EUR"
+    },
+    {
+      "code": "NL",
+      "name": "Netherlands",
+      "timezone": "Europe/Amsterdam",
+      "currency": "EUR"
+    },
+    {
+      "code": "IN",
+      "name": "India",
+      "timezone": "Asia/Kolkata",
+      "currency": "INR"
+    }
+  ],
+  "country_rules": [
+    {
+      "country_code": "US",
+      "effective_from": "2026-01-01",
+      "working_days": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "std_hours_per_day": 8,
+      "leave_rules": {
+        "payroll": {
+          "annual": 15,
+          "sick": 5
+        },
+        "consultant": {}
+      },
+      "expense_limits": {
+        "travel": 50000,
+        "meals": 7500,
+        "lodging": 25000,
+        "client_entertainment": 20000,
+        "trade_fair": 100000,
+        "other": 10000
+      }
+    },
+    {
+      "country_code": "MX",
+      "effective_from": "2026-01-01",
+      "working_days": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "std_hours_per_day": 8,
+      "leave_rules": {
+        "payroll": {
+          "annual": 12,
+          "sick": 6
+        },
+        "consultant": {}
+      },
+      "expense_limits": {
+        "travel": 900000,
+        "meals": 135000,
+        "lodging": 450000,
+        "client_entertainment": 360000,
+        "trade_fair": 1800000,
+        "other": 180000
+      }
+    },
+    {
+      "country_code": "BR",
+      "effective_from": "2026-01-01",
+      "working_days": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "std_hours_per_day": 8,
+      "leave_rules": {
+        "payroll": {
+          "annual": 30,
+          "sick": 15
+        },
+        "consultant": {}
+      },
+      "expense_limits": {
+        "travel": 250000,
+        "meals": 37500,
+        "lodging": 125000,
+        "client_entertainment": 100000,
+        "trade_fair": 500000,
+        "other": 50000
+      }
+    },
+    {
+      "country_code": "DE",
+      "effective_from": "2026-01-01",
+      "working_days": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "std_hours_per_day": 8,
+      "leave_rules": {
+        "payroll": {
+          "annual": 25,
+          "sick": 0
+        },
+        "consultant": {}
+      },
+      "expense_limits": {
+        "travel": 50000,
+        "meals": 7500,
+        "lodging": 25000,
+        "client_entertainment": 20000,
+        "trade_fair": 100000,
+        "other": 10000
+      }
+    },
+    {
+      "country_code": "NL",
+      "effective_from": "2026-01-01",
+      "working_days": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "std_hours_per_day": 8,
+      "leave_rules": {
+        "payroll": {
+          "annual": 25,
+          "sick": 0
+        },
+        "consultant": {}
+      },
+      "expense_limits": {
+        "travel": 50000,
+        "meals": 7500,
+        "lodging": 25000,
+        "client_entertainment": 20000,
+        "trade_fair": 100000,
+        "other": 10000
+      }
+    },
+    {
+      "country_code": "IN",
+      "effective_from": "2026-01-01",
+      "working_days": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "std_hours_per_day": 8,
+      "leave_rules": {
+        "payroll": {
+          "annual": 18,
+          "sick": 12,
+          "casual": 6
+        },
+        "consultant": {}
+      },
+      "expense_limits": {
+        "travel": 4000000,
+        "meals": 600000,
+        "lodging": 2000000,
+        "client_entertainment": 1600000,
+        "trade_fair": 8000000,
+        "other": 800000
+      }
+    }
+  ],
+  "holidays": [
+    {
+      "country_code": "US",
+      "day": "2026-01-01",
+      "name": "New Year's Day"
+    },
+    {
+      "country_code": "US",
+      "day": "2026-01-19",
+      "name": "Martin Luther King Jr. Day"
+    },
+    {
+      "country_code": "US",
+      "day": "2026-02-16",
+      "name": "Presidents' Day"
+    },
+    {
+      "country_code": "US",
+      "day": "2026-05-25",
+      "name": "Memorial Day"
+    },
+    {
+      "country_code": "US",
+      "day": "2026-06-19",
+      "name": "Juneteenth"
+    },
+    {
+      "country_code": "US",
+      "day": "2026-07-03",
+      "name": "Independence Day (observed)"
+    },
+    {
+      "country_code": "US",
+      "day": "2026-09-07",
+      "name": "Labor Day"
+    },
+    {
+      "country_code": "US",
+      "day": "2026-10-12",
+      "name": "Columbus Day"
+    },
+    {
+      "country_code": "US",
+      "day": "2026-11-11",
+      "name": "Veterans Day"
+    },
+    {
+      "country_code": "US",
+      "day": "2026-11-26",
+      "name": "Thanksgiving Day"
+    },
+    {
+      "country_code": "US",
+      "day": "2026-12-25",
+      "name": "Christmas Day"
+    },
+    {
+      "country_code": "MX",
+      "day": "2026-01-01",
+      "name": "Año Nuevo"
+    },
+    {
+      "country_code": "MX",
+      "day": "2026-02-02",
+      "name": "Día de la Constitución"
+    },
+    {
+      "country_code": "MX",
+      "day": "2026-03-16",
+      "name": "Natalicio de Benito Juárez"
+    },
+    {
+      "country_code": "MX",
+      "day": "2026-04-02",
+      "name": "Jueves Santo"
+    },
+    {
+      "country_code": "MX",
+      "day": "2026-04-03",
+      "name": "Viernes Santo"
+    },
+    {
+      "country_code": "MX",
+      "day": "2026-05-01",
+      "name": "Día del Trabajo"
+    },
+    {
+      "country_code": "MX",
+      "day": "2026-09-16",
+      "name": "Día de la Independencia"
+    },
+    {
+      "country_code": "MX",
+      "day": "2026-11-16",
+      "name": "Día de la Revolución"
+    },
+    {
+      "country_code": "MX",
+      "day": "2026-12-25",
+      "name": "Navidad"
+    },
+    {
+      "country_code": "BR",
+      "day": "2026-01-01",
+      "name": "Confraternização Universal"
+    },
+    {
+      "country_code": "BR",
+      "day": "2026-02-16",
+      "name": "Carnaval"
+    },
+    {
+      "country_code": "BR",
+      "day": "2026-02-17",
+      "name": "Carnaval"
+    },
+    {
+      "country_code": "BR",
+      "day": "2026-04-03",
+      "name": "Sexta-feira Santa"
+    },
+    {
+      "country_code": "BR",
+      "day": "2026-04-21",
+      "name": "Tiradentes"
+    },
+    {
+      "country_code": "BR",
+      "day": "2026-05-01",
+      "name": "Dia do Trabalho"
+    },
+    {
+      "country_code": "BR",
+      "day": "2026-06-04",
+      "name": "Corpus Christi"
+    },
+    {
+      "country_code": "BR",
+      "day": "2026-09-07",
+      "name": "Independência do Brasil"
+    },
+    {
+      "country_code": "BR",
+      "day": "2026-10-12",
+      "name": "Nossa Senhora Aparecida"
+    },
+    {
+      "country_code": "BR",
+      "day": "2026-11-02",
+      "name": "Finados"
+    },
+    {
+      "country_code": "BR",
+      "day": "2026-11-20",
+      "name": "Dia da Consciência Negra"
+    },
+    {
+      "country_code": "BR",
+      "day": "2026-12-25",
+      "name": "Natal"
+    },
+    {
+      "country_code": "DE",
+      "day": "2026-01-01",
+      "name": "Neujahr"
+    },
+    {
+      "country_code": "DE",
+      "day": "2026-04-03",
+      "name": "Karfreitag"
+    },
+    {
+      "country_code": "DE",
+      "day": "2026-04-06",
+      "name": "Ostermontag"
+    },
+    {
+      "country_code": "DE",
+      "day": "2026-05-01",
+      "name": "Tag der Arbeit"
+    },
+    {
+      "country_code": "DE",
+      "day": "2026-05-14",
+      "name": "Christi Himmelfahrt"
+    },
+    {
+      "country_code": "DE",
+      "day": "2026-05-25",
+      "name": "Pfingstmontag"
+    },
+    {
+      "country_code": "DE",
+      "day": "2026-10-03",
+      "name": "Tag der Deutschen Einheit"
+    },
+    {
+      "country_code": "DE",
+      "day": "2026-12-25",
+      "name": "1. Weihnachtstag"
+    },
+    {
+      "country_code": "DE",
+      "day": "2026-12-26",
+      "name": "2. Weihnachtstag"
+    },
+    {
+      "country_code": "NL",
+      "day": "2026-01-01",
+      "name": "Nieuwjaarsdag"
+    },
+    {
+      "country_code": "NL",
+      "day": "2026-04-03",
+      "name": "Goede Vrijdag"
+    },
+    {
+      "country_code": "NL",
+      "day": "2026-04-06",
+      "name": "Tweede Paasdag"
+    },
+    {
+      "country_code": "NL",
+      "day": "2026-04-27",
+      "name": "Koningsdag"
+    },
+    {
+      "country_code": "NL",
+      "day": "2026-05-05",
+      "name": "Bevrijdingsdag"
+    },
+    {
+      "country_code": "NL",
+      "day": "2026-05-14",
+      "name": "Hemelvaartsdag"
+    },
+    {
+      "country_code": "NL",
+      "day": "2026-05-25",
+      "name": "Tweede Pinksterdag"
+    },
+    {
+      "country_code": "NL",
+      "day": "2026-12-25",
+      "name": "Eerste Kerstdag"
+    },
+    {
+      "country_code": "NL",
+      "day": "2026-12-26",
+      "name": "Tweede Kerstdag"
+    },
+    {
+      "country_code": "IN",
+      "day": "2026-01-26",
+      "name": "Republic Day"
+    },
+    {
+      "country_code": "IN",
+      "day": "2026-05-01",
+      "name": "May Day"
+    },
+    {
+      "country_code": "IN",
+      "day": "2026-08-15",
+      "name": "Independence Day"
+    },
+    {
+      "country_code": "IN",
+      "day": "2026-10-02",
+      "name": "Gandhi Jayanti"
+    },
+    {
+      "country_code": "IN",
+      "day": "2026-12-25",
+      "name": "Christmas"
+    }
+  ],
+  "members": [
+    {
+      "ref": "m1",
+      "full_name": "Priya Raman",
+      "email": "priya.raman@demo.example.com",
+      "designation": "HR Business Partner",
+      "department": "Human Resources",
+      "division": "Corporate",
+      "home_country": "IN",
+      "manager_ref": null,
+      "languages": [
+        "en",
+        "hi",
+        "kn"
+      ],
+      "roles": [
+        "employee",
+        "hr_admin"
+      ],
+      "engagement": {
+        "type": "payroll",
+        "country_code": "IN",
+        "starts_on": "2023-04-03"
+      },
+      "joined_on": "2023-04-03",
+      "bio": "Looks after people operations for the international team."
+    },
+    {
+      "ref": "m2",
+      "full_name": "Arjun Mehta",
+      "email": "arjun.mehta@demo.example.com",
+      "designation": "Finance Controller",
+      "department": "Finance",
+      "division": "Corporate",
+      "home_country": "IN",
+      "manager_ref": null,
+      "languages": [
+        "en",
+        "hi"
+      ],
+      "roles": [
+        "employee",
+        "finance"
+      ],
+      "engagement": {
+        "type": "payroll",
+        "country_code": "IN",
+        "starts_on": "2022-08-01"
+      },
+      "joined_on": "2022-08-01",
+      "bio": "Approves invoices and expense reimbursements."
+    },
+    {
+      "ref": "m3",
+      "full_name": "Laura Bennett",
+      "email": "laura.bennett@demo.example.com",
+      "designation": "VP Sales, Americas",
+      "department": "Sales",
+      "division": "Nutraceuticals",
+      "home_country": "US",
+      "manager_ref": null,
+      "languages": [
+        "en",
+        "es"
+      ],
+      "roles": [
+        "employee",
+        "manager"
+      ],
+      "engagement": {
+        "type": "payroll",
+        "country_code": "US",
+        "starts_on": "2024-02-01"
+      },
+      "joined_on": "2024-02-01",
+      "bio": "Leads commercial teams across North and Latin America."
+    },
+    {
+      "ref": "m4",
+      "full_name": "Carlos Ortega",
+      "email": "carlos.ortega@demo.example.com",
+      "designation": "Techno Commercial Manager",
+      "department": "Sales",
+      "division": "Animal Health",
+      "home_country": "MX",
+      "manager_ref": "m3",
+      "languages": [
+        "es",
+        "en"
+      ],
+      "roles": [
+        "employee"
+      ],
+      "engagement": {
+        "type": "consultant",
+        "country_code": "MX",
+        "starts_on": "2025-06-01"
+      },
+      "joined_on": "2025-06-01",
+      "bio": "Works with feed mills and integrators across Mexico."
+    },
+    {
+      "ref": "m5",
+      "full_name": "Ana Souza",
+      "email": "ana.souza@demo.example.com",
+      "designation": "Country Head, Brazil",
+      "department": "Sales",
+      "division": "Animal Health",
+      "home_country": "BR",
+      "manager_ref": "m3",
+      "languages": [
+        "pt",
+        "es",
+        "en"
+      ],
+      "roles": [
+        "employee"
+      ],
+      "engagement": {
+        "type": "consultant",
+        "country_code": "BR",
+        "starts_on": "2026-03-01"
+      },
+      "joined_on": "2026-03-01",
+      "bio": "Building the Brazil business from São Paulo."
+    },
+    {
+      "ref": "m6",
+      "full_name": "Sophie van Dijk",
+      "email": "sophie.vandijk@demo.example.com",
+      "designation": "Head of Europe",
+      "department": "Sales",
+      "division": "Nutraceuticals",
+      "home_country": "NL",
+      "manager_ref": null,
+      "languages": [
+        "nl",
+        "en",
+        "de"
+      ],
+      "roles": [
+        "employee",
+        "manager"
+      ],
+      "engagement": {
+        "type": "payroll",
+        "country_code": "NL",
+        "starts_on": "2024-09-01"
+      },
+      "joined_on": "2024-09-01",
+      "bio": "Runs the European nutraceutical business."
+    },
+    {
+      "ref": "m7",
+      "full_name": "Daniel Weber",
+      "email": "daniel.weber@demo.example.com",
+      "designation": "BD & Sales Manager, DACH",
+      "department": "Sales",
+      "division": "Nutraceuticals",
+      "home_country": "DE",
+      "manager_ref": "m6",
+      "languages": [
+        "de",
+        "en"
+      ],
+      "roles": [
+        "employee"
+      ],
+      "engagement": {
+        "type": "consultant",
+        "country_code": "DE",
+        "starts_on": "2025-11-01"
+      },
+      "joined_on": "2025-11-01",
+      "bio": "Covers supplement brands in Germany, Austria and Switzerland."
+    },
+    {
+      "ref": "m8",
+      "full_name": "Lotte Jansen",
+      "email": "lotte.jansen@demo.example.com",
+      "designation": "Regulatory Consultant",
+      "department": "Regulatory",
+      "division": "Nutraceuticals",
+      "home_country": "NL",
+      "manager_ref": "m6",
+      "languages": [
+        "nl",
+        "en"
+      ],
+      "roles": [
+        "employee"
+      ],
+      "engagement": {
+        "type": "consultant",
+        "country_code": "NL",
+        "starts_on": "2026-01-15"
+      },
+      "joined_on": "2026-01-15",
+      "bio": "EU novel food and claims dossiers."
+    },
+    {
+      "ref": "m9",
+      "full_name": "Emily Carter",
+      "email": "emily.carter@demo.example.com",
+      "designation": "Technical Sales Consultant",
+      "department": "Sales",
+      "division": "Nutraceuticals",
+      "home_country": "US",
+      "manager_ref": "m3",
+      "languages": [
+        "en"
+      ],
+      "roles": [
+        "employee"
+      ],
+      "engagement": {
+        "type": "consultant",
+        "country_code": "US",
+        "starts_on": "2026-02-01"
+      },
+      "joined_on": "2026-02-01",
+      "bio": "Supports US brand owners with formulation questions."
+    },
+    {
+      "ref": "m10",
+      "full_name": "Rahul Iyer",
+      "email": "rahul.iyer@demo.example.com",
+      "designation": "Export Coordinator",
+      "department": "Operations",
+      "division": "Corporate",
+      "home_country": "IN",
+      "manager_ref": "m1",
+      "languages": [
+        "en",
+        "ta",
+        "hi"
+      ],
+      "roles": [
+        "employee"
+      ],
+      "engagement": {
+        "type": "payroll",
+        "country_code": "IN",
+        "starts_on": "2024-06-10"
+      },
+      "joined_on": "2024-06-10",
+      "bio": "Coordinates shipments and documentation for international orders."
+    }
+  ],
+  "values": [
+    {
+      "ref": "v1",
+      "name": "Ownership (placeholder)",
+      "meaning": "Placeholder value. Replace with the company's own wording in Admin > Content.",
+      "behaviours": [
+        "Follows through on commitments",
+        "Raises problems early"
+      ],
+      "not_this": [
+        "Waiting to be told"
+      ],
+      "leader_message": "Placeholder message from leadership.",
+      "sort": 1
+    },
+    {
+      "ref": "v2",
+      "name": "Curiosity (placeholder)",
+      "meaning": "Placeholder value. Replace with the company's own wording in Admin > Content.",
+      "behaviours": [
+        "Asks why",
+        "Learns from customers"
+      ],
+      "not_this": [
+        "We've always done it this way"
+      ],
+      "leader_message": "Placeholder message from leadership.",
+      "sort": 2
+    },
+    {
+      "ref": "v3",
+      "name": "Care (placeholder)",
+      "meaning": "Placeholder value. Replace with the company's own wording in Admin > Content.",
+      "behaviours": [
+        "Helps colleagues across time zones",
+        "Respects people's time off"
+      ],
+      "not_this": [
+        "Not my problem"
+      ],
+      "leader_message": "Placeholder message from leadership.",
+      "sort": 3
+    }
+  ],
+  "joe_media": {
+    "md_message_title": "A message from our Managing Director (placeholder)",
+    "md_video_url": null,
+    "md_transcript": "Placeholder transcript. Upload the MD's welcome message and transcript in Admin > Content > JOE."
+  },
+  "documents": [
+    {
+      "ref": "d1",
+      "category": "conduct",
+      "title": "Code of Conduct",
+      "country_code": null,
+      "audience": "all",
+      "requires_ack": true,
+      "versions": [
+        {
+          "version": "1.0",
+          "effective_from": "2026-01-01",
+          "summary": "How we work with each other, customers and partners.",
+          "body_markdown": "# Code of Conduct\n\n_Demo document. Replace with the approved policy._\n\n## 1. Integrity\nWe are honest with customers, partners and each other.\n\n## 2. Conflicts of interest\nDeclare any interest that could affect your judgement to HR.\n\n## 3. Speaking up\nRaise concerns with your manager or HR. Retaliation is not tolerated."
+        }
+      ]
+    },
+    {
+      "ref": "d2",
+      "category": "travel_expense",
+      "title": "Travel & Expense Policy",
+      "country_code": null,
+      "audience": "all",
+      "requires_ack": true,
+      "versions": [
+        {
+          "version": "2.1",
+          "effective_from": "2026-04-01",
+          "summary": "What you can claim, limits per category, and how to submit receipts.",
+          "body_markdown": "# Travel & Expense Policy\n\n_Demo document._\n\n- Submit expenses within 30 days with a receipt.\n- Category limits are set per country and shown in the Money tab.\n- Expenses over the limit need a short justification.\n- Consultants: approved expenses are added to your next invoice automatically."
+        }
+      ]
+    },
+    {
+      "ref": "d3",
+      "category": "it_security",
+      "title": "IT Security Basics",
+      "country_code": null,
+      "audience": "all",
+      "requires_ack": false,
+      "versions": [
+        {
+          "version": "1.0",
+          "effective_from": "2026-01-01",
+          "summary": "Passwords, devices and phishing.",
+          "body_markdown": "# IT Security Basics\n\n_Demo document._\n\n1. Use the password manager.\n2. Lock your screen when you step away.\n3. Report suspicious emails to IT through Help."
+        }
+      ]
+    },
+    {
+      "ref": "d4",
+      "category": "hr",
+      "title": "Consultant Guide: Mexico",
+      "country_code": "MX",
+      "audience": "consultant",
+      "requires_ack": false,
+      "versions": [
+        {
+          "version": "1.0",
+          "effective_from": "2026-01-01",
+          "summary": "Invoicing, CFDI and holidays for consultants in Mexico.",
+          "body_markdown": "# Consultant Guide: Mexico\n\n_Demo document._\n\n- Invoices are generated in NR Synergy at the start of each month.\n- Attach your CFDI reference when Finance asks for it.\n- Mexican public holidays are pre-loaded in your calendar."
+        }
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "ref": "p1",
+      "name": "Brazil market entry",
+      "division": "Animal Health",
+      "owner_ref": "m5",
+      "status": "on_track",
+      "progress_pct": 40,
+      "next_milestone": "Distributor shortlist",
+      "next_milestone_on": "2026-10-30",
+      "member_refs": [
+        "m5",
+        "m3"
+      ],
+      "updates": [
+        {
+          "member_ref": "m5",
+          "week_of": "2026-09-21",
+          "status": "on_track",
+          "progress": "Met three distributors in São Paulo; two requested samples.",
+          "challenges": "Import licence timeline unclear.",
+          "plan_of_action": "Engage a regulatory agent this week.",
+          "next_milestone": "Distributor shortlist",
+          "next_milestone_on": "2026-10-30"
+        },
+        {
+          "member_ref": "m5",
+          "week_of": "2026-09-28",
+          "status": "on_track",
+          "progress": "Samples dispatched; regulatory agent engaged.",
+          "challenges": null,
+          "plan_of_action": "Follow up on trial design.",
+          "next_milestone": "Distributor shortlist",
+          "next_milestone_on": "2026-10-30"
+        }
+      ]
+    },
+    {
+      "ref": "p2",
+      "name": "DACH supplement brands",
+      "division": "Nutraceuticals",
+      "owner_ref": "m7",
+      "status": "at_risk",
+      "progress_pct": 25,
+      "next_milestone": "Vitafoods follow-ups closed",
+      "next_milestone_on": "2026-11-15",
+      "member_refs": [
+        "m7",
+        "m8",
+        "m6"
+      ],
+      "updates": [
+        {
+          "member_ref": "m7",
+          "week_of": "2026-09-28",
+          "status": "at_risk",
+          "progress": "12 qualified leads; 2 in sampling.",
+          "challenges": "Claims wording for two ingredients needs EU review.",
+          "plan_of_action": "Lotte to review claims by next Friday.",
+          "help_needed_ref": "m8",
+          "next_milestone": "Vitafoods follow-ups closed",
+          "next_milestone_on": "2026-11-15"
+        }
+      ]
+    },
+    {
+      "ref": "p3",
+      "name": "Mexico poultry trials",
+      "division": "Animal Health",
+      "owner_ref": "m4",
+      "status": "on_track",
+      "progress_pct": 65,
+      "next_milestone": "Trial readout",
+      "next_milestone_on": "2026-11-05",
+      "member_refs": [
+        "m4",
+        "m3"
+      ],
+      "updates": [
+        {
+          "member_ref": "m4",
+          "week_of": "2026-09-28",
+          "status": "on_track",
+          "progress": "Week 5 of 8 complete at both farms; FCR trending better than control.",
+          "challenges": null,
+          "plan_of_action": "Prepare interim readout deck.",
+          "next_milestone": "Trial readout",
+          "next_milestone_on": "2026-11-05"
+        }
+      ]
+    }
+  ],
+  "posts": [
+    {
+      "kind": "leadership",
+      "title": "Welcome to NR Synergy",
+      "body": "This is our new home for the international team: your time, money, projects and people in one place. Demo post: replace with a real welcome from leadership.",
+      "author_ref": "m1",
+      "pinned": true,
+      "published_days_ago": 7
+    },
+    {
+      "kind": "news",
+      "title": "Q3 export volumes up",
+      "body": "Demo post. Thanks to everyone across the Americas and Europe for a strong quarter.",
+      "author_ref": "m3",
+      "pinned": false,
+      "published_days_ago": 3
+    },
+    {
+      "kind": "division",
+      "title": "Animal Health: Brazil team is growing",
+      "body": "Demo post. Please welcome Ana Souza, who joined as Country Head, Brazil.",
+      "author_ref": "m3",
+      "pinned": false,
+      "published_days_ago": 1
+    }
+  ],
+  "events": [
+    {
+      "kind": "townhall",
+      "title": "Global town hall (demo)",
+      "starts_at": "2026-10-22T14:00:00Z",
+      "location": "Online",
+      "link": "https://meet.google.com/"
+    },
+    {
+      "kind": "training",
+      "title": "Expense and invoice walkthrough (demo)",
+      "starts_at": "2026-10-14T15:00:00Z",
+      "location": "Online",
+      "link": "https://meet.google.com/"
+    },
+    {
+      "kind": "tradefair",
+      "title": "FENAVI Expo (demo)",
+      "starts_at": "2026-11-10T15:00:00Z",
+      "location": "Guadalajara, MX",
+      "link": null
+    }
+  ],
+  "quick_links": [
+    {
+      "title": "Company website",
+      "url": "https://www.example.com/",
+      "description": "Demo link. Replace with the company website.",
+      "sort": 1
+    },
+    {
+      "title": "Payroll portal",
+      "url": "https://payroll.example.com/",
+      "description": "Demo link.",
+      "sort": 2
+    },
+    {
+      "title": "Travel booking",
+      "url": "https://travel.example.com/",
+      "description": "Demo link.",
+      "sort": 3
+    },
+    {
+      "title": "IT service desk",
+      "url": "https://it.example.com/",
+      "description": "Demo link.",
+      "sort": 4
+    }
+  ],
+  "contract_terms": [
+    {
+      "member_ref": "m4",
+      "effective_from": "2025-06-01",
+      "basis": "pro_rata_working_days",
+      "fee": "6500.00",
+      "currency": "USD",
+      "paid_leave_days_per_year": "12",
+      "reimbursables": [
+        "travel",
+        "meals",
+        "lodging",
+        "trade_fair"
+      ],
+      "tax": {
+        "withholding_pct": "0",
+        "tax_id_required": true,
+        "notes": "Consultant issues CFDI"
+      },
+      "notice_days": 30,
+      "clause_refs": {
+        "fee": "4.1",
+        "basis": "4.2",
+        "paid_leave": "6.1",
+        "reimbursables": "5.3"
+      }
+    },
+    {
+      "member_ref": "m5",
+      "effective_from": "2026-03-01",
+      "basis": "monthly_retainer",
+      "fee": "7200.00",
+      "currency": "USD",
+      "paid_leave_days_per_year": "20",
+      "reimbursables": [
+        "all"
+      ],
+      "tax": {
+        "withholding_pct": "0"
+      },
+      "notice_days": 60,
+      "clause_refs": {
+        "fee": "3.1",
+        "paid_leave": "7.2",
+        "reimbursables": "5.1"
+      }
+    },
+    {
+      "member_ref": "m7",
+      "effective_from": "2025-11-01",
+      "basis": "monthly_retainer",
+      "fee": "8500.00",
+      "currency": "EUR",
+      "paid_leave_days_per_year": "25",
+      "reimbursables": [
+        "travel",
+        "lodging",
+        "trade_fair",
+        "client_entertainment"
+      ],
+      "tax": {
+        "vat_pct": "19",
+        "reverse_charge": true
+      },
+      "notice_days": 30,
+      "clause_refs": {
+        "fee": "5.1",
+        "paid_leave": "5.4",
+        "reimbursables": "6.2"
+      }
+    },
+    {
+      "member_ref": "m8",
+      "effective_from": "2026-01-15",
+      "basis": "day_rate",
+      "fee": "650.00",
+      "currency": "EUR",
+      "paid_leave_days_per_year": "0",
+      "reimbursables": [
+        "travel",
+        "lodging"
+      ],
+      "tax": {
+        "vat_pct": "21",
+        "reverse_charge": false
+      },
+      "notice_days": 14,
+      "clause_refs": {
+        "fee": "2.1",
+        "basis": "2.2"
+      }
+    },
+    {
+      "member_ref": "m9",
+      "effective_from": "2026-02-01",
+      "basis": "day_rate",
+      "fee": "720.00",
+      "currency": "USD",
+      "paid_leave_days_per_year": "0",
+      "reimbursables": [
+        "travel",
+        "meals",
+        "lodging"
+      ],
+      "tax": {
+        "form": "W-9"
+      },
+      "notice_days": 15,
+      "clause_refs": {
+        "fee": "3.1",
+        "basis": "3.1"
+      }
+    }
+  ]
+}

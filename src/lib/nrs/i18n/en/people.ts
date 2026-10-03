@@ -1,0 +1,50 @@
+// NR Synergy · People module strings (English).
+// Imported directly by the People components; placeholders use {name}.
+
+export const people = {
+  title: "People",
+  subtitle: "Find colleagues across countries, divisions and teams.",
+  viewDirectory: "Directory",
+  viewOrgChart: "Org chart",
+  viewsLabel: "People views",
+  searchLabel: "Search people",
+  searchPlaceholder: "Name, role, email or language",
+  filterCountry: "Country",
+  filterDepartment: "Department",
+  filterDivision: "Division",
+  filterAll: "All",
+  clearFilters: "Clear filters",
+  resultCount: "{count} people",
+  resultCountOne: "1 person",
+  emptyTitle: "No colleagues yet",
+  emptyBody: "Once HR adds members to NR Synergy they will appear here.",
+  noMatchTitle: "No one matches",
+  noMatchBody: "Try a different name or clear the filters.",
+  loadError: "We couldn't load the directory. Please try again.",
+  orgChartHint: "Built from each person's manager. Select a name to open their profile.",
+  orgChartEmpty: "No reporting lines are set up yet.",
+  expand: "Show reports of {name}",
+  collapse: "Hide reports of {name}",
+  reportsCount: "{count} reports",
+  openProfile: "Open profile of {name}",
+  drawerLabel: "Profile of {name}",
+  closeProfile: "Close profile",
+  localTime: "Local time",
+  localTimeUnknown: "Time zone not set for this country",
+  email: "Email",
+  designation: "Role",
+  department: "Department",
+  division: "Division",
+  country: "Country",
+  languages: "Languages",
+  joined: "Joined",
+  manager: "Reports to",
+  directReports: "Direct reports",
+  about: "About",
+  noManager: "No manager on file",
+  you: "You",
+} as const;
+
+export function fillPeople(s: string, vars: Record<string, string | number>): string {
+  return s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
+}

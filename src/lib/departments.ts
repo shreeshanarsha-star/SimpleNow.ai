@@ -110,9 +110,10 @@ export const DEPARTMENTS: Department[] = [
     id: "product",
     name: "Product & Engineering",
     icon: "code",
-    status: "soon",
+    status: "live",
     desc: "Specs, code review, and roadmap tooling for build teams.",
     tools: [
+      { n: "NR Synergy", s: "live", href: "/tools/nr-synergy" },
       { n: "Spec.ai", s: "soon" },
       { n: "Code Review.ai", s: "soon" },
       { n: "Roadmap.ai", s: "soon" },
