@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { admin as s } from "@/lib/nrs/i18n/en/admin";
-import { Button, Card, ConfirmDialog, ErrorBox, Loading, Notice, SectionTitle, api, errorText, fmt, useLoad } from "../../money/_components/ui";
+import { Button, Card, ConfirmDialog, ErrorBox, Loading, Notice, SectionTitle, api, errorText, fmt, useLoad } from "@/app/tools/nr-synergy/money/_components/ui";
 
 function summary(counts: Record<string, number>): string {
   const parts = Object.entries(counts)

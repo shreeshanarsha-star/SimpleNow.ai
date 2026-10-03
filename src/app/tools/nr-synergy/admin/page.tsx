@@ -1,15 +1,8 @@
-import { getNrsContext, hasNrsAccess } from "@/lib/nrs/member";
-import { admin as s } from "@/lib/nrs/i18n/en/admin";
-import { t } from "@/lib/nrs/i18n/en";
-import NrsState from "../_components/NrsState";
-import AdminClient from "./_components/AdminClient";
+import { redirect } from "next/navigation";
+import { NRS_ADMIN_BASE } from "@/lib/nrs/tabs";
 
-export const dynamic = "force-dynamic";
-
-export default async function NrSynergyAdminPage() {
-  const ctx = await getNrsContext();
-  if (!hasNrsAccess(ctx)) return null;
-  if (!ctx.isHr) return <NrsState icon="x" title={t("common.notAvailableTitle")} body={s.hrOnly} />;
-  if (!ctx.orgId) return <NrsState icon="x" title={t("common.notAvailableTitle")} body={t("common.noAccessBody")} />;
-  return <AdminClient />;
+// The admin area moved out of the employee app into the separate Admin
+// Console. Old bookmarks land here and are sent on.
+export default function LegacyNrSynergyAdminRedirect(): never {
+  redirect(NRS_ADMIN_BASE);
 }

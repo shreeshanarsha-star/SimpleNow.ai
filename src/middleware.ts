@@ -67,6 +67,24 @@ export async function middleware(request: NextRequest) {
 
   const isRealUser = Boolean(user && !user.is_anonymous && user.email);
 
+  // NR Synergy Admin Console: a separate console with its own sign-in.
+  // Its login page is open to everyone; every other console path needs a
+  // real (non-anonymous) session and bounces to the CONSOLE sign-in, not
+  // the platform /login. The HR / super-admin check happens server-side in
+  // the console layout (and again in every /api/nr-synergy/admin route).
+  const NRS_ADMIN = "/nr-synergy-admin";
+  const path = request.nextUrl.pathname;
+  const isNrsAdminRoute = path === NRS_ADMIN || path.startsWith(`${NRS_ADMIN}/`);
+  const isNrsAdminLogin = path === `${NRS_ADMIN}/login` || path.startsWith(`${NRS_ADMIN}/login/`);
+  if (isNrsAdminRoute) {
+    if (isNrsAdminLogin || isRealUser) return response;
+    const url = request.nextUrl.clone();
+    url.pathname = `${NRS_ADMIN}/login`;
+    url.search = "";
+    if (path !== NRS_ADMIN) url.searchParams.set("next", path);
+    return NextResponse.redirect(url);
+  }
+
   if (isAdminRoute && !isGuestAccessiblePath && !isRealUser) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
@@ -86,5 +104,13 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/tools/:path*", "/org/:path*", "/chat/:path*", "/login"],
+  matcher: [
+    "/admin/:path*",
+    "/tools/:path*",
+    "/org/:path*",
+    "/chat/:path*",
+    "/login",
+    "/nr-synergy-admin",
+    "/nr-synergy-admin/:path*",
+  ],
 };

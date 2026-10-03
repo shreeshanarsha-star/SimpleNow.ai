@@ -32,8 +32,7 @@ export default function NrsNav({ items }: { items: NrsNavItem[] }) {
 
   const keys = new Set(items.map((i) => i.key));
   const soon = new Set(items.filter((i) => i.soon).map((i) => i.key));
-  const main = NRS_TABS.filter((tab) => keys.has(tab.key) && tab.key !== "admin");
-  const admin = NRS_TABS.find((tab) => tab.key === "admin" && keys.has("admin"));
+  const main = NRS_TABS.filter((tab) => keys.has(tab.key));
 
   const linkClass = (active: boolean) =>
     `flex items-center gap-1.5 shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-[12.5px] font-bold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
@@ -65,16 +64,6 @@ export default function NrsNav({ items }: { items: NrsNavItem[] }) {
           );
         })}
       </ul>
-      {admin && (
-        <Link
-          href={admin.href}
-          aria-current={isActive(pathname, admin.href) ? "page" : undefined}
-          className={`${linkClass(isActive(pathname, admin.href))} border border-border`}
-        >
-          <Icon name={admin.icon} className="w-4 h-4" />
-          <span>{t(admin.label)}</span>
-        </Link>
-      )}
     </nav>
   );
 }

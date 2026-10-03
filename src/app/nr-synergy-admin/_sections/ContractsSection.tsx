@@ -24,7 +24,7 @@ import {
   inputCls,
   todayIso,
   useLoad,
-} from "../../money/_components/ui";
+} from "@/app/tools/nr-synergy/money/_components/ui";
 
 const T = s.contracts;
 const BASES: BillingBasis[] = ["monthly_retainer", "pro_rata_working_days", "day_rate"];

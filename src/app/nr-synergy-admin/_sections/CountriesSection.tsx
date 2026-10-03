@@ -6,7 +6,7 @@ import { money as ms } from "@/lib/nrs/i18n/en/money";
 import { formatMoney, fromMinor, toMinor } from "@/lib/nrs/money";
 import { EXPENSE_CATEGORIES } from "@/lib/nrs/invoice/types";
 import type { CountryDto, CountryRuleDto, HolidayDto } from "@/lib/nrs/invoice/adminTypes";
-import { Button, Card, Empty, ErrorBox, Field, Loading, Notice, SectionTitle, api, errorText, fmt, inputCls, todayIso, useLoad } from "../../money/_components/ui";
+import { Button, Card, Empty, ErrorBox, Field, Loading, Notice, SectionTitle, api, errorText, fmt, inputCls, todayIso, useLoad } from "@/app/tools/nr-synergy/money/_components/ui";
 
 interface CountriesData {
   year: string;

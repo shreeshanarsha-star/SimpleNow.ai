@@ -20,7 +20,7 @@ import {
   inputCls,
   todayIso,
   useLoad,
-} from "../../money/_components/ui";
+} from "@/app/tools/nr-synergy/money/_components/ui";
 
 type Item = Record<string, unknown> & { id: string };
 type FieldType = "text" | "textarea" | "select" | "checkbox" | "datetime" | "lines" | "number";

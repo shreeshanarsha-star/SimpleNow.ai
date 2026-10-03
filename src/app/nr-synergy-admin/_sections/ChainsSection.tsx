@@ -4,7 +4,7 @@ import { useState } from "react";
 import { admin as s } from "@/lib/nrs/i18n/en/admin";
 import { fromMinor } from "@/lib/nrs/money";
 import type { ChainDto } from "@/lib/nrs/invoice/adminTypes";
-import { Button, Card, Empty, ErrorBox, Loading, Notice, SectionTitle, api, errorText, fmt, useLoad } from "../../money/_components/ui";
+import { Button, Card, Empty, ErrorBox, Loading, Notice, SectionTitle, api, errorText, fmt, useLoad } from "@/app/tools/nr-synergy/money/_components/ui";
 
 const ROLE_LABEL: Record<string, string> = {
   hr_admin: s.users.role_hr_admin,

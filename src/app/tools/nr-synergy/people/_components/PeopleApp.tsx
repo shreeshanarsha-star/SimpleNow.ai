@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import { people as s, fillPeople as fill } from "@/lib/nrs/i18n/en/people";
@@ -49,6 +50,26 @@ export default function PeopleApp({
   const [department, setDepartment] = useState("");
   const [division, setDivision] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+
+  // Deep link from global search: /tools/nr-synergy/people?member=<id> opens that profile.
+  const memberParam = useSearchParams()?.get("member") ?? null;
+  useEffect(() => {
+    if (memberParam && people.some((p) => p.id === memberParam)) setOpenId(memberParam);
+  }, [memberParam, people]);
+
+  const closeProfile = () => {
+    setOpenId(null);
+    // Drop ?member= so the same search result can reopen the drawer later.
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("member")) {
+        url.searchParams.delete("member");
+        window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+      }
+    } catch {
+      // ignore: URL clean-up is cosmetic
+    }
+  };
 
   const countryByCode = useMemo(() => new Map(countries.map((c) => [c.code, c])), [countries]);
   const byId = useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
@@ -217,7 +238,7 @@ export default function PeopleApp({
           manager={open.manager_id ? byId.get(open.manager_id) ?? null : null}
           reports={reportsOf.get(open.id) ?? []}
           onOpen={setOpenId}
-          onClose={() => setOpenId(null)}
+          onClose={closeProfile}
         />
       )}
     </div>

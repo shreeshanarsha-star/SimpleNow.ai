@@ -181,6 +181,27 @@ export function hasNrsAccess(ctx: NrsContext | null): ctx is NrsContext {
   return !!ctx && (!!ctx.member || ctx.isHr);
 }
 
+/**
+ * The org-licence error message for NR Synergy, or null when the caller's org
+ * may use it. Shared by the employee layout and the Admin Console layout.
+ */
+export async function nrsLicenceError(fallback: string): Promise<string | null> {
+  try {
+    await requireFeatureAccess(NRS_FEATURE_KEY);
+    return null;
+  } catch (res) {
+    if (res instanceof Response) {
+      try {
+        const body = (await res.json()) as { error?: unknown };
+        if (typeof body.error === "string") return body.error;
+      } catch {
+        // fall through to the generic message
+      }
+    }
+    return fallback;
+  }
+}
+
 function forbidden(message: string): NextResponse {
   return NextResponse.json({ error: message }, { status: 403 });
 }

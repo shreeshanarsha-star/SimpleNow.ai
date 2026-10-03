@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { admin as s } from "@/lib/nrs/i18n/en/admin";
 import { NRS_ROLES, type AdminMemberDto, type AdminRole, type FeatureDto } from "@/lib/nrs/invoice/adminTypes";
-import { Badge, Button, Card, Empty, ErrorBox, Field, Loading, Notice, SectionTitle, api, errorText, fmt, inputCls, todayIso, useLoad } from "../../money/_components/ui";
+import { Badge, Button, Card, Empty, ErrorBox, Field, Loading, Notice, SectionTitle, api, errorText, fmt, inputCls, todayIso, useLoad } from "@/app/tools/nr-synergy/money/_components/ui";
 
 interface UsersData {
   members: AdminMemberDto[];
