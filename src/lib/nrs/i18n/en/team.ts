@@ -8,6 +8,7 @@ export const team = {
   tabsLabel: "Team sections",
   tabApprovals: "Approvals",
   tabMyTeam: "My team",
+  tabLeaveBalances: "Leave balances",
 
   approvalsHeading: "Waiting for you",
   approvalsEmpty: "You're all caught up. Nothing is waiting for your approval.",

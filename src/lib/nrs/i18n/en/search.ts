@@ -43,7 +43,10 @@ export const search = {
     knowledge: ["policies", "documents", "library", "handbook", "sop", "forms"],
     joe: ["values", "culture", "journey", "onboarding", "joy of excellence"],
     help: ["tickets", "support", "it", "assets", "helpdesk"],
-    team: ["approvals", "my team", "reports", "manager"],
+    team: ["approvals", "my team", "reports", "manager", "leave balances"],
+    desk: ["desk", "agent", "queue", "support desk", "travel desk"],
+    deskSupport: ["tickets", "queue", "it agent", "hr agent", "helpdesk", "support desk"],
+    deskTravel: ["bookings", "trips", "flights", "hotels", "travel desk", "book travel"],
   },
   joeTitle: "JOE",
   actions: {

@@ -1,4 +1,5 @@
 import { createRequest } from "@/lib/nrs/approvals";
+import { emailRequesterOutcome } from "@/app/api/nr-synergy/invoices/_decisionEmail";
 import { logAudit } from "@/lib/nrs/audit";
 import { formatMoney } from "@/lib/nrs/money";
 import { HttpError, dbCheck, guardMember, ok, readJson, run, uuid } from "@/lib/nrs/invoice/kit";
@@ -33,7 +34,7 @@ export async function PATCH(req: Request, { params }: Params) {
       throw new HttpError(`This expense is already ${row.status.replace("_", " ")}`, 409);
     }
     const amount = Number(row.amount_minor);
-    await createRequest(
+    const submitted = await createRequest(
       "expense",
       row.id,
       g.member.id,
@@ -42,6 +43,7 @@ export async function PATCH(req: Request, { params }: Params) {
       row.currency,
       { admin: g.admin, createdBy: g.user.id, summary: row.over_limit ? "Over the category limit" : null }
     );
+    if (submitted.status === "approved") await emailRequesterOutcome(g.admin, submitted.requestId);
     const fresh = await loadOwn(g, id);
     return ok({ expense: toExpenseDto(fresh) });
   });

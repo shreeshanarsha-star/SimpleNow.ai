@@ -1,6 +1,15 @@
 // DTOs for the NR Synergy admin API.
 
-export const NRS_ROLES = ["employee", "manager", "hr_admin", "finance", "super_admin"] as const;
+export const NRS_ROLES = [
+  "employee",
+  "manager",
+  "hr_admin",
+  "finance",
+  "super_admin",
+  "travel_desk",
+  "it_agent",
+  "hr_agent",
+] as const;
 export type AdminRole = (typeof NRS_ROLES)[number];
 
 export interface AdminMemberDto {
@@ -15,6 +24,8 @@ export interface AdminMemberDto {
   joined_on: string | null;
   status: "active" | "inactive";
   linked: boolean;
+  /** Linked but the invite hasn't been accepted yet (never confirmed or signed in). */
+  pending?: boolean;
   is_demo: boolean;
   roles: AdminRole[];
   /** Explicit per-member overrides only. */

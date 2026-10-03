@@ -9,7 +9,7 @@ export async function GET() {
   return run(async () => {
     const g = await guard(undefined, "hr");
     const [members, features, countries] = await Promise.all([
-      loadAdminMembers(g.admin, g.orgId),
+      loadAdminMembers(g.admin, g.orgId, { withInviteState: true }),
       g.admin.from("nrs_features").select("key, name, default_on").order("sort"),
       g.admin.from("nrs_countries").select("code, name").eq("org_id", g.orgId).order("name"),
     ]);

@@ -4,7 +4,10 @@ import { SUBJECT_TABLES, type NrsApproverRole, type NrsRequestKind } from "@/lib
 import { addDays, localDateInTz } from "@/lib/nrs/dates";
 import { formatMoney } from "@/lib/nrs/money";
 import { team as s } from "@/lib/nrs/i18n/en/team";
+import { projects as ps } from "@/lib/nrs/i18n/en/projects";
 import { formatDay, formatTimeInTz, isValidTimeZone } from "../../time/_lib/tz";
+import { PROJECT_COLUMNS, isProjectStatus, normaliseProject, type ProjectRow } from "../../projects/_lib";
+import { withMeta, type ProjectWithMeta } from "../../projects/_server";
 
 // Server-side loaders for the Team tab and its export route.
 
@@ -36,6 +39,8 @@ export interface QueueItem {
   actingFor: string | null;
   asRole: NrsApproverRole | null;
   details: QueueDetail[];
+  /** Where to read the full subject (projects link to their page). */
+  href: string | null;
 }
 
 export interface TodayRow {
@@ -63,6 +68,8 @@ export interface TeamUpdateRow {
   id: string;
   name: string;
   project: string;
+  projectId: string;
+  createdAt: string;
   weekOf: string;
   status: string;
   progress: string;
@@ -194,6 +201,18 @@ function detailsFor(kind: NrsRequestKind, row: SubjectRow | undefined, req: Requ
     add(s.fieldPurpose, sv(row, "purpose"));
     add(s.fieldDates, range(sv(row, "starts_on"), sv(row, "ends_on")));
     add(s.fieldAmount, money(nv(row, "estimated_minor"), sv(row, "currency")));
+  } else if (kind === "project") {
+    const status = sv(row, "status");
+    add(ps.queue.description, sv(row, "description"));
+    add(ps.queue.owner, sv(row, "__owner_name"));
+    add(ps.queue.status, status && isProjectStatus(status) ? ps.status[status] : status);
+    add(ps.queue.value, money(nv(row, "value_minor"), sv(row, "value_currency")));
+    add(ps.queue.nextSteps, sv(row, "next_steps"));
+    const tags = Array.isArray(row?.tags) ? (row.tags as unknown[]).filter((t): t is string => typeof t === "string") : [];
+    add(ps.queue.tags, tags.length ? tags.map((t) => `#${t}`).join(" ") : null);
+    add(ps.queue.division, sv(row, "division"));
+    add(ps.queue.country, sv(row, "country_code"));
+    add(ps.queue.members, sv(row, "__member_names"));
   } else if (kind === "invoice") {
     add(s.fieldNumber, sv(row, "number"));
     add(s.fieldPeriod, range(sv(row, "period_start"), sv(row, "period_end")));
@@ -237,9 +256,20 @@ export async function loadApprovalQueue(admin: SupabaseClient, ctx: NrsContext):
   const delegators = new Set(((delRes.data ?? []) as { member_id: string }[]).map((d) => d.member_id));
   const superish = ctx.isPlatformAdmin || ctx.roles.includes("super_admin");
 
-  const mine = ((stepsRes.data ?? []) as StepLite[]).filter((st) => {
+  const allSteps = (stepsRes.data ?? []) as StepLite[];
+  const direct = (st: StepLite) => {
     if (st.approver_member_id && (st.approver_member_id === me || delegators.has(st.approver_member_id))) return true;
-    if (st.approver_type === "role" && st.approver_role) return superish || ctx.roles.includes(st.approver_role);
+    if (st.approver_type === "role" && st.approver_role) return superish || ctx.roles.includes(st.approver_role as NrsContext["roles"][number]);
+    return false;
+  };
+  // HR / admins can also decide project approvals (filtered by kind below).
+  const hrProjectSteps = new Set<string>();
+  const mine = allSteps.filter((st) => {
+    if (direct(st)) return true;
+    if (ctx.isHr) {
+      hrProjectSteps.add(st.id);
+      return true;
+    }
     return false;
   });
   if (!mine.length) return [];
@@ -254,7 +284,8 @@ export async function loadApprovalQueue(admin: SupabaseClient, ctx: NrsContext):
 
   const live = mine.filter((st) => {
     const r = requests.get(st.request_id);
-    return !!r && r.current_step === st.step_no && r.member_id !== me;
+    if (!r || r.current_step !== st.step_no || r.member_id === me) return false;
+    return !hrProjectSteps.has(st.id) || r.kind === "project";
   });
   if (!live.length) return [];
 
@@ -287,13 +318,38 @@ export async function loadApprovalQueue(admin: SupabaseClient, ctx: NrsContext):
   );
   const tzs = await countryTimezones(admin, orgId);
 
+  // Projects: owner and team names inline so the approver sees the whole proposal.
+  const projectIds = live.map((st) => requests.get(st.request_id)!).filter((r) => r.kind === "project").map((r) => r.subject_id);
+  if (projectIds.length) {
+    const { data: pm } = await admin.from("nrs_project_members").select("project_id, member_id").in("project_id", projectIds);
+    const links = (pm ?? []) as { project_id: string; member_id: string }[];
+    const ownerIds = projectIds.map((id) => subjects.get(id)?.owner_member_id).filter((v): v is string => typeof v === "string");
+    const { data: pmNames } = await admin
+      .from("nrs_members")
+      .select("id, full_name")
+      .in("id", Array.from(new Set([...links.map((l) => l.member_id), ...ownerIds])));
+    const nameOf = new Map(((pmNames ?? []) as { id: string; full_name: string }[]).map((m) => [m.id, m.full_name]));
+    for (const id of projectIds) {
+      const row = subjects.get(id);
+      if (!row) continue;
+      const owner = typeof row.owner_member_id === "string" ? row.owner_member_id : null;
+      row.__owner_name = owner ? nameOf.get(owner) ?? null : null;
+      const names = links
+        .filter((l) => l.project_id === id && l.member_id !== owner)
+        .map((l) => nameOf.get(l.member_id))
+        .filter((n): n is string => !!n);
+      row.__member_names = names.length ? names.join(", ") : null;
+    }
+  }
+
   return live
     .map((st): QueueItem => {
       const r = requests.get(st.request_id)!;
       const requester = members.get(r.member_id);
       const tz = tzs.get(requester?.home_country ?? "") ?? "UTC";
+      const asHr = hrProjectSteps.has(st.id);
       const actingFor =
-        st.approver_member_id && st.approver_member_id !== me ? members.get(st.approver_member_id)?.full_name ?? null : null;
+        !asHr && st.approver_member_id && st.approver_member_id !== me ? members.get(st.approver_member_id)?.full_name ?? null : null;
       return {
         stepId: st.id,
         stepNo: st.step_no,
@@ -304,8 +360,9 @@ export async function loadApprovalQueue(admin: SupabaseClient, ctx: NrsContext):
         requesterRole: requester?.designation ?? null,
         requesterCountry: requester?.home_country ?? null,
         actingFor,
-        asRole: st.approver_type === "role" ? st.approver_role : null,
+        asRole: asHr ? "hr_admin" : st.approver_type === "role" ? st.approver_role : null,
         details: detailsFor(r.kind, subjects.get(r.subject_id), r, tz),
+        href: r.kind === "project" ? `/tools/nr-synergy/projects/${r.subject_id}` : null,
       };
     })
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -334,6 +391,35 @@ interface LeaveLite {
   ends_on: string;
   working_days: number | string;
   status: string;
+}
+
+/**
+ * Approved, live projects owned by these members that are overdue for a
+ * weekly update (owner's timezone, Friday onward).
+ */
+export async function loadOverdueProjects(
+  supabase: SupabaseClient,
+  admin: SupabaseClient,
+  orgId: string,
+  members: TeamMember[]
+): Promise<ProjectWithMeta[]> {
+  if (!members.length) return [];
+  const { data, error } = await supabase
+    .from("nrs_projects")
+    .select(PROJECT_COLUMNS)
+    .eq("org_id", orgId)
+    .eq("approval_status", "approved")
+    .is("archived_at", null)
+    .neq("status", "completed")
+    .in(
+      "owner_member_id",
+      members.map((m) => m.id)
+    )
+    .order("name", { ascending: true })
+    .limit(300);
+  if (error) throw new Error(error.message);
+  const list = await withMeta(admin, orgId, ((data ?? []) as ProjectRow[]).map(normaliseProject));
+  return list.filter((p) => p.overdue);
 }
 
 export async function loadTeamOverview(
@@ -418,6 +504,7 @@ export async function loadTeamOverview(
     status: string;
     progress: string;
     challenges: string | null;
+    created_at: string;
   }[];
   let projectNames = new Map<string, string>();
   if (upd.length) {
@@ -431,6 +518,8 @@ export async function loadTeamOverview(
     id: u.id,
     name: byId.get(u.member_id)?.full_name ?? "—",
     project: projectNames.get(u.project_id) ?? "—",
+    projectId: u.project_id,
+    createdAt: u.created_at,
     weekOf: u.week_of,
     status: u.status,
     progress: u.progress,

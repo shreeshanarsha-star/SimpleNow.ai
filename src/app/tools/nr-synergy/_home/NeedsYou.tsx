@@ -4,7 +4,11 @@ import Icon from "@/components/Icon";
 import type { NrsContext, NrsMember } from "@/lib/nrs/member";
 import { home as s } from "@/lib/nrs/i18n/en/home";
 import { loadLibrary } from "../knowledge/_lib";
-import { memberNames, mondayInTz } from "./server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { projects as ps } from "@/lib/nrs/i18n/en/projects";
+import { PROJECT_COLUMNS, normaliseProject, type ProjectRow } from "../projects/_lib";
+import { withMeta } from "../projects/_server";
+import { memberNames } from "./server";
 import { Card, EmptyLine, ErrorLine, SectionTitle, fill, fmtDateTime } from "./ui";
 
 interface NeedItem {
@@ -94,41 +98,51 @@ async function ackItems(supabase: SupabaseClient, ctx: NrsContext, member: NrsMe
     }));
 }
 
-async function projectItems(supabase: SupabaseClient, member: NrsMember, tz: string): Promise<NeedItem[]> {
-  const { data: links, error: lErr } = await supabase.from("nrs_project_members").select("project_id").eq("member_id", member.id);
-  if (lErr) throw new Error(lErr.message);
-  const ids = ((links ?? []) as { project_id: string }[]).map((l) => l.project_id);
-  let q = supabase
-    .from("nrs_projects")
-    .select("id, name")
-    .eq("org_id", member.org_id)
-    .is("archived_at", null)
-    .neq("status", "completed");
-  q = ids.length ? q.or(`owner_member_id.eq.${member.id},id.in.(${ids.join(",")})`) : q.eq("owner_member_id", member.id);
-  const { data: projData, error: pErr } = await q.order("name", { ascending: true });
-  if (pErr) throw new Error(pErr.message);
-  const projects = (projData ?? []) as { id: string; name: string }[];
-  if (!projects.length) return [];
-
-  const { data: ups, error: uErr } = await supabase
-    .from("nrs_project_updates")
-    .select("project_id")
-    .eq("member_id", member.id)
-    .eq("week_of", mondayInTz(tz))
-    .in(
-      "project_id",
-      projects.map((p) => p.id)
-    );
-  if (uErr) throw new Error(uErr.message);
-  const done = new Set(((ups ?? []) as { project_id: string }[]).map((u) => u.project_id));
-  return projects
-    .filter((p) => !done.has(p.id))
+// Projects: the owner's approved projects that are overdue for a weekly
+// update (owner's timezone, Friday onward), plus the caller's submissions
+// that were sent back for changes.
+async function projectItems(supabase: SupabaseClient, member: NrsMember): Promise<NeedItem[]> {
+  const admin = createAdminClient();
+  const [ownedRes, sentBackRes] = await Promise.all([
+    supabase
+      .from("nrs_projects")
+      .select(PROJECT_COLUMNS)
+      .eq("org_id", member.org_id)
+      .eq("owner_member_id", member.id)
+      .eq("approval_status", "approved")
+      .is("archived_at", null)
+      .neq("status", "completed")
+      .order("name", { ascending: true }),
+    supabase
+      .from("nrs_projects")
+      .select("id, name")
+      .eq("org_id", member.org_id)
+      .eq("created_by_member", member.id)
+      .eq("approval_status", "sent_back")
+      .is("archived_at", null),
+  ]);
+  if (ownedRes.error) throw new Error(ownedRes.error.message);
+  if (sentBackRes.error) throw new Error(sentBackRes.error.message);
+  const owned = await withMeta(admin, member.org_id, ((ownedRes.data ?? []) as ProjectRow[]).map(normaliseProject));
+  const items: NeedItem[] = owned
+    .filter((p) => p.overdue)
     .map((p) => ({
       key: `proj-${p.id}`,
       icon: "chart",
-      title: fill(s.needs.projectUpdate, { name: p.name }),
+      title: fill(ps.home.overdue, { name: p.name }),
+      detail: ps.home.overdueBody,
       href: `/tools/nr-synergy/projects/${p.id}`,
     }));
+  for (const p of (sentBackRes.data ?? []) as { id: string; name: string }[]) {
+    items.push({
+      key: `proj-back-${p.id}`,
+      icon: "edit",
+      title: fill(ps.home.sentBack, { name: p.name }),
+      detail: ps.home.sentBackBody,
+      href: `/tools/nr-synergy/projects/${p.id}/edit`,
+    });
+  }
+  return items;
 }
 
 async function checkInItems(supabase: SupabaseClient, member: NrsMember, tz: string): Promise<NeedItem[]> {
@@ -171,7 +185,7 @@ export default async function NeedsYou({
   const settled = await Promise.allSettled([
     approvalItems(supabase, ctx, member),
     ctx.features.knowledge ? ackItems(supabase, ctx, member) : Promise.resolve([]),
-    ctx.features.projects ? projectItems(supabase, member, tz) : Promise.resolve([]),
+    ctx.features.projects ? projectItems(supabase, member) : Promise.resolve([]),
     ctx.features.time ? checkInItems(supabase, member, tz) : Promise.resolve([]),
   ]);
   const [appr, acks, projs, logs] = settled;

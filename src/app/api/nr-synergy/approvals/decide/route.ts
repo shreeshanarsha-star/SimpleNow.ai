@@ -4,6 +4,8 @@ import { decide, NrsApprovalError, type NrsDecision } from "@/lib/nrs/approvals"
 import { createAdminClient } from "@/lib/supabase/admin";
 import { jsonError, readJson, str } from "../../time/_lib/server";
 import { applyCorrection } from "../_lib/applyCorrection";
+import { emailRequesterOutcome } from "../../invoices/_decisionEmail";
+import { notifyTravelReadyToBook } from "@/app/tools/nr-synergy/desk/travel/_lib/server";
 
 const DECISIONS: readonly NrsDecision[] = ["approve", "reject", "send_back"];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -34,13 +36,28 @@ export async function POST(req: Request) {
   const admin = createAdminClient();
   try {
     const result = await decide(stepId, decision as NrsDecision, comment, { supabase, ctx, admin });
-    if (result.requestStatus === "approved") {
-      const { data } = await admin.from("nrs_requests").select("kind, subject_id").eq("id", result.requestId).maybeSingle();
-      const reqRow = data as { kind: string; subject_id: string } | null;
-      if (reqRow?.kind === "correction") {
-        const applied = await applyCorrection(admin, reqRow.subject_id);
-        if (applied.error) console.error("[nrs] apply correction failed", reqRow.subject_id, applied.error);
+    // Follow-ups are best-effort: the decision is already saved, so nothing
+    // here may fail the response. In-app notices to the requester are written
+    // by decide(); emailRequesterOutcome only adds the email (no duplicate).
+    try {
+      if (result.requestStatus === "approved") {
+        const { data } = await admin
+          .from("nrs_requests")
+          .select("kind, subject_id, org_id")
+          .eq("id", result.requestId)
+          .maybeSingle();
+        const reqRow = data as { kind: string; subject_id: string; org_id: string } | null;
+        if (reqRow?.kind === "correction") {
+          const applied = await applyCorrection(admin, reqRow.subject_id);
+          if (applied.error) console.error("[nrs] apply correction failed", reqRow.subject_id, applied.error);
+        } else if (reqRow?.kind === "travel") {
+          await notifyTravelReadyToBook(admin, reqRow.org_id, reqRow.subject_id);
+        }
       }
+      // Final outcomes (and invoice stage progress); no-op for other kinds/states.
+      await emailRequesterOutcome(admin, result.requestId);
+    } catch (followUpErr) {
+      console.error("[nrs] decide follow-up failed", result.requestId, followUpErr);
     }
     return NextResponse.json(result);
   } catch (e) {

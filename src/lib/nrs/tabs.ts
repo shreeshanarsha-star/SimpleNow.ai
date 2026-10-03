@@ -5,7 +5,7 @@ import type { NrsStringKey } from "./i18n/en";
 // `built`: flip to true when a module ships. Until then the tab is shown to
 // HR only (marked "soon"); employees never see unbuilt tabs.
 
-export type NrsTabKey = "home" | "time" | "money" | "projects" | "people" | "knowledge" | "help" | "team";
+export type NrsTabKey = "home" | "time" | "money" | "projects" | "people" | "knowledge" | "help" | "team" | "desk";
 
 export interface NrsTabDef {
   key: NrsTabKey;
@@ -14,7 +14,8 @@ export interface NrsTabDef {
   icon: string;
   /** nrs_features key gating this tab; undefined = not switchable. */
   feature?: string;
-  audience: "all" | "manager" | "hr";
+  /** "desk": agents only (support or travel desk access, see NrsDeskAccess). */
+  audience: "all" | "manager" | "hr" | "desk";
   built: boolean;
 }
 
@@ -29,6 +30,7 @@ export const NRS_TABS: readonly NrsTabDef[] = [
   { key: "knowledge", href: `${NRS_BASE}/knowledge`, label: "nav.knowledge", icon: "book", feature: "knowledge", audience: "all", built: true },
   { key: "help", href: `${NRS_BASE}/help`, label: "nav.help", icon: "headset", feature: "help", audience: "all", built: true },
   { key: "team", href: `${NRS_BASE}/team`, label: "nav.team", icon: "check", audience: "manager", built: true },
+  { key: "desk", href: `${NRS_BASE}/desk`, label: "nav.desk", icon: "briefcase", audience: "desk", built: true },
 ];
 
 /**
@@ -47,10 +49,17 @@ export function nrsTab(key: NrsTabKey): NrsTabDef {
 /** Can someone with these flags open this tab (ignoring `built`)? */
 export function canOpenTab(
   tab: NrsTabDef,
-  who: { features: Record<string, boolean>; isManager: boolean; isHr: boolean }
+  who: { features: Record<string, boolean>; isManager: boolean; isHr: boolean; desk?: { support: boolean; travel: boolean } }
 ): boolean {
+  if (tab.audience === "desk") return !!who.desk && (who.desk.support || who.desk.travel);
   if (tab.audience === "hr" && !who.isHr) return false;
   if (tab.audience === "manager" && !who.isManager && !who.isHr) return false;
   if (tab.feature && !who.features[tab.feature]) return false;
   return true;
 }
+
+/** Desk sub-pages, in preference order (the Desk tab opens the first allowed). */
+export const NRS_DESKS = [
+  { key: "support", href: `${NRS_BASE}/desk/support`, icon: "headset" },
+  { key: "travel", href: `${NRS_BASE}/desk/travel`, icon: "globe" },
+] as const;

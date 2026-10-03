@@ -2,8 +2,12 @@ import { NextResponse } from "next/server";
 import { requireNrs } from "@/lib/nrs/member";
 import { loadCountryCalendar, parseIsoDate, workingDaysBetween } from "@/lib/nrs/dates";
 import { createRequest, NrsApprovalError } from "@/lib/nrs/approvals";
+import { emailRequesterOutcome } from "@/app/api/nr-synergy/invoices/_decisionEmail";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatDay } from "@/app/tools/nr-synergy/time/_lib/tz";
+import { loadLeaveBalances } from "@/app/tools/nr-synergy/time/_lib/balances";
+import { checkLeaveRequest, splitWorkingDaysByYear } from "@/lib/nrs/leave";
+import { leave as ls, fillLeave, fmtDays } from "@/lib/nrs/i18n/en/leave";
 import { ISO_DATE_RE, isLeaveType, jsonError, readJson, str } from "../_lib/server";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -50,15 +54,42 @@ export async function POST(req: Request) {
   const note = str(body.note, 1000);
 
   let workingDays: number;
+  let daysByYear: Map<number, number>;
   try {
     const cal = await loadCountryCalendar(supabase, member.org_id, member.home_country, startsOn, endsOn);
-    workingDays = workingDaysBetween(startsOn, endsOn, { workingDays: cal.workingDays, holidays: cal.holidays });
+    const calendar = { workingDays: cal.workingDays, holidays: cal.holidays };
+    workingDays = workingDaysBetween(startsOn, endsOn, calendar);
+    daysByYear = splitWorkingDaysByYear(startsOn, endsOn, calendar);
   } catch (e) {
     return jsonError(e instanceof Error ? e.message : "Could not load your country calendar.", 500);
   }
   if (workingDays <= 0) return jsonError("These dates have no working days.", 400);
 
   const admin = createAdminClient();
+
+  // Balance check per leave year (unpaid / unavailable are never limited).
+  try {
+    const all = await loadLeaveBalances(
+      admin,
+      member.org_id,
+      [{ id: member.id, home_country: member.home_country, joined_on: member.joined_on, left_on: member.left_on }],
+      Array.from(daysByYear.keys())
+    );
+    const short = checkLeaveRequest(body.type, daysByYear, all.get(member.id) ?? new Map());
+    if (short) {
+      return jsonError(
+        fillLeave(ls.serverExceeds, {
+          type: ls.types[body.type].toLowerCase(),
+          requested: fmtDays(short.requested),
+          year: short.year,
+          available: fmtDays(short.available),
+        }),
+        409
+      );
+    }
+  } catch (e) {
+    return jsonError(e instanceof Error ? e.message : "Could not check your leave balance.", 500);
+  }
 
   const { data: overlap, error: ovErr } = await admin
     .from("nrs_leave_requests")
@@ -97,6 +128,7 @@ export async function POST(req: Request) {
       summary: note,
       admin,
     });
+    if (result.status === "approved") await emailRequesterOutcome(admin, result.requestId);
     return NextResponse.json({ id: leaveId, workingDays, requestId: result.requestId, status: result.status });
   } catch (e) {
     await admin.from("nrs_leave_requests").delete().eq("id", leaveId);

@@ -3,7 +3,21 @@
 import { useMemo, useState } from "react";
 import { admin as s } from "@/lib/nrs/i18n/en/admin";
 import { NRS_ROLES, type AdminMemberDto, type AdminRole, type FeatureDto } from "@/lib/nrs/invoice/adminTypes";
+import { desk } from "@/lib/nrs/i18n/en/desk";
+import InviteButton from "./InviteButton";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Loading, Notice, SectionTitle, api, errorText, fmt, inputCls, todayIso, useLoad } from "@/app/tools/nr-synergy/money/_components/ui";
+
+/** Friendly label for every assignable role (new desk roles live in the desk strings). */
+function roleLabel(r: AdminRole): string {
+  switch (r) {
+    case "travel_desk":
+    case "it_agent":
+    case "hr_agent":
+      return desk.roles[r];
+    default:
+      return s.users[`role_${r}`];
+  }
+}
 
 interface UsersData {
   members: AdminMemberDto[];
@@ -237,6 +251,7 @@ function MemberForm({
 
         <fieldset>
           <legend className="text-[12.5px] font-bold text-ink mb-1">{s.users.roles}</legend>
+          <p className="text-[11.5px] text-ink-muted mb-2">{desk.roles.hint}</p>
           <div className="flex flex-wrap gap-x-4 gap-y-2">
             {NRS_ROLES.map((r) => (
               <label key={r} className="inline-flex items-center gap-1.5 text-[12.5px] text-ink-2">
@@ -246,7 +261,7 @@ function MemberForm({
                   disabled={r === "employee"}
                   onChange={(e) => set("roles", e.target.checked ? [...d.roles, r] : d.roles.filter((x) => x !== r))}
                 />
-                {s.users[`role_${r}`]}
+                {roleLabel(r)}
               </label>
             ))}
           </div>
@@ -365,16 +380,28 @@ export default function UsersSection() {
                         .filter((r) => r !== "employee")
                         .map((r) => (
                           <Badge key={r} tone="submitted">
-                            {s.users[`role_${r}`]}
+                            {roleLabel(r)}
                           </Badge>
                         ))}
                       {m.status === "inactive" && <Badge tone="cancelled">{s.users.inactive}</Badge>}
                       <Badge tone={m.linked ? "approved" : "draft"}>{m.linked ? s.users.linked : s.users.notLinked}</Badge>
                     </div>
                   </div>
-                  <Button onClick={() => setEditing(m)} aria-label={`${s.common.edit} ${m.full_name}`}>
-                    {s.common.edit}
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!m.is_demo && m.status === "active" && (
+                      <InviteButton
+                        key={`${m.id}:${m.linked}:${m.pending ?? false}`}
+                        memberId={m.id}
+                        linked={m.linked}
+                        email={m.email}
+                        pending={m.pending}
+                        onDone={() => void data.reload()}
+                      />
+                    )}
+                    <Button onClick={() => setEditing(m)} aria-label={`${s.common.edit} ${m.full_name}`}>
+                      {s.common.edit}
+                    </Button>
+                  </div>
                 </div>
               </Card>
             </li>

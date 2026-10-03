@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
+import Icon from "@/components/Icon";
 import { admin as s } from "@/lib/nrs/i18n/en/admin";
 import type { ContentKind, DocumentVersionDto } from "@/lib/nrs/invoice/adminTypes";
 import {
@@ -17,7 +19,9 @@ import {
   Tabs,
   api,
   errorText,
+  fmt,
   inputCls,
+  openSignedUrl,
   todayIso,
   useLoad,
 } from "@/app/tools/nr-synergy/money/_components/ui";
@@ -186,78 +190,222 @@ function ItemForm({ kind, item, onSaved, onCancel }: { kind: ContentKind; item: 
   );
 }
 
+type VersionDto = DocumentVersionDto & { has_file?: boolean };
+
+const PDF_MAX = 15 * 1024 * 1024;
+const BLANK_VERSION = { version: "", effective_from: "", summary: "", body_markdown: "" };
+
+/** Client-side check before upload (the server re-checks size and magic bytes). */
+function pdfProblem(f: File): string | null {
+  const isPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+  if (!isPdf) return C.notPdf;
+  if (f.size > PDF_MAX) return C.tooLarge;
+  return null;
+}
+
+function fileSize(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+/** The published version in force today (same rule as the employee Library). */
+function inForceId(versions: VersionDto[]): string | null {
+  const today = todayIso();
+  const pub = versions
+    .filter((v) => v.published_at)
+    .sort((a, b) => b.effective_from.localeCompare(a.effective_from) || String(b.published_at).localeCompare(String(a.published_at)));
+  return (pub.find((v) => v.effective_from <= today) ?? pub[0])?.id ?? null;
+}
+
+function PdfPicker({ file, onChange, label }: { file: File | null; onChange: (f: File | null, problem: string | null) => void; label: string }) {
+  return (
+    <Field label={label} hint={C.fileHint} className="sm:col-span-2">
+      {(id, describedBy) => (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            id={id}
+            type="file"
+            accept="application/pdf,.pdf"
+            aria-describedby={describedBy}
+            className="block w-full min-w-0 text-[12.5px] text-ink-2 file:mr-3 file:rounded-md file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-[12px] file:font-bold file:text-ink hover:file:bg-page sm:w-auto"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              const problem = f ? pdfProblem(f) : null;
+              if (problem) e.target.value = "";
+              onChange(problem ? null : f, problem);
+            }}
+          />
+          {file && (
+            <span className="text-[11.5px] text-ink-muted">
+              {file.name} · {fileSize(file.size)}
+            </span>
+          )}
+        </div>
+      )}
+    </Field>
+  );
+}
+
 function Versions({ doc }: { doc: Item }) {
-  const list = useLoad(() => api<{ versions: DocumentVersionDto[] }>(`/api/nr-synergy/admin/versions?document_id=${doc.id}`), [doc.id]);
+  const list = useLoad(() => api<{ versions: VersionDto[] }>(`/api/nr-synergy/admin/versions?document_id=${doc.id}`), [doc.id]);
+  const requiresAck = doc.requires_ack === true;
   const [adding, setAdding] = useState(false);
-  const [v, setV] = useState({ version: "", effective_from: todayIso(), summary: "", body_markdown: "" });
+  const [v, setV] = useState(() => ({ ...BLANK_VERSION, effective_from: todayIso() }));
+  const [file, setFile] = useState<File | null>(null);
   const [publish, setPublish] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [confirmPublish, setConfirmPublish] = useState<VersionDto | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<VersionDto | null>(null);
 
-  const add = async () => {
-    setBusy("add");
+  const published = (notified: number | undefined) =>
+    setNotice(requiresAck && notified ? fmt(C.publishedNotified, { count: notified }) : C.publishedOnly);
+
+  const run = async (key: string, fn: () => Promise<void>) => {
+    setBusy(key);
     setError(null);
+    setNotice(null);
     try {
-      await api("/api/nr-synergy/admin/versions", { method: "POST", body: JSON.stringify({ ...v, document_id: doc.id, publish }) });
+      await fn();
+    } catch (e) {
+      setError(errorText(e, s.common.error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const add = () =>
+    run("add", async () => {
+      if (!file && !v.body_markdown.trim()) throw new Error(C.fileOrText);
+      const form = new FormData();
+      form.set("document_id", doc.id);
+      for (const [k, val] of Object.entries(v)) form.set(k, val);
+      form.set("publish", String(publish));
+      if (file) form.set("file", file);
+      const r = await api<{ id: string; notified?: number }>("/api/nr-synergy/admin/versions", { method: "POST", body: form });
       setAdding(false);
-      setV({ version: "", effective_from: todayIso(), summary: "", body_markdown: "" });
+      setV({ ...BLANK_VERSION, effective_from: todayIso() });
+      setFile(null);
+      if (publish) published(r.notified);
+      else setNotice(s.common.saved);
       await list.reload();
-    } catch (e) {
-      setError(errorText(e, s.common.error));
-    } finally {
-      setBusy(null);
-    }
-  };
-  const doPublish = async (id: string) => {
-    setBusy(id);
-    setError(null);
-    try {
-      await api("/api/nr-synergy/admin/versions", { method: "PATCH", body: JSON.stringify({ id, publish: true }) });
+    });
+
+  const doPublish = (ver: VersionDto) =>
+    run(ver.id, async () => {
+      setConfirmPublish(null);
+      const r = await api<{ notified?: number }>("/api/nr-synergy/admin/versions", { method: "PATCH", body: JSON.stringify({ id: ver.id, publish: true }) });
+      published(r.notified);
       await list.reload();
-    } catch (e) {
-      setError(errorText(e, s.common.error));
-    } finally {
-      setBusy(null);
-    }
-  };
+    });
+
+  const attach = (ver: VersionDto, f: File) =>
+    run(`file-${ver.id}`, async () => {
+      const problem = pdfProblem(f);
+      if (problem) throw new Error(problem);
+      const form = new FormData();
+      form.set("id", ver.id);
+      form.set("file", f);
+      await api("/api/nr-synergy/admin/versions", { method: "PATCH", body: form });
+      setNotice(s.common.saved);
+      await list.reload();
+    });
+
+  const removeFile = (ver: VersionDto) =>
+    run(`file-${ver.id}`, async () => {
+      await api("/api/nr-synergy/admin/versions", { method: "PATCH", body: JSON.stringify({ id: ver.id, remove_file: true }) });
+      setNotice(s.common.saved);
+      await list.reload();
+    });
+
+  const removeDraft = (ver: VersionDto) =>
+    run(`del-${ver.id}`, async () => {
+      setConfirmDelete(null);
+      await api(`/api/nr-synergy/admin/versions?id=${ver.id}`, { method: "DELETE" });
+      setNotice(s.common.deleted);
+      await list.reload();
+    });
+
+  const viewPdf = (ver: VersionDto) => run(`view-${ver.id}`, () => openSignedUrl(`/api/nr-synergy/admin/versions/${ver.id}/file`));
+
+  const versions = list.data?.versions ?? [];
+  const current = inForceId(versions);
+  const today = todayIso();
 
   return (
     <div className="mt-3 border-t border-border pt-3 flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <h4 className="text-[12.5px] font-bold text-ink">{C.versions}</h4>
-        {!adding && <Button onClick={() => setAdding(true)}>{C.addVersion}</Button>}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-[12.5px] font-bold text-ink">{C.versionHistory}</h4>
+        <div className="flex flex-wrap gap-1.5">
+          {requiresAck && (
+            <Link
+              href="/nr-synergy-admin/policies"
+              className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[12.5px] font-bold text-brand-dark hover:bg-page focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              <Icon name="check" className="w-3.5 h-3.5" />
+              {C.trackAcks}
+            </Link>
+          )}
+          {!adding && <Button onClick={() => setAdding(true)}>{C.addVersion}</Button>}
+        </div>
       </div>
+      {notice && <Notice message={notice} />}
       {error && <ErrorBox message={error} />}
       {adding && (
         <form
-          className="flex flex-col gap-2 rounded-md border border-border p-3"
+          className="flex flex-col gap-2 rounded-md border border-border bg-page/60 p-3"
           onSubmit={(e) => {
             e.preventDefault();
             void add();
           }}
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <Field label={C.version}>{(id) => <input id={id} required maxLength={20} className={inputCls} value={v.version} onChange={(e) => setV({ ...v, version: e.target.value })} />}</Field>
+            <Field label={C.version}>{(id) => <input id={id} required maxLength={20} placeholder="1.0" className={inputCls} value={v.version} onChange={(e) => setV({ ...v, version: e.target.value })} />}</Field>
             <Field label={C.effectiveFrom}>
               {(id) => <input id={id} type="date" required className={inputCls} value={v.effective_from} onChange={(e) => setV({ ...v, effective_from: e.target.value })} />}
             </Field>
-            <Field label={C.summary} className="sm:col-span-2">
-              {(id) => <input id={id} className={inputCls} value={v.summary} onChange={(e) => setV({ ...v, summary: e.target.value })} />}
+            <Field label={`${C.summary} (${s.common.optional})`} className="sm:col-span-2">
+              {(id) => <input id={id} maxLength={1000} className={inputCls} value={v.summary} onChange={(e) => setV({ ...v, summary: e.target.value })} />}
             </Field>
-            <Field label={C.markdown} className="sm:col-span-2">
-              {(id) => <textarea id={id} rows={8} className={`${inputCls} font-mono text-[12px]`} value={v.body_markdown} onChange={(e) => setV({ ...v, body_markdown: e.target.value })} />}
+            <PdfPicker
+              file={file}
+              label={`${C.file} (${s.common.optional})`}
+              onChange={(f, problem) => {
+                setFile(f);
+                setError(problem);
+              }}
+            />
+            <Field label={`${C.markdown} (${s.common.optional})`} hint={C.fileOrText} className="sm:col-span-2">
+              {(id, describedBy) => (
+                <textarea
+                  id={id}
+                  rows={6}
+                  aria-describedby={describedBy}
+                  className={`${inputCls} font-mono text-[12px]`}
+                  value={v.body_markdown}
+                  onChange={(e) => setV({ ...v, body_markdown: e.target.value })}
+                />
+              )}
             </Field>
           </div>
           <label className="inline-flex items-center gap-2 text-[12.5px] text-ink-2">
             <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} />
             {C.publishOnSave}
+            {publish && requiresAck && <span className="text-ink-muted">· {C.publishConfirmAck}</span>}
           </label>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setAdding(false)}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setAdding(false);
+                setFile(null);
+                setError(null);
+              }}
+            >
               {s.common.cancel}
             </Button>
             <Button type="submit" variant="primary" busy={busy === "add"}>
-              {s.common.save}
+              {publish ? C.publish : s.common.save}
             </Button>
           </div>
         </form>
@@ -266,27 +414,105 @@ function Versions({ doc }: { doc: Item }) {
         <Loading label={s.common.loading} />
       ) : list.error ? (
         <ErrorBox message={list.error} onRetry={list.reload} retryLabel={s.common.retry} />
-      ) : !list.data?.versions.length ? (
+      ) : !versions.length ? (
         <p className="text-[12px] text-ink-muted">{C.versionsEmpty}</p>
       ) : (
-        <ul className="flex flex-col gap-1">
-          {list.data.versions.map((ver) => (
-            <li key={ver.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-page px-3 py-1.5 text-[12.5px]">
-              <span className="min-w-0">
-                <strong>v{ver.version}</strong> · {ver.effective_from}
-                {ver.summary ? ` · ${ver.summary}` : ""}
-              </span>
-              {ver.published_at ? (
-                <Badge tone="approved">{C.published}</Badge>
-              ) : (
-                <Button variant="primary" busy={busy === ver.id} onClick={() => void doPublish(ver.id)}>
-                  {C.publish}
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
+        <ol className="flex flex-col gap-1.5" aria-label={C.versionHistory}>
+          {versions.map((ver) => {
+            const isDraft = !ver.published_at;
+            const hasText = !!ver.body_markdown?.trim();
+            const fileBusy = busy === `file-${ver.id}`;
+            return (
+              <li key={ver.id} className={`rounded-md border px-3 py-2 text-[12.5px] ${ver.id === current ? "border-brand/40 bg-brand-wash/40" : "border-border bg-page"}`}>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="flex flex-wrap items-center gap-1.5">
+                      <strong className="text-ink">v{ver.version}</strong>
+                      {isDraft ? (
+                        <Badge tone="draft">{C.draftVersion}</Badge>
+                      ) : ver.id === current ? (
+                        <Badge tone="approved">{C.inForce}</Badge>
+                      ) : ver.effective_from > today ? (
+                        <Badge tone="pending">{C.scheduled}</Badge>
+                      ) : (
+                        <Badge tone="superseded">{C.published}</Badge>
+                      )}
+                      {ver.has_file && <Badge tone="submitted">{C.pdf}</Badge>}
+                      {hasText && <Badge tone="draft">{C.textOnly}</Badge>}
+                      {!ver.has_file && !hasText && <Badge tone="warn">{C.noContent}</Badge>}
+                    </p>
+                    <p className="mt-0.5 text-[11.5px] text-ink-muted break-words">
+                      {fmt(C.effectiveShort, { date: ver.effective_from })}
+                      {ver.published_at ? ` · ${fmt(C.publishedOn, { date: ver.published_at.slice(0, 10) })}` : ""}
+                      {ver.summary ? ` · ${ver.summary}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {ver.has_file && (
+                      <Button variant="ghost" busy={busy === `view-${ver.id}`} onClick={() => void viewPdf(ver)}>
+                        <Icon name="externalLink" className="w-3.5 h-3.5" />
+                        {C.viewPdf}
+                      </Button>
+                    )}
+                    {isDraft && (
+                      <>
+                        <label
+                          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-2 text-[12.5px] font-bold text-ink hover:bg-page focus-within:ring-2 focus-within:ring-brand ${fileBusy ? "pointer-events-none opacity-60" : ""}`}
+                        >
+                          <Icon name="upload" className="w-3.5 h-3.5" />
+                          {ver.has_file ? C.replaceFile : C.attachPdf}
+                          <input
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            className="sr-only"
+                            disabled={fileBusy}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = "";
+                              if (f) void attach(ver, f);
+                            }}
+                          />
+                        </label>
+                        {ver.has_file && hasText && (
+                          <Button variant="ghost" busy={fileBusy} onClick={() => void removeFile(ver)}>
+                            {C.removeFile}
+                          </Button>
+                        )}
+                        <Button variant="danger" busy={busy === `del-${ver.id}`} onClick={() => setConfirmDelete(ver)}>
+                          {C.deleteDraft}
+                        </Button>
+                        <Button variant="primary" busy={busy === ver.id} disabled={!ver.has_file && !hasText} onClick={() => setConfirmPublish(ver)}>
+                          {C.publish}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
       )}
+      <ConfirmDialog
+        open={!!confirmPublish}
+        title={confirmPublish ? fmt(C.publishConfirmTitle, { version: confirmPublish.version }) : ""}
+        body={`${C.publishConfirmBody}${requiresAck ? ` ${C.publishConfirmAck}` : ""}`}
+        confirmLabel={C.publish}
+        cancelLabel={s.common.cancel}
+        busy={!!confirmPublish && busy === confirmPublish.id}
+        onConfirm={() => confirmPublish && void doPublish(confirmPublish)}
+        onClose={() => setConfirmPublish(null)}
+      />
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title={C.deleteDraft}
+        body={confirmDelete ? fmt(C.deleteDraftConfirm, { version: confirmDelete.version }) : ""}
+        confirmLabel={C.deleteDraft}
+        cancelLabel={s.common.cancel}
+        danger
+        onConfirm={() => confirmDelete && void removeDraft(confirmDelete)}
+        onClose={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }
@@ -302,7 +528,7 @@ function subtitle(kind: ContentKind, it: Item): string {
     case "events":
       return `${C.eventKinds[it.kind as keyof typeof C.eventKinds] ?? ""} · ${typeof it.starts_at === "string" ? new Date(it.starts_at).toLocaleString() : ""}${it.location ? ` · ${it.location}` : ""}`;
     case "documents":
-      return `${C.docCategories[it.category as keyof typeof C.docCategories] ?? ""} · ${it.country_code ?? C.global} · ${C.audiences[it.audience as keyof typeof C.audiences] ?? ""}`;
+      return `${C.docCategories[it.category as keyof typeof C.docCategories] ?? ""} · ${it.country_code ?? C.global} · ${C.audiences[it.audience as keyof typeof C.audiences] ?? ""}${it.requires_ack ? ` · ${C.requiresAck}` : ""}`;
     case "values":
       return String(it.meaning ?? "");
     case "quick_links":
@@ -338,7 +564,16 @@ function KindPanel({ kind }: { kind: ContentKind }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-1.5">
+        {kind === "documents" && (
+          <Link
+            href="/nr-synergy-admin/policies"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-2 text-[12.5px] font-bold text-ink hover:bg-page focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <Icon name="check" className="w-3.5 h-3.5" />
+            {C.trackAcks}
+          </Link>
+        )}
         {!editing && (
           <Button variant="primary" onClick={() => setEditing("new")}>
             {C.add}

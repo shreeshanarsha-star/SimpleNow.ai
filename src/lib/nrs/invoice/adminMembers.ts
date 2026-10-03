@@ -164,7 +164,22 @@ export async function applyMemberChanges(
   }
 }
 
-export async function loadAdminMembers(admin: SupabaseClient, orgId: string): Promise<AdminMemberDto[]> {
+/** True while an invited auth user has never confirmed or signed in. Best-effort. */
+async function invitePending(admin: SupabaseClient, userId: string): Promise<boolean> {
+  try {
+    const { data, error } = await admin.auth.admin.getUserById(userId);
+    if (error || !data?.user) return false;
+    return !data.user.email_confirmed_at && !data.user.last_sign_in_at;
+  } catch {
+    return false;
+  }
+}
+
+export async function loadAdminMembers(
+  admin: SupabaseClient,
+  orgId: string,
+  opts: { withInviteState?: boolean } = {}
+): Promise<AdminMemberDto[]> {
   const { data, error } = await admin
     .from("nrs_members")
     .select("id, full_name, email, designation, department, division, home_country, manager_id, joined_on, status, user_id, is_demo")
@@ -199,9 +214,20 @@ export async function loadAdminMembers(admin: SupabaseClient, orgId: string): Pr
       if (!x.ends_on) engagements.set(x.member_id, { type: x.type, country_code: x.country_code, starts_on: x.starts_on });
     }
   }
+  const pending = new Map<string, boolean>();
+  if (opts.withInviteState) {
+    const linkedRows = rows.filter((r) => r.user_id && !r.is_demo);
+    // Small batches keep the auth admin API from being hammered on large orgs.
+    for (let i = 0; i < linkedRows.length; i += 20) {
+      const batch = linkedRows.slice(i, i + 20);
+      const states = await Promise.all(batch.map((r) => invitePending(admin, r.user_id as string)));
+      batch.forEach((r, j) => pending.set(r.id, states[j]));
+    }
+  }
   return rows.map(({ user_id, ...r }) => ({
     ...r,
     linked: !!user_id,
+    ...(opts.withInviteState ? { pending: pending.get(r.id) ?? false } : {}),
     roles: roles.get(r.id) ?? [],
     features: features.get(r.id) ?? {},
     engagement: engagements.get(r.id) ?? null,

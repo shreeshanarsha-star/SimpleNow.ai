@@ -3,9 +3,11 @@
 import { useMemo, useState } from "react";
 import { money as s } from "@/lib/nrs/i18n/en/money";
 import { formatMoney } from "@/lib/nrs/money";
-import type { MoneyProfileDto, TravelDto } from "@/lib/nrs/invoice/types";
+import type { MoneyProfileDto } from "@/lib/nrs/invoice/types";
+import { travel as ts, fillTravel } from "@/lib/nrs/i18n/en/travel";
+import type { TravelItemDto as TravelDto } from "../../desk/travel/_lib/types";
+import { BookingList, TravelProgress, TravelStatusBadge, shortDate } from "../../desk/travel/_components/TravelBits";
 import {
-  Badge,
   Button,
   COMMON_CURRENCIES,
   Card,
@@ -169,22 +171,40 @@ export default function TravelPanel({ profile }: { profile: MoneyProfileDto }) {
         <ul aria-label={s.travel.listLabel} className="flex flex-col gap-2">
           {list.data.travel.map((t) => (
             <li key={t.id}>
-              <Card className="!p-3">
+              <Card className="!p-3 sm:!p-4 flex flex-col gap-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-bold text-ink break-words">{t.destination}</p>
+                    <p className="text-[13.5px] font-bold text-ink break-words">{t.destination}</p>
                     <p className="text-[12px] text-ink-muted">
-                      {t.starts_on} → {t.ends_on} · {fmt(s.travel.nights, { n: days(t.starts_on, t.ends_on) })}
+                      {shortDate(t.starts_on)} → {shortDate(t.ends_on)} · {fmt(s.travel.nights, { n: days(t.starts_on, t.ends_on) })}
                     </p>
                     <p className="text-[12px] text-ink-2 mt-1 break-words">{t.purpose}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <Badge tone={t.status}>{s.status[t.status]}</Badge>
+                    <TravelStatusBadge status={t.status} />
                     {t.estimated_minor != null && t.currency && (
                       <span className="text-[12.5px] font-bold text-ink tabular-nums">{formatMoney(t.estimated_minor, t.currency)}</span>
                     )}
                   </div>
                 </div>
+                <div className="border-t border-border pt-3">
+                  <TravelProgress status={t.status} chain={t.chain} createdAt={t.created_at} bookedAt={t.booked_at} bookedBy={t.booked_by_name} />
+                </div>
+                {(t.bookings.length > 0 || t.status === "booked") && (
+                  <div className="flex flex-col gap-2 border-t border-border pt-3">
+                    <h4 className="text-[12px] font-bold text-ink-2">
+                      {ts.bookingsHeading}
+                      {t.booked_at && (
+                        <span className="ml-2 font-normal text-ink-muted">
+                          {t.booked_by_name
+                            ? fillTravel(ts.bookedBy, { name: t.booked_by_name, date: shortDate(t.booked_at) })
+                            : fillTravel(ts.bookedOn, { date: shortDate(t.booked_at) })}
+                        </span>
+                      )}
+                    </h4>
+                    <BookingList bookings={t.bookings} fileEndpoint={(bid) => `/api/nr-synergy/money/travel/${t.id}/bookings/${bid}/file`} />
+                  </div>
+                )}
               </Card>
             </li>
           ))}

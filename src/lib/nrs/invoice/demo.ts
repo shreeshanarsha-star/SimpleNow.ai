@@ -58,6 +58,9 @@ interface DemoSeed {
     ref: string;
     name: string;
     division: string;
+    description?: string | null;
+    tags?: string[];
+    value?: { amount: string; currency: string } | null;
     owner_ref: string;
     status: string;
     progress_pct: number;
@@ -311,7 +314,11 @@ export async function loadDemoData(admin: SupabaseClient, orgId: string, actorUs
     }
     counts.nrs_documents = SEED.documents.length;
 
-    // Projects, members, updates.
+    // Projects, members, updates. Seed statuses predate projects v2
+    // (on_track / at_risk / blocked); map them onto the current set.
+    // Demo projects are inserted already approved.
+    const projectStatus = (st: string) =>
+      st === "blocked" ? "on_hold" : st === "on_track" || st === "at_risk" ? "in_progress" : st;
     let updates = 0;
     for (const p of SEED.projects) {
       const { data: proj, error } = await admin
@@ -321,10 +328,19 @@ export async function loadDemoData(admin: SupabaseClient, orgId: string, actorUs
           name: p.name,
           division: p.division,
           owner_member_id: ref(p.owner_ref),
-          status: p.status,
+          created_by_member: ref(p.owner_ref),
+          status: projectStatus(p.status),
           progress_pct: p.progress_pct,
           next_milestone: p.next_milestone,
           next_milestone_on: p.next_milestone_on,
+          description: p.description ?? null,
+          next_steps: p.next_milestone,
+          tags: p.tags ?? [p.division.toLowerCase()],
+          country_code: SEED.members.find((m) => m.ref === p.owner_ref)?.home_country ?? null,
+          value_minor: p.value ? toMinor(p.value.amount, p.value.currency) : null,
+          value_currency: p.value ? p.value.currency : null,
+          approval_status: "approved",
+          approved_at: now,
           is_demo: true,
         })
         .select("id")
@@ -342,13 +358,14 @@ export async function loadDemoData(admin: SupabaseClient, orgId: string, actorUs
             project_id: projectId,
             member_id: ref(u.member_ref),
             week_of: u.week_of,
-            status: u.status,
+            status: projectStatus(u.status),
             progress: u.progress,
             challenges: u.challenges,
             plan_of_action: u.plan_of_action,
             help_needed_member_id: ref(u.help_needed_ref),
             next_milestone: u.next_milestone,
             next_milestone_on: u.next_milestone_on,
+            next_steps: u.next_milestone,
             is_demo: true,
           }))
         );

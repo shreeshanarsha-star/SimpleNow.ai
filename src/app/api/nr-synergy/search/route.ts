@@ -4,6 +4,9 @@ import { t } from "@/lib/nrs/i18n/en";
 import { search as s } from "@/lib/nrs/i18n/en/search";
 import { knowledge as ks } from "@/lib/nrs/i18n/en/knowledge";
 import { help as hs } from "@/lib/nrs/i18n/en/help";
+import { desk as ds } from "@/lib/nrs/i18n/en/desk";
+import { travel as trs } from "@/lib/nrs/i18n/en/travel";
+import { formatValue, isProjectStatus } from "@/app/tools/nr-synergy/projects/_lib";
 import { projects as ps } from "@/lib/nrs/i18n/en/projects";
 import { canOpenTab, NRS_ADMIN_BASE, NRS_BASE, NRS_TABS, nrsTab, type NrsTabKey } from "@/lib/nrs/tabs";
 import {
@@ -27,7 +30,7 @@ export const dynamic = "force-dynamic";
 // Every query runs on the caller's own (RLS) client, so row visibility is
 // exactly what each module page would show. On top of RLS we apply the same
 // page-level rules the target pages use (tab feature switches, document
-// audience, project membership), so a result never links to a "not found".
+// audience, approved projects), so a result never links to a "not found".
 
 const LABELS: Record<SearchGroupKey, string> = s.groups;
 
@@ -42,6 +45,15 @@ function staticPages(ctx: NrsContext): StaticEntry[] {
     out.push({ id: `page-${tab.key}`, title: t(tab.label), keywords: s.pageKeywords[tab.key], href: tab.href, icon: tab.icon });
     if (tab.key === "knowledge" && ctx.member) {
       out.push({ id: "page-joe", title: s.joeTitle, keywords: s.pageKeywords.joe, href: `${NRS_BASE}/knowledge/joe`, icon: "award" });
+    }
+    // Desk tab (agents only, gated by canOpenTab above): also offer each desk directly.
+    if (tab.key === "desk") {
+      if (ctx.desk.support) {
+        out.push({ id: "page-desk-support", title: ds.support.title, keywords: s.pageKeywords.deskSupport, href: `${NRS_BASE}/desk/support`, icon: "headset" });
+      }
+      if (ctx.desk.travel) {
+        out.push({ id: "page-desk-travel", title: trs.desk.title, keywords: s.pageKeywords.deskTravel, href: `${NRS_BASE}/desk/travel`, icon: "globe" });
+      }
     }
   }
   return out;
@@ -80,8 +92,6 @@ function rows<T>(label: string, res: Settled): T[] {
 
 const EMPTY = Promise.resolve({ data: [] as unknown[], error: null });
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /** Document audiences the caller may see (mirrors audienceMatches), or null for "all of them". */
 function allowedAudiences(ctx: NrsContext): DocAudience[] | null {
   if (ctx.isHr) return null;
@@ -118,23 +128,8 @@ export async function GET(req: NextRequest) {
   const wantTickets = !!member && canTab("help", ctx);
   const wantPosts = !!member && canTab("home", ctx);
   const wantKnowledge = !!member && canTab("knowledge", ctx);
-  const seeAllProjects = ctx.isHr || ctx.isManager;
   const docCountry = member && /^[A-Za-z]{2}$/.test(member.home_country) ? member.home_country : null;
   const docAudiences = allowedAudiences(ctx);
-
-  // Projects: everyone else only sees projects they own or are on (mirrors the
-  // project page). Resolve membership first so the filter runs in the query,
-  // before the LIMIT, rather than on a truncated result.
-  let projectFilter: string | null = null;
-  if (wantProjects && !seeAllProjects) {
-    const { data: linkData, error: linkErr } = await supabase
-      .from("nrs_project_members")
-      .select("project_id")
-      .eq("member_id", mId);
-    if (linkErr) console.error("[nrs-search] project members:", linkErr.message);
-    const ids = ((linkData ?? []) as { project_id: string }[]).map((l) => l.project_id).filter((id) => UUID_RE.test(id));
-    projectFilter = ids.length ? `owner_member_id.eq.${mId},id.in.(${ids.join(",")})` : `owner_member_id.eq.${mId}`;
-  }
 
   let docsQuery = supabase
     .from("nrs_documents")
@@ -145,13 +140,14 @@ export async function GET(req: NextRequest) {
   docsQuery = docCountry ? docsQuery.or(`country_code.is.null,country_code.eq.${docCountry}`) : docsQuery.is("country_code", null);
   if (docAudiences) docsQuery = docsQuery.in("audience", docAudiences);
 
-  let projectsQuery = supabase
+  const projectsQuery = supabase
     .from("nrs_projects")
-    .select("id, name, division, status, progress_pct, owner_member_id")
+    .select("id, name, division, status, value_minor, value_currency")
     .eq("org_id", mOrg)
+    // Projects appear only once approved (pending ones live in "My submissions").
+    .eq("approval_status", "approved")
     .is("archived_at", null)
     .ilike("name", like);
-  if (projectFilter) projectsQuery = projectsQuery.or(projectFilter);
 
   let ticketsQuery = supabase.from("nrs_tickets").select("id, title, category, status").eq("org_id", mOrg).ilike("title", like);
   if (!ctx.isHr) ticketsQuery = ticketsQuery.or(`member_id.eq.${mId},assignee_member_id.eq.${mId}`);
@@ -250,23 +246,27 @@ export async function GET(req: NextRequest) {
     id: string;
     name: string;
     division: string | null;
-    status: keyof typeof ps.status;
-    progress_pct: number;
-    owner_member_id: string;
+    status: string;
+    value_minor: number | string | null;
+    value_currency: string | null;
   }>("projects", projectsR).map((p) => ({
       id: p.id,
       title: p.name,
-      subtitle: joinSub(p.division, ps.status[p.status] ?? p.status, s.progress.replace("{pct}", String(p.progress_pct))),
+      subtitle: joinSub(
+        p.division,
+        isProjectStatus(p.status) ? ps.status[p.status] : p.status,
+        formatValue(p.value_minor == null ? null : Number(p.value_minor), p.value_currency)
+      ),
       href: `${NRS_BASE}/projects/${p.id}`,
     }));
 
-  const tickets: SearchItem[] = rows<{ id: string; title: string; category: keyof typeof hs.categories; status: keyof typeof hs.status }>(
+  const tickets: SearchItem[] = rows<{ id: string; title: string; category: keyof typeof hs.categories; status: string }>(
     "tickets",
     ticketsR
   ).map((tk) => ({
     id: tk.id,
     title: tk.title,
-    subtitle: joinSub(hs.categories[tk.category] ?? tk.category, hs.status[tk.status] ?? tk.status),
+    subtitle: joinSub(hs.categories[tk.category] ?? tk.category, (ds.ticketStatus as Record<string, string>)[tk.status] ?? tk.status),
     href: `${NRS_BASE}/help/${tk.id}`,
   }));
 
