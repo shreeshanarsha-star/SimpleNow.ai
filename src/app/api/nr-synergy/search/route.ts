@@ -80,6 +80,17 @@ function rows<T>(label: string, res: Settled): T[] {
 
 const EMPTY = Promise.resolve({ data: [] as unknown[], error: null });
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Document audiences the caller may see (mirrors audienceMatches), or null for "all of them". */
+function allowedAudiences(ctx: NrsContext): DocAudience[] | null {
+  if (ctx.isHr) return null;
+  const out: DocAudience[] = ["all"];
+  if (ctx.isManager) out.push("managers");
+  if (ctx.engagementType) out.push(ctx.engagementType);
+  return out;
+}
+
 export async function GET(req: NextRequest) {
   let g: Awaited<ReturnType<typeof requireNrs>>;
   try {
@@ -108,8 +119,44 @@ export async function GET(req: NextRequest) {
   const wantPosts = !!member && canTab("home", ctx);
   const wantKnowledge = !!member && canTab("knowledge", ctx);
   const seeAllProjects = ctx.isHr || ctx.isManager;
+  const docCountry = member && /^[A-Za-z]{2}$/.test(member.home_country) ? member.home_country : null;
+  const docAudiences = allowedAudiences(ctx);
 
-  const [peopleR, docsR, projectsR, linksR, ticketsR, postsR, valuesR, quickR] = await Promise.allSettled([
+  // Projects: everyone else only sees projects they own or are on (mirrors the
+  // project page). Resolve membership first so the filter runs in the query,
+  // before the LIMIT, rather than on a truncated result.
+  let projectFilter: string | null = null;
+  if (wantProjects && !seeAllProjects) {
+    const { data: linkData, error: linkErr } = await supabase
+      .from("nrs_project_members")
+      .select("project_id")
+      .eq("member_id", mId);
+    if (linkErr) console.error("[nrs-search] project members:", linkErr.message);
+    const ids = ((linkData ?? []) as { project_id: string }[]).map((l) => l.project_id).filter((id) => UUID_RE.test(id));
+    projectFilter = ids.length ? `owner_member_id.eq.${mId},id.in.(${ids.join(",")})` : `owner_member_id.eq.${mId}`;
+  }
+
+  let docsQuery = supabase
+    .from("nrs_documents")
+    .select("id, title, category, country_code, audience")
+    .eq("org_id", mOrg)
+    .is("archived_at", null)
+    .ilike("title", like);
+  docsQuery = docCountry ? docsQuery.or(`country_code.is.null,country_code.eq.${docCountry}`) : docsQuery.is("country_code", null);
+  if (docAudiences) docsQuery = docsQuery.in("audience", docAudiences);
+
+  let projectsQuery = supabase
+    .from("nrs_projects")
+    .select("id, name, division, status, progress_pct, owner_member_id")
+    .eq("org_id", mOrg)
+    .is("archived_at", null)
+    .ilike("name", like);
+  if (projectFilter) projectsQuery = projectsQuery.or(projectFilter);
+
+  let ticketsQuery = supabase.from("nrs_tickets").select("id, title, category, status").eq("org_id", mOrg).ilike("title", like);
+  if (!ctx.isHr) ticketsQuery = ticketsQuery.or(`member_id.eq.${mId},assignee_member_id.eq.${mId}`);
+
+  const [peopleR, docsR, projectsR, ticketsR, postsR, valuesR, quickR] = await Promise.allSettled([
     wantPeople
       ? supabase
           .from("nrs_members")
@@ -121,38 +168,11 @@ export async function GET(req: NextRequest) {
           .order("full_name", { ascending: true })
           .limit(SEARCH_LIMIT)
       : EMPTY,
-    wantDocs
-      ? supabase
-          .from("nrs_documents")
-          .select("id, title, category, country_code, audience")
-          .eq("org_id", mOrg)
-          .is("archived_at", null)
-          .ilike("title", like)
-          .order("title", { ascending: true })
-          .limit(SEARCH_LIMIT * 4)
-      : EMPTY,
-    wantProjects
-      ? supabase
-          .from("nrs_projects")
-          .select("id, name, division, status, progress_pct, owner_member_id")
-          .eq("org_id", mOrg)
-          .is("archived_at", null)
-          .ilike("name", like)
-          .order("name", { ascending: true })
-          .limit(seeAllProjects ? SEARCH_LIMIT : SEARCH_LIMIT * 4)
-      : EMPTY,
-    wantProjects && !seeAllProjects
-      ? supabase.from("nrs_project_members").select("project_id").eq("member_id", mId)
-      : EMPTY,
-    wantTickets
-      ? supabase
-          .from("nrs_tickets")
-          .select("id, title, category, status")
-          .eq("org_id", mOrg)
-          .ilike("title", like)
-          .order("created_at", { ascending: false })
-          .limit(SEARCH_LIMIT)
-      : EMPTY,
+    // Audience and country are filtered in the query; the extra headroom only
+    // covers documents dropped below for having no published version yet.
+    wantDocs ? docsQuery.order("title", { ascending: true }).limit(SEARCH_LIMIT * 2) : EMPTY,
+    wantProjects ? projectsQuery.order("name", { ascending: true }).limit(SEARCH_LIMIT) : EMPTY,
+    wantTickets ? ticketsQuery.order("created_at", { ascending: false }).limit(SEARCH_LIMIT) : EMPTY,
     wantPosts
       ? supabase
           .from("nrs_posts")
@@ -226,8 +246,6 @@ export async function GET(req: NextRequest) {
       }));
   }
 
-  // Projects: everyone else only sees projects they own or are on (mirrors the project page).
-  const memberOf = new Set(rows<{ project_id: string }>("project members", linksR).map((l) => l.project_id));
   const projects: SearchItem[] = rows<{
     id: string;
     name: string;
@@ -235,9 +253,7 @@ export async function GET(req: NextRequest) {
     status: keyof typeof ps.status;
     progress_pct: number;
     owner_member_id: string;
-  }>("projects", projectsR)
-    .filter((p) => seeAllProjects || p.owner_member_id === member?.id || memberOf.has(p.id))
-    .map((p) => ({
+  }>("projects", projectsR).map((p) => ({
       id: p.id,
       title: p.name,
       subtitle: joinSub(p.division, ps.status[p.status] ?? p.status, s.progress.replace("{pct}", String(p.progress_pct))),

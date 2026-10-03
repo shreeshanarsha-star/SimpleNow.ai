@@ -9,6 +9,7 @@ import {
   highlightParts,
   normalizeQuery,
   SEARCH_MAX,
+  SEARCH_MIN,
   type SearchGroup,
   type SearchGroupKey,
   type SearchItem,
@@ -102,7 +103,9 @@ export default function GlobalSearch({ helpHref }: { helpHref: string | null }) 
   const [keys, setKeys] = useState("Ctrl K");
   const [narrow, setNarrow] = useState(false);
 
-  const term = normalizeQuery(query);
+  // Below SEARCH_MIN there is nothing to fetch (the API would 400): the panel shows the min-chars hint.
+  const normalized = normalizeQuery(query);
+  const term = normalized && normalized.trim().length >= SEARCH_MIN ? normalized : null;
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 639px)");
@@ -254,8 +257,9 @@ export default function GlobalSearch({ helpHref }: { helpHref: string | null }) 
       setOpen(true);
       if (options.length) setActive((a) => (a <= 0 ? options.length - 1 : a - 1));
     } else if (e.key === "Enter") {
+      // With nothing highlighted, Enter takes the first option (result or recent search).
       const opt = options[active >= 0 ? active : 0];
-      if (open && opt && (active >= 0 || opt.kind === "result")) {
+      if (open && opt) {
         e.preventDefault();
         choose(opt);
       }
