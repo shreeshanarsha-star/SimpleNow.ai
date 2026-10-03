@@ -47,6 +47,7 @@ const TOOL_ICONS: Record<string, string> = {
   "Smart Screen.ai": "search",
   "Assessment.ai": "check",
   "Offer.ai": "mail",
+  "NR Synergy": "users",
 };
 
 /**
