@@ -4,7 +4,7 @@ import { NRS_ADMIN_BASE } from "./tabs";
 // layout (server) and its sidebar (client). The console lives at its own
 // path with its own sign-in; the employee app never links to these.
 
-export type AdminSectionKey = "overview" | "users" | "countries" | "approvals" | "content" | "contracts" | "demo";
+export type AdminSectionKey = "overview" | "users" | "countries" | "approvals" | "content" | "policies" | "contracts" | "assets" | "demo";
 
 export interface AdminSectionDef {
   key: AdminSectionKey;
@@ -20,7 +20,9 @@ export const ADMIN_SECTIONS: readonly AdminSectionDef[] = [
   { key: "countries", href: `${NRS_ADMIN_BASE}/countries`, icon: "globe" },
   { key: "approvals", href: `${NRS_ADMIN_BASE}/approvals`, icon: "check" },
   { key: "content", href: `${NRS_ADMIN_BASE}/content`, icon: "book" },
+  { key: "policies", href: `${NRS_ADMIN_BASE}/policies`, icon: "fileCheck" },
   { key: "contracts", href: `${NRS_ADMIN_BASE}/contracts`, icon: "penSignature" },
+  { key: "assets", href: `${NRS_ADMIN_BASE}/assets`, icon: "boxArchive" },
   { key: "demo", href: `${NRS_ADMIN_BASE}/demo`, icon: "database" },
 ];
 

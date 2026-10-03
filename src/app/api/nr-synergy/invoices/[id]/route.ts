@@ -1,5 +1,7 @@
 import { createRequest } from "@/lib/nrs/approvals";
 import { logAudit } from "@/lib/nrs/audit";
+import { notifyMembers } from "@/lib/nrs/notify";
+import { emailRequesterOutcome } from "../_decisionEmail";
 import { formatMoney } from "@/lib/nrs/money";
 import { lookupFxRate, reportingCurrency } from "@/lib/nrs/invoice/fx";
 import { HttpError, dbCheck, guard, ok, readJson, run, str, uuid, type Guarded } from "@/lib/nrs/invoice/kit";
@@ -68,8 +70,9 @@ export async function PATCH(req: Request, { params }: Params) {
       dbCheck(error, "Signing invoice");
       // Render the signed PDF as it will be approved (status shown as submitted).
       await renderAndStorePdf(g.admin, { ...(upd as InvoiceRow), status: "submitted" });
+      let requestId: string | null = null;
       try {
-        await createRequest(
+        const submitted = await createRequest(
           "invoice",
           row.id,
           row.member_id,
@@ -78,12 +81,14 @@ export async function PATCH(req: Request, { params }: Params) {
           row.currency,
           { admin: g.admin, createdBy: g.user.id, summary: `${row.period_start} to ${row.period_end}` }
         );
+        if (submitted.status === "approved") requestId = submitted.requestId;
       } catch (e) {
         await g.admin.from("nrs_invoices").update({ signed_at: null, pdf_path: null }).eq("id", row.id);
         throw e;
       }
       const { error: expErr } = await g.admin.from("nrs_expenses").update({ status: "invoiced" }).eq("invoice_id", row.id);
       dbCheck(expErr, "Marking expenses invoiced");
+      if (requestId) await emailRequesterOutcome(g.admin, requestId);
       await logAudit(g.admin, {
         orgId: g.orgId,
         actorUser: g.user.id,
@@ -110,19 +115,12 @@ export async function PATCH(req: Request, { params }: Params) {
         .single();
       dbCheck(error, "Marking paid");
       await g.admin.from("nrs_expenses").update({ status: "reimbursed" }).eq("invoice_id", row.id);
-      const { data: member } = await g.admin.from("nrs_members").select("user_id").eq("id", row.member_id).maybeSingle();
-      const userId = (member as { user_id: string | null } | null)?.user_id;
-      if (userId) {
-        await g.admin.from("notifications").insert({
-          user_id: userId,
-          org_id: g.orgId,
-          feature_key: "NR Synergy",
-          title: `Paid: invoice ${row.number}`,
-          body: `${formatMoney(Number(row.total_minor), row.currency)} · ref ${paymentRef}`,
-          link: "/tools/nr-synergy/money",
-          channel: "in_app",
-        });
-      }
+      // In-app + email to the consultant (notifyMembers is best-effort, never throws).
+      await notifyMembers(g.admin, g.orgId, [row.member_id], {
+        title: `Paid: invoice ${row.number}`,
+        body: `${formatMoney(Number(row.total_minor), row.currency)} · ref ${paymentRef}`,
+        link: "/tools/nr-synergy/money",
+      });
       await logAudit(g.admin, {
         orgId: g.orgId,
         actorUser: g.user.id,

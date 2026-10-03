@@ -125,7 +125,10 @@ function DocRowItem({ doc }: { doc: LibraryDoc }) {
             {doc.country_code ?? s.global}
           </span>
         </span>
-        {doc.requires_ack && (doc.ackedAt ? <Pill tone="good">{s.acked}</Pill> : <Pill tone="warning">{s.needsAck}</Pill>)}
+        <span className="flex shrink-0 items-center gap-1.5">
+          {doc.version.file_path && <Pill>PDF</Pill>}
+          {doc.requires_ack && (doc.ackedAt ? <Pill tone="good">{s.acked}</Pill> : <Pill tone="warning">{s.needsAck}</Pill>)}
+        </span>
       </Link>
     </li>
   );

@@ -7,7 +7,9 @@ import Markdown from "../../../_home/Markdown";
 import { isUuid } from "../../../_home/server";
 import { Card, Pill, fill, fmtDate, linkClass } from "../../../_home/ui";
 import { loadLibrary } from "../../_lib";
+import { viewer } from "../../_viewerStrings";
 import AckButton from "./AckButton";
+import PdfViewer from "./PdfViewer";
 
 export default async function NrSynergyDocumentPage({ params }: { params: Promise<{ id: string }> }) {
   const gate = await gatePage("knowledge");
@@ -40,6 +42,9 @@ export default async function NrSynergyDocumentPage({ params }: { params: Promis
     );
   }
 
+  const hasPdf = !!doc.version.file_path;
+  const hasBody = !!doc.version.body_markdown?.trim();
+
   return (
     <div className="flex flex-col gap-4">
       {back}
@@ -58,18 +63,19 @@ export default async function NrSynergyDocumentPage({ params }: { params: Promis
           {doc.version.summary && <p className="text-[13px] text-ink-2">{doc.version.summary}</p>}
         </header>
 
-        {doc.version.body_markdown?.trim() ? (
-          <Markdown source={doc.version.body_markdown} />
-        ) : (
-          <p className="text-[13px] text-ink-muted">{s.noBody}</p>
-        )}
+        {hasPdf && <PdfViewer versionId={doc.version.id} title={doc.title} />}
+
+        {hasBody ? <Markdown source={doc.version.body_markdown ?? ""} /> : !hasPdf && <p className="text-[13px] text-ink-muted">{s.noBody}</p>}
 
         {doc.requires_ack && (
-          <footer className="border-t border-border pt-4">
+          <footer className="border-t border-border pt-4 flex flex-col gap-2">
             {doc.ackedAt ? (
               <p className="text-[12.5px] text-good-text font-bold">{fill(s.ackedOn, { date: fmtDate(doc.ackedAt) })}</p>
             ) : (
-              <AckButton versionId={doc.version.id} />
+              <>
+                {hasPdf && <p className="text-[12px] text-ink-muted">{viewer.readFirst}</p>}
+                <AckButton versionId={doc.version.id} />
+              </>
             )}
           </footer>
         )}

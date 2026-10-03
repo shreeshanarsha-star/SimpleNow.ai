@@ -2,13 +2,15 @@
 
 import { useId, useState, type FormEvent } from "react";
 import { help as s } from "@/lib/nrs/i18n/en/help";
+import { desk } from "@/lib/nrs/i18n/en/desk";
 import { useAction } from "../_home/useAction";
 import { ErrorLine, inputClass, labelClass, primaryButtonClass } from "../_home/ui";
-import { TICKET_CATEGORIES, isTicketCategory, type TicketCategory } from "./_lib";
+import { TICKET_CATEGORIES, TICKET_PRIORITIES, isTicketCategory, isTicketPriority, type TicketCategory, type TicketPriority } from "./_lib";
 
 export default function NewTicketForm() {
   const uid = useId();
   const [category, setCategory] = useState<TicketCategory>("it");
+  const [priority, setPriority] = useState<TicketPriority>("normal");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [done, setDone] = useState(false);
@@ -21,10 +23,11 @@ export default function NewTicketForm() {
       setError(s.titleRequired);
       return;
     }
-    const ok = await run("/api/nr-synergy/help/tickets", { category, title, description });
+    const ok = await run("/api/nr-synergy/help/tickets", { category, title, description, priority });
     if (ok) {
       setTitle("");
       setDescription("");
+      setPriority("normal");
       setDone(true);
     }
   }
@@ -56,6 +59,29 @@ export default function NewTicketForm() {
           ))}
         </div>
       </fieldset>
+      <div>
+        <label htmlFor={`${uid}-priority`} className={labelClass}>
+          {desk.help.priority}
+        </label>
+        <select
+          id={`${uid}-priority`}
+          className={inputClass}
+          value={priority}
+          aria-describedby={`${uid}-priority-hint`}
+          onChange={(e) => {
+            if (isTicketPriority(e.target.value)) setPriority(e.target.value);
+          }}
+        >
+          {TICKET_PRIORITIES.map((p) => (
+            <option key={p} value={p}>
+              {desk.priority[p]}
+            </option>
+          ))}
+        </select>
+        <p id={`${uid}-priority-hint`} className="mt-1 text-[11.5px] text-ink-muted">
+          {desk.help.priorityHint}
+        </p>
+      </div>
       <div>
         <label htmlFor={`${uid}-title`} className={labelClass}>
           {s.ticketTitle}

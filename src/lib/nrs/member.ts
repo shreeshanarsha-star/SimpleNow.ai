@@ -18,7 +18,23 @@ import { requireFeatureAccess } from "@/lib/supabase/requireAdmin";
 
 export const NRS_FEATURE_KEY = "NR Synergy";
 
-export type NrsRole = "employee" | "manager" | "hr_admin" | "finance" | "super_admin";
+export type NrsRole =
+  | "employee"
+  | "manager"
+  | "hr_admin"
+  | "finance"
+  | "super_admin"
+  | "it_agent"
+  | "hr_agent"
+  | "travel_desk";
+
+/** Which desks (agent workspaces) the caller may open. Both need a member profile. */
+export interface NrsDeskAccess {
+  /** Support desk: IT / HR agents, HR admins, super admins. */
+  support: boolean;
+  /** Travel desk: travel desk role, HR admins, super admins. */
+  travel: boolean;
+}
 export type NrsEngagementType = "consultant" | "payroll";
 
 export interface NrsMember {
@@ -58,6 +74,8 @@ export interface NrsContext {
   isFinance: boolean;
   /** profiles.is_admin (platform owner). Implies isHr and isFinance. */
   isPlatformAdmin: boolean;
+  /** Desk workspaces the caller can use (see NrsDeskAccess). */
+  desk: NrsDeskAccess;
   orgId: string | null;
   /** First name for greetings: member name, else profile name, else email. */
   firstName: string;
@@ -75,7 +93,16 @@ const FALLBACK_FEATURES: Record<string, boolean> = {
   search_ai: true,
 };
 
-const ROLE_SET = new Set<NrsRole>(["employee", "manager", "hr_admin", "finance", "super_admin"]);
+const ROLE_SET = new Set<NrsRole>([
+  "employee",
+  "manager",
+  "hr_admin",
+  "finance",
+  "super_admin",
+  "it_agent",
+  "hr_agent",
+  "travel_desk",
+]);
 
 function firstNameOf(name: string | null | undefined): string | null {
   const trimmed = (name ?? "").trim();
@@ -135,6 +162,10 @@ async function loadContext(supabase: SupabaseClient): Promise<NrsContext | null>
   const isHr = isPlatformAdmin || isSuper || roles.includes("hr_admin");
   const isFinance = isPlatformAdmin || isSuper || roles.includes("finance");
   const isManager = hasReports || roles.includes("manager");
+  const desk: NrsDeskAccess = {
+    support: !!member && (isHr || roles.includes("it_agent") || roles.includes("hr_agent")),
+    travel: !!member && (isHr || roles.includes("travel_desk")),
+  };
 
   const catalogue = (featureRows ?? []) as { key: string; default_on: boolean }[];
   const features: Record<string, boolean> = {};
@@ -161,6 +192,7 @@ async function loadContext(supabase: SupabaseClient): Promise<NrsContext | null>
     isHr,
     isFinance,
     isPlatformAdmin,
+    desk,
     orgId: member?.org_id ?? profile?.org_id ?? null,
     firstName,
   };

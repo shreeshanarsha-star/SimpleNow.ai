@@ -1,4 +1,5 @@
 import { createRequest } from "@/lib/nrs/approvals";
+import { emailRequesterOutcome } from "@/app/api/nr-synergy/invoices/_decisionEmail";
 import { logAudit } from "@/lib/nrs/audit";
 import { formatMoney, convertMinor, toMinor } from "@/lib/nrs/money";
 import { lookupFxRate, reportingCurrency } from "@/lib/nrs/invoice/fx";
@@ -118,7 +119,7 @@ export async function POST(req: Request) {
     });
 
     if (submit) {
-      await createRequest(
+      const submitted = await createRequest(
         "expense",
         id,
         g.member.id,
@@ -127,6 +128,7 @@ export async function POST(req: Request) {
         cur,
         { admin: g.admin, createdBy: g.user.id, summary: overLimit ? "Over the category limit" : null }
       );
+      if (submitted.status === "approved") await emailRequesterOutcome(g.admin, submitted.requestId);
       const { data: fresh } = await g.admin.from("nrs_expenses").select(EXPENSE_COLUMNS).eq("id", id).single();
       if (fresh) row = fresh as ExpenseRow;
     }

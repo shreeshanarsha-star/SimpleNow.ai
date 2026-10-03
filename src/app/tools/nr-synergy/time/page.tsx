@@ -2,6 +2,9 @@ import Link from "next/link";
 import Icon from "@/components/Icon";
 import { getNrsContext, hasNrsAccess } from "@/lib/nrs/member";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { requestableTypes, type LeaveBalances as Balances } from "@/lib/nrs/leave";
+import { leave as ls } from "@/lib/nrs/i18n/en/leave";
 import { addDays, eachDay, isoWeekday, loadCountryCalendar, localDateInTz, type CountryCalendar } from "@/lib/nrs/dates";
 import { t } from "@/lib/nrs/i18n/en";
 import { time as s, fillTime as fill } from "@/lib/nrs/i18n/en/time";
@@ -10,6 +13,8 @@ import NrsState from "../_components/NrsState";
 import TodayCard, { type OpenLog } from "./_components/TodayCard";
 import LeaveForm from "./_components/LeaveForm";
 import CorrectionForm from "./_components/CorrectionForm";
+import LeaveBalances from "./_components/LeaveBalances";
+import { loadLeaveBalances } from "./_lib/balances";
 import { formatDay, formatMonth, formatTimeInTz, hoursBetween, isMonth, isValidTimeZone, monthBounds, shiftMonth } from "./_lib/tz";
 
 export const dynamic = "force-dynamic";
@@ -140,6 +145,21 @@ export default async function NrSynergyTimePage({
     );
   }
 
+  // Leave balances: this year (cards) and next year (form check for requests across Dec 31).
+  const year = Number(today.slice(0, 4));
+  let balances: Map<number, Balances> | null = null;
+  try {
+    const all = await loadLeaveBalances(
+      createAdminClient(),
+      member.org_id,
+      [{ id: member.id, home_country: member.home_country, joined_on: member.joined_on, left_on: member.left_on }],
+      [year, year + 1]
+    );
+    balances = all.get(member.id) ?? null;
+  } catch {
+    balances = null;
+  }
+
   const todayLogs = logs.filter((l) => l.day === today);
   const lastToday = todayLogs.length ? todayLogs[todayLogs.length - 1] : null;
   const doneToday =
@@ -159,9 +179,18 @@ export default async function NrSynergyTimePage({
   const yearEnd = `${today.slice(0, 4)}-12-31`;
   const upcomingHolidays = wideCal.holidayList.filter((h) => h.day >= today && h.day <= yearEnd);
 
-  const leaveTypes: (keyof typeof s.leaveTypes)[] = payroll
-    ? ["annual", "sick", "personal", "unpaid"]
-    : ["unavailable", "sick", "personal"];
+  const leaveTypes = requestableTypes(ctx.engagementType);
+  const thisYear = balances?.get(year) ?? null;
+  const formBalances = balances
+    ? Object.fromEntries(
+        Array.from(balances.entries()).map(([y, b]) => [
+          y,
+          Object.fromEntries(
+            leaveTypes.map((lt) => [lt, { entitlement: b.byType[lt].entitlement, pending: b.byType[lt].pending, available: b.byType[lt].available }])
+          ),
+        ])
+      )
+    : null;
 
   const requests = [
     ...leaves.slice(0, 20).map((l) => ({
@@ -188,6 +217,14 @@ export default async function NrSynergyTimePage({
         <h1 className="text-[22px] sm:text-[26px] font-bold text-ink tracking-tight">{title}</h1>
         <p className="text-[13px] text-ink-muted">{payroll ? s.subtitleAttendance : s.subtitleWorkLog}</p>
       </header>
+
+      {thisYear ? (
+        <LeaveBalances balances={thisYear} types={leaveTypes} />
+      ) : (
+        <p role="status" className="rounded-md border border-border bg-surface px-4 py-3 text-[12.5px] text-ink-muted">
+          {ls.balancesError}
+        </p>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="flex flex-col gap-4 min-w-0">
@@ -326,6 +363,8 @@ export default async function NrSynergyTimePage({
             types={leaveTypes}
             workingDays={wideCal.workingDays}
             holidays={wideCal.holidayList.map((h) => h.day)}
+            balances={formBalances}
+            consultant={ctx.engagementType === "consultant"}
           />
 
           <section className={card} aria-labelledby="nrs-requests">

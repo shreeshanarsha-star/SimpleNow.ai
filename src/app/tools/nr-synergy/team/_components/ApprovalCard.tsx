@@ -3,12 +3,24 @@
 import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { team as s, fillTeam as fill } from "@/lib/nrs/i18n/en/team";
-import type { NrsDecision } from "@/lib/nrs/approvals";
+import Link from "next/link";
+import type { NrsApproverRole, NrsDecision, NrsRequestKind } from "@/lib/nrs/approvals";
+import { projects as ps } from "@/lib/nrs/i18n/en/projects";
 import { postJson } from "../../time/_lib/client";
 import type { QueueItem } from "../_lib/data";
 
 function submittedOn(iso: string): string {
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
+}
+
+function kindLabel(kind: NrsRequestKind): string {
+  if (kind === "project") return ps.kind;
+  return (s.kinds as Record<string, string>)[kind] ?? kind;
+}
+
+function roleLabel(role: NrsApproverRole): string {
+  if (role === "travel_desk") return ps.travelDesk;
+  return (s.roles as Record<string, string>)[role] ?? role;
 }
 
 export default function ApprovalCard({ item }: { item: QueueItem }) {
@@ -48,7 +60,7 @@ export default function ApprovalCard({ item }: { item: QueueItem }) {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-wide text-brand-dark">
-            {s.kinds[item.kind]}
+            {kindLabel(item.kind)}
             {item.stepNo > 1 ? ` · ${fill(s.step, { n: item.stepNo })}` : ""}
           </p>
           <h3 id={`${ids}-t`} className="text-[14px] font-bold text-ink">
@@ -62,12 +74,12 @@ export default function ApprovalCard({ item }: { item: QueueItem }) {
         </div>
         {(item.actingFor || item.asRole) && (
           <span className="rounded-full bg-page px-2 py-0.5 text-[11px] font-semibold text-ink-2">
-            {item.actingFor ? fill(s.actingFor, { name: item.actingFor }) : fill(s.asRole, { role: s.roles[item.asRole!] })}
+            {item.actingFor ? fill(s.actingFor, { name: item.actingFor }) : fill(s.asRole, { role: roleLabel(item.asRole!) })}
           </span>
         )}
       </div>
 
-      <p className="text-[13px] text-ink-2">{item.title}</p>
+      <p className={item.kind === "project" ? "text-[15px] font-bold text-ink break-words" : "text-[13px] text-ink-2"}>{item.title}</p>
 
       {item.details.length > 0 && (
         <dl className="grid grid-cols-[minmax(96px,auto)_1fr] gap-x-3 gap-y-1 rounded-sm bg-page px-3 py-2 text-[12.5px]">
@@ -78,6 +90,15 @@ export default function ApprovalCard({ item }: { item: QueueItem }) {
             </div>
           ))}
         </dl>
+      )}
+
+      {item.href && (
+        <Link
+          href={item.href}
+          className="self-start text-[12.5px] font-bold text-brand-dark hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-sm"
+        >
+          {ps.queue.openProject} →
+        </Link>
       )}
 
       {done ? (

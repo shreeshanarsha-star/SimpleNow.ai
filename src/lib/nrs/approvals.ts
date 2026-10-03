@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getNrsContext, NRS_FEATURE_KEY, type NrsContext } from "./member";
 import { logAudit } from "./audit";
+import { notifyMembers } from "./notify";
 
 // NR Synergy approval engine: one engine (nrs_requests + nrs_request_steps)
 // for every request kind. Server-only. All writes use the service-role
@@ -12,8 +13,10 @@ import { logAudit } from "./audit";
 // Routes should catch NrsApprovalError and return
 //   NextResponse.json({ error: e.message }, { status: e.status }).
 
-export type NrsRequestKind = "leave" | "correction" | "expense" | "travel" | "invoice";
-export type NrsApproverRole = "hr_admin" | "finance" | "super_admin";
+export type NrsRequestKind = "leave" | "correction" | "expense" | "travel" | "invoice" | "project";
+export type NrsApproverRole = "hr_admin" | "finance" | "super_admin" | "travel_desk";
+
+const APPROVER_ROLES: readonly NrsApproverRole[] = ["hr_admin", "finance", "super_admin", "travel_desk"];
 export type NrsDecision = "approve" | "reject" | "send_back";
 export type NrsRequestStatus = "draft" | "pending" | "approved" | "rejected" | "sent_back" | "cancelled";
 export type NrsStepStatus = "waiting" | "pending" | "approved" | "rejected" | "sent_back" | "skipped";
@@ -28,14 +31,19 @@ export type ChainStep =
   | { type: "role"; role: NrsApproverRole; when?: ChainStepCondition }
   | { type: "member"; member_id: string; when?: ChainStepCondition };
 
-export const NRS_REQUEST_KINDS: readonly NrsRequestKind[] = ["leave", "correction", "expense", "travel", "invoice"];
+export const NRS_REQUEST_KINDS: readonly NrsRequestKind[] = ["leave", "correction", "expense", "travel", "invoice", "project"];
 
 export const DEFAULT_CHAINS: Readonly<Record<NrsRequestKind, ChainStep[]>> = {
   leave: [{ type: "manager" }],
   correction: [{ type: "manager" }],
   expense: [{ type: "manager" }, { type: "role", role: "finance", when: { amount_minor_gt: 50000 } }],
-  travel: [{ type: "manager" }],
+  travel: [
+    { type: "manager" },
+    { type: "role", role: "travel_desk" },
+    { type: "role", role: "finance", when: { amount_minor_gt: 100000 } },
+  ],
   invoice: [{ type: "manager" }, { type: "role", role: "hr_admin" }, { type: "role", role: "finance" }],
+  project: [{ type: "manager" }],
 };
 
 /** kind -> the table holding the subject row. */
@@ -45,6 +53,21 @@ export const SUBJECT_TABLES: Readonly<Record<NrsRequestKind, string>> = {
   expense: "nrs_expenses",
   travel: "nrs_travel_requests",
   invoice: "nrs_invoices",
+  project: "nrs_projects",
+};
+
+/**
+ * Column on the subject table that mirrors the request's state. Projects keep
+ * their delivery status in `status`, so the approval state lives in
+ * `approval_status` (pending | approved | rejected | sent_back).
+ */
+const SUBJECT_STATUS_COLUMN: Readonly<Record<NrsRequestKind, string>> = {
+  leave: "status",
+  correction: "status",
+  expense: "status",
+  travel: "status",
+  invoice: "status",
+  project: "approval_status",
 };
 
 // Subject status while the request is in flight / when fully approved.
@@ -54,6 +77,7 @@ const SUBMITTED_STATUS: Readonly<Record<NrsRequestKind, string>> = {
   expense: "submitted",
   travel: "pending",
   invoice: "submitted",
+  project: "pending",
 };
 const APPROVED_STATUS: Readonly<Record<NrsRequestKind, string>> = {
   leave: "approved",
@@ -61,15 +85,20 @@ const APPROVED_STATUS: Readonly<Record<NrsRequestKind, string>> = {
   expense: "approved",
   travel: "approved",
   invoice: "finance_approved",
+  project: "approved",
 };
 
-const REQUESTER_LINK: Readonly<Record<NrsRequestKind, string>> = {
+const REQUESTER_LINK: Readonly<Record<Exclude<NrsRequestKind, "project">, string>> = {
   leave: "/tools/nr-synergy/time",
   correction: "/tools/nr-synergy/time",
   expense: "/tools/nr-synergy/money",
   travel: "/tools/nr-synergy/money",
   invoice: "/tools/nr-synergy/money",
 };
+
+function requesterLink(kind: NrsRequestKind, subjectId: string): string {
+  return kind === "project" ? `/tools/nr-synergy/projects/${subjectId}` : REQUESTER_LINK[kind];
+}
 const APPROVER_LINK = "/tools/nr-synergy/team";
 
 export class NrsApprovalError extends Error {
@@ -130,7 +159,7 @@ function isChainStep(v: unknown): v is ChainStep {
   if (t === "manager") return true;
   if (t === "role") {
     const r = (v as { role?: unknown }).role;
-    return r === "hr_admin" || r === "finance" || r === "super_admin";
+    return typeof r === "string" && (APPROVER_ROLES as readonly string[]).includes(r);
   }
   if (t === "member") return typeof (v as { member_id?: unknown }).member_id === "string";
   return false;
@@ -169,7 +198,7 @@ async function memberIdsWithRole(admin: SupabaseClient, orgId: string, role: Nrs
   return ((members ?? []) as { id: string }[]).map((m) => m.id);
 }
 
-async function approverUserIds(admin: SupabaseClient, orgId: string, step: ExpandedStep): Promise<string[]> {
+async function approverMemberIds(admin: SupabaseClient, orgId: string, step: ExpandedStep): Promise<string[]> {
   const memberIds: string[] = [];
   if (step.approver_member_id) {
     memberIds.push(step.approver_member_id);
@@ -186,7 +215,45 @@ async function approverUserIds(admin: SupabaseClient, orgId: string, step: Expan
   } else if (step.approver_type === "role" && step.approver_role) {
     memberIds.push(...(await memberIdsWithRole(admin, orgId, step.approver_role)));
   }
-  return userIdsForMembers(admin, orgId, Array.from(new Set(memberIds)));
+  return Array.from(new Set(memberIds));
+}
+
+async function approverUserIds(admin: SupabaseClient, orgId: string, step: ExpandedStep): Promise<string[]> {
+  return userIdsForMembers(admin, orgId, await approverMemberIds(admin, orgId, step));
+}
+
+/**
+ * Projects notify through the shared notify.ts helper (in-app + email).
+ * Other kinds keep the engine's in-app-only notice.
+ */
+async function notifyApprovers(
+  admin: SupabaseClient,
+  kind: NrsRequestKind,
+  orgId: string,
+  step: ExpandedStep,
+  msg: { title: string; body?: string | null; link: string },
+  requester: { memberId: string; userId: string | null }
+): Promise<void> {
+  if (kind === "project") {
+    const ids = (await approverMemberIds(admin, orgId, step)).filter((id) => id !== requester.memberId);
+    await notifyMembers(admin, orgId, ids, { title: msg.title, body: msg.body ?? undefined, link: msg.link });
+    return;
+  }
+  await notify(admin, orgId, await approverUserIds(admin, orgId, step), msg, requester.userId);
+}
+
+async function notifyRequester(
+  admin: SupabaseClient,
+  kind: NrsRequestKind,
+  orgId: string,
+  requester: { memberId: string; userId: string | null },
+  msg: { title: string; body?: string | null; link: string }
+): Promise<void> {
+  if (kind === "project") {
+    await notifyMembers(admin, orgId, [requester.memberId], { title: msg.title, body: msg.body ?? undefined, link: msg.link });
+    return;
+  }
+  if (requester.userId) await notify(admin, orgId, [requester.userId], msg);
 }
 
 async function notify(
@@ -217,7 +284,7 @@ async function notify(
 // Chains
 // ---------------------------------------------------------------------------
 
-/** Insert the five default chains for any kind the org has no chain for yet. */
+/** Insert the default chains for any kind the org has no chain for yet. */
 export async function ensureDefaultChains(admin: SupabaseClient, orgId: string): Promise<{ inserted: NrsRequestKind[] }> {
   const { data, error } = await admin.from("nrs_approval_chains").select("kind").eq("org_id", orgId);
   if (error) throw new NrsApprovalError(`Approval chains: ${error.message}`, 500);
@@ -293,7 +360,9 @@ function expandSteps(chain: ChainStep[], member: MemberLite, amountMinor: number
 }
 
 async function setSubjectStatus(admin: SupabaseClient, kind: NrsRequestKind, subjectId: string, status: string) {
-  const { error } = await admin.from(SUBJECT_TABLES[kind]).update({ status }).eq("id", subjectId);
+  const patch: Record<string, string | null> = { [SUBJECT_STATUS_COLUMN[kind]]: status };
+  if (kind === "project") patch.approved_at = status === "approved" ? new Date().toISOString() : null;
+  const { error } = await admin.from(SUBJECT_TABLES[kind]).update(patch).eq("id", subjectId);
   if (error) throw new NrsApprovalError(`Updating ${kind} status: ${error.message}`, 500);
 }
 
@@ -318,9 +387,11 @@ export interface CreateRequestResult {
 
 /**
  * Open an approval request for a subject row (leave, correction, expense,
- * travel, invoice) owned by memberId. The caller must already have checked
- * that the actor may submit for this member. Re-submitting a subject whose
- * previous request was sent back / cancelled restarts that request.
+ * travel, invoice, project) owned by memberId. The caller must already have
+ * checked that the actor may submit for this member. Re-submitting a subject
+ * whose previous request was sent back / cancelled restarts that request:
+ * unique (kind, subject_id) means the same nrs_requests row is reused, its
+ * old steps are deleted and a fresh chain is inserted.
  */
 export async function createRequest(
   kind: NrsRequestKind,
@@ -387,10 +458,24 @@ export async function createRequest(
     if (!["sent_back", "cancelled", "draft"].includes(existing.status)) {
       throw new NrsApprovalError(`This ${kind} already has a ${existing.status} request`, 409);
     }
-    const { error: delErr } = await admin.from("nrs_request_steps").delete().eq("request_id", existing.id);
-    if (delErr) throw new NrsApprovalError(delErr.message, 500);
-    const { error: upErr } = await admin.from("nrs_requests").update(requestFields).eq("id", existing.id);
+    // Claim the restart first, conditional on the status we read, so two
+    // concurrent resubmits can't both rebuild the chain.
+    const { data: restarted, error: upErr } = await admin
+      .from("nrs_requests")
+      .update({ ...requestFields, created_at: now })
+      .eq("id", existing.id)
+      .eq("status", existing.status)
+      .select("id");
     if (upErr) throw new NrsApprovalError(upErr.message, 500);
+    if (!restarted || (restarted as unknown[]).length === 0) {
+      throw new NrsApprovalError(`This ${kind} was already resubmitted`, 409);
+    }
+    // Old steps (decided / skipped) make way for the fresh chain.
+    const { error: delErr } = await admin.from("nrs_request_steps").delete().eq("request_id", existing.id);
+    if (delErr) {
+      await admin.from("nrs_requests").update({ status: existing.status }).eq("id", existing.id);
+      throw new NrsApprovalError(delErr.message, 500);
+    }
     requestId = existing.id;
   } else {
     const { data: inserted, error: insErr } = await admin
@@ -416,6 +501,7 @@ export async function createRequest(
     );
     if (stepErr) {
       if (!existing) await admin.from("nrs_requests").delete().eq("id", requestId);
+      else await admin.from("nrs_requests").update({ status: existing.status }).eq("id", existing.id);
       throw new NrsApprovalError(`Creating approval steps: ${stepErr.message}`, 500);
     }
   }
@@ -423,14 +509,24 @@ export async function createRequest(
   await setSubjectStatus(admin, kind, subjectId, autoApproved ? APPROVED_STATUS[kind] : SUBMITTED_STATUS[kind]);
 
   if (steps[0]) {
-    const recipients = await approverUserIds(admin, orgId, steps[0]);
-    await notify(
+    await notifyApprovers(
       admin,
+      kind,
       orgId,
-      recipients,
-      { title: `${member.full_name} needs your approval`, body: title.trim(), link: APPROVER_LINK },
-      member.user_id
+      steps[0],
+      {
+        title: kind === "project" ? `${member.full_name} submitted a project for approval` : `${member.full_name} needs your approval`,
+        body: title.trim(),
+        link: APPROVER_LINK,
+      },
+      { memberId: member.id, userId: member.user_id }
     );
+  } else if (kind === "project") {
+    await notifyRequester(admin, kind, orgId, { memberId: member.id, userId: member.user_id }, {
+      title: `Approved: ${title.trim()}`,
+      body: "Your project was approved automatically.",
+      link: requesterLink(kind, subjectId),
+    });
   }
 
   await logAudit(admin, {
@@ -490,7 +586,6 @@ export async function decide(
 
   const { data: canAct, error: rpcErr } = await supabase.rpc("nrs_can_act_on_step", { step_id: stepId });
   if (rpcErr) throw new NrsApprovalError(rpcErr.message, 500);
-  if (canAct !== true) throw new NrsApprovalError("You can't act on this approval step", 403);
 
   const { data: stepData, error: sErr } = await admin
     .from("nrs_request_steps")
@@ -510,6 +605,10 @@ export async function decide(
   const request = reqData as RequestRow | null;
   if (!request) throw new NrsApprovalError("Request not found", 404);
 
+  // HR / admins may also decide project approvals addressed to a manager.
+  const hrOverride = canAct !== true && request.kind === "project" && ctx.isHr;
+  if (canAct !== true && !hrOverride) throw new NrsApprovalError("You can't act on this approval step", 403);
+
   if (!ctx.isPlatformAdmin && ctx.orgId !== request.org_id) {
     throw new NrsApprovalError("You can't act on this approval step", 403);
   }
@@ -528,7 +627,8 @@ export async function decide(
     throw new NrsApprovalError("You can't decide your own request", 403);
   }
 
-  const actingFor = step.approver_member_id && me && step.approver_member_id !== me ? step.approver_member_id : null;
+  const actingFor =
+    !hrOverride && step.approver_member_id && me && step.approver_member_id !== me ? step.approver_member_id : null;
   const now = new Date().toISOString();
   const stepStatus: NrsStepStatus =
     decision === "approve" ? "approved" : decision === "reject" ? "rejected" : "sent_back";
@@ -585,13 +685,13 @@ export async function decide(
         }
       }
 
-      const recipients = await approverUserIds(admin, request.org_id, next);
-      await notify(
+      await notifyApprovers(
         admin,
+        request.kind,
         request.org_id,
-        recipients,
+        next,
         { title: `${requester?.full_name ?? "A colleague"} needs your approval`, body: request.title, link: APPROVER_LINK },
-        requester?.user_id
+        { memberId: request.member_id, userId: requester?.user_id ?? null }
       );
     } else {
       requestStatus = "approved";
@@ -601,13 +701,11 @@ export async function decide(
         .eq("id", request.id);
       if (fErr) throw new NrsApprovalError(fErr.message, 500);
       await setSubjectStatus(admin, request.kind, request.subject_id, APPROVED_STATUS[request.kind]);
-      if (requester?.user_id) {
-        await notify(admin, request.org_id, [requester.user_id], {
-          title: `Approved: ${request.title}`,
-          body: note ? `${deciderName}: ${note}` : `Approved by ${deciderName}`,
-          link: REQUESTER_LINK[request.kind],
-        });
-      }
+      await notifyRequester(admin, request.kind, request.org_id, { memberId: request.member_id, userId: requester?.user_id ?? null }, {
+        title: `Approved: ${request.title}`,
+        body: note ? `${deciderName}: ${note}` : `Approved by ${deciderName}`,
+        link: requesterLink(request.kind, request.subject_id),
+      });
     }
   } else {
     requestStatus = decision === "reject" ? "rejected" : "sent_back";
@@ -618,13 +716,11 @@ export async function decide(
     if (endErr) throw new NrsApprovalError(endErr.message, 500);
     await admin.from("nrs_request_steps").update({ status: "skipped" }).eq("request_id", request.id).eq("status", "waiting");
     await setSubjectStatus(admin, request.kind, request.subject_id, requestStatus);
-    if (requester?.user_id) {
-      await notify(admin, request.org_id, [requester.user_id], {
-        title: `${decision === "reject" ? "Rejected" : "Sent back"}: ${request.title}`,
-        body: `${deciderName}: ${note}`,
-        link: REQUESTER_LINK[request.kind],
-      });
-    }
+    await notifyRequester(admin, request.kind, request.org_id, { memberId: request.member_id, userId: requester?.user_id ?? null }, {
+      title: `${decision === "reject" ? "Rejected" : "Sent back"}: ${request.title}`,
+      body: `${deciderName}: ${note}`,
+      link: requesterLink(request.kind, request.subject_id),
+    });
   }
 
   await logAudit(admin, {
@@ -635,7 +731,7 @@ export async function decide(
     action: decision,
     before: { step_status: "pending", request_status: "pending" },
     after: { step_status: stepStatus, request_status: requestStatus, next_step_id: nextStepId },
-    context: { request_id: request.id, kind: request.kind, acting_for_member: actingFor, comment: note || null },
+    context: { request_id: request.id, kind: request.kind, acting_for_member: actingFor, comment: note || null, hr_override: hrOverride },
   });
 
   return { requestId: request.id, requestStatus, nextStepId };

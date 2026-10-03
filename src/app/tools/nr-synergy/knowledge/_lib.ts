@@ -21,6 +21,8 @@ export interface VersionRow {
   effective_from: string;
   summary: string | null;
   body_markdown: string | null;
+  /** Storage path of the version's PDF, when one is attached (server only; never sent to the client). */
+  file_path: string | null;
   published_at: string | null;
 }
 
@@ -67,8 +69,8 @@ export async function loadLibrary(
   if (!docs.length) return [];
 
   const cols = opts.withBody
-    ? "id, document_id, version, effective_from, summary, body_markdown, published_at"
-    : "id, document_id, version, effective_from, summary, published_at";
+    ? "id, document_id, version, effective_from, summary, body_markdown, file_path, published_at"
+    : "id, document_id, version, effective_from, summary, file_path, published_at";
   const { data: verData, error: verErr } = await supabase
     .from("nrs_document_versions")
     .select(cols)
@@ -82,7 +84,7 @@ export async function loadLibrary(
   if (verErr) throw new Error(verErr.message);
   const byDoc = new Map<string, VersionRow[]>();
   for (const raw of (verData ?? []) as unknown as VersionRow[]) {
-    const v: VersionRow = { ...raw, body_markdown: raw.body_markdown ?? null };
+    const v: VersionRow = { ...raw, body_markdown: raw.body_markdown ?? null, file_path: raw.file_path ?? null };
     const list = byDoc.get(v.document_id) ?? [];
     list.push(v);
     byDoc.set(v.document_id, list);

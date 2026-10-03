@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { help as s } from "@/lib/nrs/i18n/en/help";
+import { desk } from "@/lib/nrs/i18n/en/desk";
 import NrsState from "../../_components/NrsState";
 import { gatePage } from "../../_home/gate";
 import { isUuid, memberNames, memberTimezone } from "../../_home/server";
 import { Card, EmptyLine, Pill, SectionTitle, fill, fmtDate, fmtDateTime, linkClass } from "../../_home/ui";
-import { TICKET_COLUMNS, TICKET_TONE, type TicketRow } from "../_lib";
+import { PRIORITY_TONE, TICKET_COLUMNS, TICKET_TONE, type TicketRow } from "../_lib";
 import ReplyForm from "./ReplyForm";
+import ReopenButton from "./ReopenButton";
 
 interface MessageRow {
   id: string;
@@ -49,6 +51,8 @@ export default async function NrSynergyTicketPage({ params }: { params: Promise<
     .from("nrs_ticket_messages")
     .select("id, member_id, body, created_at")
     .eq("ticket_id", ticket.id)
+    // Help is the requester's view: internal agent notes never show here.
+    .eq("internal", false)
     .order("created_at", { ascending: true });
   if (mErr) throw new Error(mErr.message);
   const messages = (mData ?? []) as MessageRow[];
@@ -57,6 +61,9 @@ export default async function NrSynergyTicketPage({ params }: { params: Promise<
     memberTimezone(supabase, member),
   ]);
   const closed = ticket.status === "closed";
+  const resolved = ticket.status === "resolved";
+  const isRequester = ticket.member_id === member.id;
+  const assigneeName = ticket.assignee_member_id ? names.get(ticket.assignee_member_id) : undefined;
 
   return (
     <div className="flex flex-col gap-4 max-w-[820px]">
@@ -64,11 +71,18 @@ export default async function NrSynergyTicketPage({ params }: { params: Promise<
       <Card className="flex flex-col gap-2">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <h1 className="text-[19px] sm:text-[22px] font-bold text-ink tracking-tight break-words min-w-0">{ticket.title}</h1>
-          <Pill tone={TICKET_TONE[ticket.status]}>{s.status[ticket.status]}</Pill>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {ticket.priority !== "normal" && (
+              <Pill tone={PRIORITY_TONE[ticket.priority]}>{fill(desk.help.priorityLine, { priority: desk.priority[ticket.priority] })}</Pill>
+            )}
+            <Pill tone={TICKET_TONE[ticket.status]}>{desk.ticketStatus[ticket.status]}</Pill>
+          </div>
         </div>
         <p className="text-[12px] text-ink-muted">
           {s.categories[ticket.category]} · {fill(s.openedOn, { date: fmtDate(ticket.created_at, tz) })}
-          {ticket.member_id !== member.id ? ` · ${names.get(ticket.member_id) ?? ""}` : ""}
+          {!isRequester ? ` · ${names.get(ticket.member_id) ?? ""}` : ""}
+          {" · "}
+          {assigneeName ? fill(desk.help.assignee, { name: assigneeName }) : desk.help.notAssigned}
         </p>
         {ticket.description && <p className="text-[13px] text-ink-2 whitespace-pre-line break-words">{ticket.description}</p>}
       </Card>
@@ -94,6 +108,14 @@ export default async function NrSynergyTicketPage({ params }: { params: Promise<
               );
             })}
           </ol>
+        )}
+        {resolved && isRequester && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-page px-3 py-2.5">
+            <p className="text-[12.5px] text-ink-2">
+              <span className="font-bold text-ink">{desk.help.resolvedNote}</span> {desk.help.reopenHint}
+            </p>
+            <ReopenButton ticketId={ticket.id} />
+          </div>
         )}
         {closed ? <p className="text-[12.5px] text-ink-muted">{s.closedNote}</p> : <ReplyForm ticketId={ticket.id} />}
       </Card>
