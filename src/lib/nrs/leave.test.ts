@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   checkLeaveRequest,
   computeLeaveBalances,
+  engagedDays,
   engagedWindow,
   leaveDaysInYear,
   roundHalf,
@@ -160,6 +161,37 @@ assert.equal(ruleDays(null, "payroll", "annual"), 0);
     "payroll"
   );
   assert.deepEqual(w, { from: "2026-02-01", to: "2026-12-31" });
+}
+
+// Leave and rejoin in the same year: only engaged days count, not the gap.
+// Jan 1..Mar 31 (90) + Oct 1..Dec 31 (92) = 182 days; 20 * 182/365 = 9.97 -> 10
+// (the min..max span would give the full 20).
+{
+  const input = base({
+    engagements: [
+      { type: "payroll", starts_on: "2026-01-01", ends_on: "2026-03-31" },
+      { type: "payroll", starts_on: "2026-10-01", ends_on: null },
+    ],
+    countryRules: [{ effective_from: "2026-01-01", leave_rules: { payroll: { annual: 20, sick: 7 } } }],
+  });
+  assert.equal(engagedDays(input, "payroll"), 182);
+  const b = computeLeaveBalances(input);
+  assert.equal(b.proRataFactor, 182 / 365);
+  assert.equal(b.byType.annual.entitlement, 10);
+  assert.equal(b.byType.sick.entitlement, 3.5);
+  // overlapping periods are not double-counted
+  assert.equal(
+    engagedDays(
+      base({
+        engagements: [
+          { type: "payroll", starts_on: "2026-01-01", ends_on: "2026-06-30" },
+          { type: "payroll", starts_on: "2026-06-01", ends_on: "2026-07-31" },
+        ],
+      }),
+      "payroll"
+    ),
+    212
+  );
 }
 
 // --- Cross-year leave ----------------------------------------------------------

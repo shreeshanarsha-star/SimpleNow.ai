@@ -7,7 +7,7 @@ export interface CsvRecord {
 }
 
 export function parseCsv(input: string): CsvRecord[] {
-  const text = input.replace(/^﻿/, "");
+  const text = input.replace(/^\uFEFF/, "");
   const out: CsvRecord[] = [];
   let cells: string[] = [];
   let field = "";

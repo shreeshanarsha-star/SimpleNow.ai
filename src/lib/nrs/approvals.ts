@@ -377,6 +377,12 @@ export interface CreateRequestOptions {
   isDemo?: boolean;
   /** Service-role client; created when omitted. */
   admin?: SupabaseClient;
+  /**
+   * Also restart a request that is still pending (its subject was edited
+   * mid-approval): the chain is re-expanded with the new amount and the first
+   * approver is notified again.
+   */
+  restartPending?: boolean;
 }
 
 export interface CreateRequestResult {
@@ -391,7 +397,8 @@ export interface CreateRequestResult {
  * checked that the actor may submit for this member. Re-submitting a subject
  * whose previous request was sent back / cancelled restarts that request:
  * unique (kind, subject_id) means the same nrs_requests row is reused, its
- * old steps are deleted and a fresh chain is inserted.
+ * old steps are deleted and a fresh chain is inserted. With
+ * opts.restartPending a still-pending request is restarted the same way.
  */
 export async function createRequest(
   kind: NrsRequestKind,
@@ -455,7 +462,10 @@ export async function createRequest(
 
   let requestId: string;
   if (existing) {
-    if (!["sent_back", "cancelled", "draft"].includes(existing.status)) {
+    const restartable: NrsRequestStatus[] = opts.restartPending
+      ? ["sent_back", "cancelled", "draft", "pending"]
+      : ["sent_back", "cancelled", "draft"];
+    if (!restartable.includes(existing.status)) {
       throw new NrsApprovalError(`This ${kind} already has a ${existing.status} request`, 409);
     }
     // Claim the restart first, conditional on the status we read, so two

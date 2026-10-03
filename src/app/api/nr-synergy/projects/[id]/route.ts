@@ -5,11 +5,13 @@ import { logAudit } from "@/lib/nrs/audit";
 import { guard, isUuid, jsonError, readBody } from "@/app/tools/nr-synergy/_home/server";
 import { PROJECT_COLUMNS, normaliseProject, type ProjectRow } from "@/app/tools/nr-synergy/projects/_lib";
 import { canManageProject } from "@/app/tools/nr-synergy/projects/_server";
-import { parseProjectInput, projectFields, replaceMembers } from "../_lib";
+import { parseProjectInput, projectFields, replaceMembers, type ProjectInput } from "../_lib";
 
 // POST /api/nr-synergy/projects/:id
 //   { action: "resubmit", ...fields }  creator, after a send-back: edit + fresh approval
-//   { action: "update", ...fields }    owner's/creator's manager or HR: edit fields
+//   { action: "update", ...fields }    owner's/creator's manager or HR: edit fields.
+//                                      While approval is pending, a change to an
+//                                      approval-relevant field restarts the approval.
 //   { action: "archive" | "unarchive" } owner's/creator's manager or HR
 // Weekly updates are never edited here (see ./updates).
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -68,6 +70,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const parsed = await parseProjectInput(admin, project.org_id, body, project.owner_member_id);
       if (!parsed.ok) return jsonError(parsed.error);
       const fields = projectFields(parsed.input);
+      const restart = project.approval_status === "pending" && approvalFieldsChanged(project, parsed.input);
       const { error: upErr } = await admin.from("nrs_projects").update(fields).eq("id", id);
       if (upErr) return jsonError(upErr.message, 500);
       const memErr = await replaceMembers(admin, id, parsed.input.member_ids);
@@ -81,6 +84,34 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         before: projectFields({ ...project, member_ids: [], description: project.description ?? "" }),
         after: { ...fields, member_ids: parsed.input.member_ids },
       });
+      if (restart) {
+        // Reuse the pending request row: steps are re-expanded for the new value
+        // (when.amount_minor_gt) and the first approver is notified again.
+        const { data: reqRow } = await admin
+          .from("nrs_requests")
+          .select("member_id")
+          .eq("kind", "project")
+          .eq("subject_id", id)
+          .maybeSingle();
+        const requester = project.created_by_member ?? (reqRow as { member_id: string } | null)?.member_id ?? null;
+        if (!requester) return jsonError("Could not find who submitted this project.", 500);
+        try {
+          const result = await createRequest(
+            "project",
+            id,
+            requester,
+            parsed.input.name,
+            parsed.input.value_minor,
+            parsed.input.value_currency,
+            { admin, createdBy: ctx.user.id, summary: parsed.input.description.slice(0, 300), restartPending: true }
+          );
+          return NextResponse.json({ ok: true, id, status: result.status, approvalRestarted: true });
+        } catch (e) {
+          if (e instanceof NrsApprovalError) return jsonError(e.message, e.status);
+          console.error("[nrs] project approval restart failed", e);
+          return jsonError("Saved, but could not restart the approval.", 500);
+        }
+      }
       return NextResponse.json({ ok: true, id });
     }
     const archivedAt = action === "archive" ? new Date().toISOString() : null;
@@ -99,4 +130,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   return jsonError("Unknown action");
+}
+
+/** Fields an approver sees or that drive the chain (amount_minor_gt). */
+function approvalFieldsChanged(
+  before: { name: string; description: string | null; owner_member_id: string; value_minor: number | null; value_currency: string | null },
+  after: ProjectInput
+): boolean {
+  return (
+    before.name !== after.name ||
+    (before.description ?? "") !== after.description ||
+    before.owner_member_id !== after.owner_member_id ||
+    before.value_minor !== after.value_minor ||
+    before.value_currency !== after.value_currency
+  );
 }

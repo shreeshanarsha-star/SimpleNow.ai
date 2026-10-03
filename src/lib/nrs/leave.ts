@@ -12,8 +12,9 @@ import { workingDaysBetween, type IsoDate } from "./dates";
 //  * Payroll: nrs_country_rules.leave_rules.payroll[type] from the latest
 //    rule row effective in the year for the member's home country.
 //  * Pro-rata for joiners / leavers: the full entitlement times the share
-//    of calendar days of the year the member was engaged (engagement
-//    starts_on/ends_on, else member joined_on/left_on), rounded to 0.5.
+//    of calendar days of the year the member was engaged (summed across
+//    all engagement periods, so gaps between stints are excluded; else
+//    member joined_on/left_on), rounded to 0.5.
 //  * Used = approved leave working days inside the year; pending = pending
 //    requests. Leave that crosses Dec 31 / Jan 1 is split by working days.
 //  * Remaining = entitlement - used. Available = remaining - pending (what a
@@ -176,6 +177,42 @@ export function engagedWindow(
   return from <= to ? { from, to } : null;
 }
 
+/**
+ * Calendar days actually engaged inside the year: the union of all matching
+ * engagement periods (gaps between non-contiguous engagements are excluded),
+ * clipped to member joined_on / left_on. Falls back to engagedWindow when
+ * there are no engagement rows.
+ */
+export function engagedDays(
+  input: Pick<LeaveBalanceInput, "year" | "member" | "engagements">,
+  type: EngagementType | null
+): number {
+  const { from: y0, to: y1 } = yearBounds(input.year);
+  const same = input.engagements.filter((e) => (type ? e.type === type : true) && overlaps(e, y0, y1));
+  if (!same.length) {
+    const w = engagedWindow(input, type);
+    return w ? dayDiff(w.from, w.to) + 1 : 0;
+  }
+  const lo = input.member.joined_on ? maxDate(input.member.joined_on, y0) : y0;
+  const hi = input.member.left_on ? minDate(input.member.left_on, y1) : y1;
+  const spans = same
+    .map((e) => ({ from: maxDate(e.starts_on, lo), to: e.ends_on ? minDate(e.ends_on, hi) : hi }))
+    .filter((r) => r.from <= r.to)
+    .sort((a, b) => a.from.localeCompare(b.from));
+  let total = 0;
+  let cur: { from: IsoDate; to: IsoDate } | null = null;
+  for (const r of spans) {
+    if (cur && dayDiff(cur.to, r.from) <= 1) {
+      if (r.to > cur.to) cur.to = r.to;
+      continue;
+    }
+    if (cur) total += dayDiff(cur.from, cur.to) + 1;
+    cur = { ...r };
+  }
+  if (cur) total += dayDiff(cur.from, cur.to) + 1;
+  return total;
+}
+
 /** Latest verified contract terms effective at any point in the year. */
 export function termsForYear(terms: BalanceContractTerms[], year: number): BalanceContractTerms | null {
   const { from, to } = yearBounds(year);
@@ -246,7 +283,7 @@ export function computeLeaveBalances(input: LeaveBalanceInput): LeaveBalances {
   const engagement = engagementForYear(input.engagements, year);
   const engagementType = engagement?.type ?? null;
   const window = engagedWindow(input, engagementType);
-  const proRataFactor = window ? (dayDiff(window.from, window.to) + 1) / daysInYear(year) : 0;
+  const proRataFactor = window ? engagedDays(input, engagementType) / daysInYear(year) : 0;
   const prorated = (full: number) => (full > 0 ? roundHalf(full * proRataFactor) : 0);
 
   let source: LeaveBalances["source"] = "none";

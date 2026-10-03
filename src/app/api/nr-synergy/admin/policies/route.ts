@@ -112,7 +112,7 @@ export async function GET(req: Request) {
           action: "export_csv",
           context: { rows: r.members.length },
         });
-        return new Response(`﻿${lines.join("\r\n")}\r\n`, {
+        return new Response(`\uFEFF${lines.join("\r\n")}\r\n`, {
           headers: {
             "Content-Type": "text/csv; charset=utf-8",
             "Content-Disposition": `attachment; filename="acknowledgements-${slug}.csv"`,

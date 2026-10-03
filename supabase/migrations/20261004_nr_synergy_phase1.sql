@@ -84,6 +84,8 @@ drop trigger if exists nrs_project_updates_guard on public.nrs_project_updates;
 create trigger nrs_project_updates_guard before insert or update or delete on public.nrs_project_updates
 for each row execute function public.nrs_project_updates_guard();
 drop policy if exists nrs_project_updates_own_update on public.nrs_project_updates;
+-- weekly updates are posted only through the server route (checks owner/member + approved project)
+drop policy if exists nrs_project_updates_own_insert on public.nrs_project_updates;
 
 -- members may read projects that are approved, or that they created/own (pending ones)
 drop policy if exists nrs_projects_read on public.nrs_projects;
