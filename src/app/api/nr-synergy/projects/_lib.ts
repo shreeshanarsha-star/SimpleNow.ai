@@ -21,8 +21,21 @@ export interface ProjectInput {
 
 export type Parsed = { ok: true; input: ProjectInput } | { ok: false; error: string };
 
+/** What the caller may decide. Members can't pick the owner or set the status. */
+export interface ParseRules {
+  /** Owner used when the caller may not choose one (or gives none). */
+  defaultOwner: string;
+  /** Status kept when the caller may not set it. */
+  defaultStatus: ProjectStatus;
+  /** HR, or the owner's manager when editing. */
+  canAssignOwner: boolean;
+  /** HR, or the owner's manager. */
+  canSetStatus: boolean;
+}
+
 /**
- * Validate a project body. `defaultOwner` is used when no owner is given.
+ * Validate a project body. Owner and status come from the body only when the
+ * rules allow it; otherwise the defaults are kept whatever the client sent.
  * Owner, members and country are checked against the org with the
  * service-role client (the directory is org-readable anyway).
  */
@@ -30,20 +43,26 @@ export async function parseProjectInput(
   admin: SupabaseClient,
   orgId: string,
   body: Record<string, unknown>,
-  defaultOwner: string
+  rules: ParseRules
 ): Promise<Parsed> {
+  const defaultOwner = rules.defaultOwner;
   const name = optText(body.name, 200);
   if (!name) return { ok: false, error: name === undefined ? "Project name is too long (200 characters max)." : "Give the project a name." };
   const description = optText(body.description, 4000);
   if (description === undefined) return { ok: false, error: "Description is too long (4,000 characters max)." };
   if (!description) return { ok: false, error: "Add a short description." };
-  if (!isProjectStatus(body.status)) return { ok: false, error: "Choose a valid status." };
+  let status: ProjectStatus = rules.defaultStatus;
+  if (rules.canSetStatus && body.status != null && body.status !== "") {
+    if (!isProjectStatus(body.status)) return { ok: false, error: "Choose a valid status." };
+    status = body.status;
+  }
   const nextSteps = optText(body.next_steps, 2000);
   if (nextSteps === undefined) return { ok: false, error: "Next steps are too long (2,000 characters max)." };
   const division = optText(body.division, 120);
   if (division === undefined) return { ok: false, error: "Division is too long." };
 
-  const owner = body.owner_member_id == null || body.owner_member_id === "" ? defaultOwner : body.owner_member_id;
+  const owner =
+    !rules.canAssignOwner || body.owner_member_id == null || body.owner_member_id === "" ? defaultOwner : body.owner_member_id;
   if (!isUuid(owner)) return { ok: false, error: "Choose a valid project owner." };
 
   // Value: decimal string + ISO currency -> integer minor units.
@@ -99,7 +118,7 @@ export async function parseProjectInput(
       name,
       description,
       owner_member_id: owner,
-      status: body.status,
+      status,
       value_minor: valueMinor,
       value_currency: valueCurrency,
       next_steps: nextSteps,

@@ -3,7 +3,7 @@
 import { useId, useState, type FormEvent } from "react";
 import { projects as s } from "@/lib/nrs/i18n/en/projects";
 import { useAction } from "../../_home/useAction";
-import { ErrorLine, inputClass, labelClass, primaryButtonClass } from "../../_home/ui";
+import { ErrorLine, fill, inputClass, labelClass, primaryButtonClass } from "../../_home/ui";
 import { PROJECT_STATUSES, isProjectStatus, type ProjectStatus } from "../_lib";
 
 interface Values {
@@ -21,11 +21,14 @@ export default function ProjectUpdateForm({
   people,
   initialStatus,
   initialNextSteps,
+  canSetStatus = false,
 }: {
   projectId: string;
   people: { id: string; full_name: string; designation: string | null }[];
   initialStatus: ProjectStatus;
   initialNextSteps: string;
+  /** Manager / HR: the status applies at once. Others only suggest it. */
+  canSetStatus?: boolean;
 }) {
   const uid = useId();
   const blank: Values = {
@@ -37,7 +40,7 @@ export default function ProjectUpdateForm({
     next_steps: initialNextSteps,
   };
   const [v, setV] = useState<Values>(blank);
-  const [posted, setPosted] = useState(false);
+  const [posted, setPosted] = useState<false | "plain" | "request">(false);
   const { run, pending, error, setError } = useAction();
   const f = (n: string) => `${uid}-${n}`;
 
@@ -59,8 +62,9 @@ export default function ProjectUpdateForm({
       help_needed_member_id: v.help_needed_member_id || null,
     });
     if (ok) {
-      setV({ ...blank, status: v.status, next_steps: v.next_steps });
-      setPosted(true);
+      const asked = !canSetStatus && v.status !== initialStatus;
+      setV({ ...blank, status: canSetStatus ? v.status : initialStatus, next_steps: v.next_steps });
+      setPosted(asked ? "request" : "plain");
     }
   }
 
@@ -69,7 +73,7 @@ export default function ProjectUpdateForm({
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label htmlFor={f("status")} className={labelClass}>
-            {s.update.status}
+            {canSetStatus ? s.update.status : s.update.statusSuggest}
           </label>
           <select
             id={f("status")}
@@ -81,10 +85,11 @@ export default function ProjectUpdateForm({
           >
             {PROJECT_STATUSES.map((st) => (
               <option key={st} value={st}>
-                {s.status[st]}
+                {!canSetStatus && st === initialStatus ? fill(s.update.statusNoChange, { status: s.status[st] }) : s.status[st]}
               </option>
             ))}
           </select>
+          {!canSetStatus && <p className="text-[11.5px] text-ink-muted mt-1">{s.update.statusSuggestHint}</p>}
         </div>
         <div>
           <label htmlFor={f("help")} className={labelClass}>
@@ -141,7 +146,7 @@ export default function ProjectUpdateForm({
           {pending ? s.update.posting : s.update.post}
         </button>
         <span role="status" aria-live="polite" className="text-[12px] font-bold text-good-text">
-          {posted ? s.update.posted : ""}
+          {posted === "request" ? s.update.postedWithRequest : posted ? s.update.posted : ""}
         </span>
       </div>
     </form>

@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function NewProjectPage() {
   const gate = await gatePage("projects");
   if (!gate.ok) return gate.node;
-  const { member } = gate;
+  const { ctx, member } = gate;
   const supabase = await createClient();
   const opts = await loadFormOptions(supabase, member.org_id);
   const homeCurrency = opts.countries.find((c) => c.code === member.home_country)?.currency?.toUpperCase();
@@ -31,6 +31,8 @@ export default async function NewProjectPage() {
           currencies={opts.currencies}
           divisions={opts.divisions}
           cancelHref="/tools/nr-synergy/projects"
+          canAssignOwner={ctx.isHr}
+          canSetStatus={ctx.isHr}
           initial={{
             name: "",
             description: "",

@@ -9,6 +9,8 @@ import {
   matchStatic,
   normalizeQuery,
   orIlike,
+  snippetAround,
+  stripMarkdown,
   type SearchGroupKey,
 } from "./search";
 
@@ -63,6 +65,7 @@ const labels = {
   tickets: "T",
   posts: "Po",
   values: "V",
+  joe: "J",
   links: "L",
 } satisfies Record<SearchGroupKey, string>;
 const item = (id: string) => ({ id, title: id, href: "/" });
@@ -98,5 +101,24 @@ assert.deepEqual(highlightParts("Ana", ""), [{ text: "Ana", match: false }]);
 // joinSub
 assert.equal(joinSub("HR", null, " ", "MX"), "HR · MX");
 assert.equal(joinSub(null, ""), null);
+
+// stripMarkdown
+assert.equal(
+  stripMarkdown("# Travel *policy*\n\n- Book via **Tripgain** [portal](https://x.y)\n> note `code`"),
+  "Travel policy Book via Tripgain portal note code"
+);
+assert.equal(stripMarkdown("file_name_here and _em_"), "file_name_here and em");
+assert.equal(stripMarkdown("| a | b |\n|---|---|\n| 1 | 2 |"), "a b 1 2");
+assert.equal(stripMarkdown(null), "");
+
+// snippetAround
+const long = `${"alpha ".repeat(40)}per diem is USD 60 per day ${"omega ".repeat(40)}`;
+const snip = snippetAround(long, "per diem");
+assert.ok(snip && snip.includes("per diem"));
+assert.ok(snip!.startsWith("…") && snip!.endsWith("…"));
+assert.ok(snip!.length <= 145, `snippet too long: ${snip!.length}`);
+assert.equal(snippetAround("Short text about leave", "leave"), "Short text about leave");
+assert.equal(snippetAround("Short text", "zzz"), null);
+assert.ok(snippetAround(long, "the per diem rate")?.includes("diem")); // falls back to a word
 
 console.log("search.test.ts: all assertions passed");

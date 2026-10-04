@@ -44,16 +44,16 @@ function currentVersion(versions: VersionRow[], today: string): VersionRow | und
 }
 
 /**
- * The member's Library: non-archived documents that are global or for their
- * home country, matching their audience, with the current published version
- * and whether they've acknowledged it. Optionally a single document.
+ * Documents the member may read (non-archived, global or their home country,
+ * audience match) each paired with its current published version. Shared by
+ * the Library, global search and Ask NR Synergy so all three apply the same rules.
  */
-export async function loadLibrary(
+export async function loadCurrentDocs(
   supabase: SupabaseClient,
   ctx: NrsContext,
   member: NrsMember,
   opts: { documentId?: string; requiresAckOnly?: boolean; withBody?: boolean } = {}
-): Promise<LibraryDoc[]> {
+): Promise<{ doc: DocRow; version: VersionRow }[]> {
   const country = /^[A-Za-z]{2}$/.test(member.home_country) ? member.home_country : null;
   let q = supabase
     .from("nrs_documents")
@@ -94,6 +94,21 @@ export async function loadLibrary(
   const withVersion = docs
     .map((d) => ({ doc: d, version: currentVersion(byDoc.get(d.id) ?? [], today) }))
     .filter((x): x is { doc: DocRow; version: VersionRow } => !!x.version);
+  return withVersion;
+}
+
+/**
+ * The member's Library: non-archived documents that are global or for their
+ * home country, matching their audience, with the current published version
+ * and whether they've acknowledged it. Optionally a single document.
+ */
+export async function loadLibrary(
+  supabase: SupabaseClient,
+  ctx: NrsContext,
+  member: NrsMember,
+  opts: { documentId?: string; requiresAckOnly?: boolean; withBody?: boolean } = {}
+): Promise<LibraryDoc[]> {
+  const withVersion = await loadCurrentDocs(supabase, ctx, member, opts);
   if (!withVersion.length) return [];
 
   const { data: ackData, error: ackErr } = await supabase

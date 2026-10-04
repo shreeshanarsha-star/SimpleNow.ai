@@ -73,7 +73,10 @@ function ProjectCard({ p, meId, tz }: { p: ProjectWithMeta; meId: string; tz: st
             {p.country_code ? ` · ${p.country_code}` : ""}
           </p>
         </div>
-        <Pill tone={STATUS_TONE[p.status]}>{s.status[p.status]}</Pill>
+        <span className="flex flex-col items-end gap-1 shrink-0">
+          <Pill tone={STATUS_TONE[p.status]}>{s.status[p.status]}</Pill>
+          {p.status_requested && <Pill tone="warning">{fill(s.timeline.suggested, { status: s.status[p.status_requested] })}</Pill>}
+        </span>
       </div>
       {p.description && <p className="text-[12.5px] text-ink-2 line-clamp-2 break-words">{p.description}</p>}
       {p.next_steps && (
@@ -152,6 +155,10 @@ export default async function NrSynergyProjectsPage({ searchParams }: { searchPa
   const owners = Array.from(new Map(all.map((p) => [p.owner_member_id, p.ownerName])).entries()).sort((a, b) => a[1].localeCompare(b[1]));
 
   const showTotals = ctx.isManager || ctx.isHr;
+  // Owner / division / country filters only help people who see more than
+  // their own projects: HR (everything) and managers (their team's).
+  const wideView = ctx.isHr || (ctx.isManager && all.some((p) => p.owner_member_id !== member.id));
+  const subtitle = ctx.isHr ? s.subtitleAll : wideView ? s.subtitleTeam : s.subtitle;
   const totals = new Map<string, number[]>();
   for (const p of list) {
     if (p.value_minor == null || !p.value_currency) continue;
@@ -183,7 +190,7 @@ export default async function NrSynergyProjectsPage({ searchParams }: { searchPa
     <div className="flex flex-col gap-4">
       <PageHeader
         title={s.title}
-        subtitle={s.subtitle}
+        subtitle={subtitle}
         aside={
           <Link href="/tools/nr-synergy/projects/new" className={primaryButtonClass}>
             + {s.newProject}
@@ -218,7 +225,12 @@ export default async function NrSynergyProjectsPage({ searchParams }: { searchPa
             <h2 id="nrs-proj-filters" className="sr-only">
               {s.filters.label}
             </h2>
-            <form method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(5,minmax(0,1fr))_auto] lg:items-end">
+            <form
+              method="get"
+              className={`grid gap-3 sm:grid-cols-2 lg:items-end ${
+                wideView ? "lg:grid-cols-[minmax(0,1.6fr)_repeat(5,minmax(0,1fr))_auto]" : "lg:grid-cols-[minmax(0,1.6fr)_repeat(2,minmax(0,1fr))_auto]"
+              }`}
+            >
               <div className="min-w-0 sm:col-span-2 lg:col-span-1">
                 <label htmlFor="pf-q" className={labelClass}>
                   {s.filters.search}
@@ -237,19 +249,21 @@ export default async function NrSynergyProjectsPage({ searchParams }: { searchPa
                 tagF,
                 tags.map((t) => [t, `#${t}`])
               )}
-              {select(
-                "division",
-                s.filters.division,
-                divisionF,
-                divisions.map((d) => [d, d])
-              )}
-              {select(
-                "country",
-                s.filters.country,
-                countryF,
-                countries.map((c) => [c, c])
-              )}
-              {select("owner", s.filters.owner, ownerF, owners)}
+              {wideView &&
+                select(
+                  "division",
+                  s.filters.division,
+                  divisionF,
+                  divisions.map((d) => [d, d])
+                )}
+              {wideView &&
+                select(
+                  "country",
+                  s.filters.country,
+                  countryF,
+                  countries.map((c) => [c, c])
+                )}
+              {wideView && select("owner", s.filters.owner, ownerF, owners)}
               <div className="flex gap-2 sm:col-span-2 lg:col-span-1">
                 <button type="submit" className={primaryButtonClass}>
                   {s.filters.apply}

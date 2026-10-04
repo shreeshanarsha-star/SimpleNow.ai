@@ -21,6 +21,7 @@ import {
 import { canManageProject, latestUpdates, loadMySubmissions, memberInfo, projectMemberIds } from "../_server";
 import ArchiveButton from "./ArchiveButton";
 import ProjectUpdateForm from "./ProjectUpdateForm";
+import StatusRequestActions from "./StatusRequestActions";
 
 export const dynamic = "force-dynamic";
 
@@ -53,8 +54,7 @@ export default async function NrSynergyProjectPage({ params }: { params: Promise
   );
   if (!isUuid(id)) return notFound;
 
-  // RLS decides visibility: approved projects for the org; pending ones for
-  // the creator, owner, owner's manager and HR.
+  // RLS decides visibility: owner, starter, team members, their manager and HR.
   const { data: projData, error: projErr } = await supabase
     .from("nrs_projects")
     .select(PROJECT_COLUMNS)
@@ -81,6 +81,7 @@ export default async function NrSynergyProjectPage({ params }: { params: Promise
   const people = await memberInfo(admin, member.org_id, [
     ...memberIds,
     project.created_by_member,
+    project.status_requested_by,
     ...history.map((u) => u.member_id),
     ...history.map((u) => u.help_needed_member_id),
   ]);
@@ -136,6 +137,21 @@ export default async function NrSynergyProjectPage({ params }: { params: Promise
               {s.submissions.editResubmit} →
             </Link>
           )}
+        </div>
+      )}
+      {project.status_requested && !project.archived_at && (canManage || onProject) && (
+        <div role="status" className="rounded-md border border-warning bg-warning-wash px-4 py-3 text-[13px] text-ink">
+          <p className="font-bold">{s.statusRequest.title}</p>
+          <p className="mt-0.5">
+            {canManage
+              ? fill(s.statusRequest.body, {
+                  name: name(project.status_requested_by),
+                  from: s.status[project.status],
+                  to: s.status[project.status_requested],
+                })
+              : fill(s.statusRequest.waiting, { to: s.status[project.status_requested] })}
+          </p>
+          {canManage && <StatusRequestActions projectId={project.id} from={project.status} />}
         </div>
       )}
       {project.archived_at && (
@@ -211,6 +227,7 @@ export default async function NrSynergyProjectPage({ params }: { params: Promise
                 projectId={project.id}
                 people={pickable}
                 initialStatus={project.status}
+                canSetStatus={canManage}
                 initialNextSteps={project.next_steps ?? ""}
               />
             </Card>
@@ -238,7 +255,11 @@ export default async function NrSynergyProjectPage({ params }: { params: Promise
                           <time dateTime={u.created_at}>{fill(s.timeline.postedAt, { when: fmtDateTime(u.created_at, viewerTz) })}</time>
                         </span>
                       </p>
-                      <Pill tone={STATUS_TONE[u.status] ?? "neutral"}>{s.status[u.status] ?? u.status}</Pill>
+                      {u.status_proposed ? (
+                        <Pill tone="warning">{fill(s.timeline.suggested, { status: s.status[u.status] ?? u.status })}</Pill>
+                      ) : (
+                        <Pill tone={STATUS_TONE[u.status] ?? "neutral"}>{s.status[u.status] ?? u.status}</Pill>
+                      )}
                     </div>
                     <p className="text-[13px] text-ink-2 whitespace-pre-line break-words">{u.progress}</p>
                     {u.challenges && (

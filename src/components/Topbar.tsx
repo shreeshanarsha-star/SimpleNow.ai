@@ -64,7 +64,7 @@ export default function Topbar({
   const enterpriseTools = licensedTools.filter((t) => t.group === "licensed");
 
   return (
-    <header className="flex-shrink-0 bg-surface px-4 sm:px-[26px] py-3 flex items-center gap-2 sm:gap-2.5">
+    <header className="relative z-40 flex-shrink-0 bg-surface px-4 sm:px-[26px] py-3 flex items-center gap-2 sm:gap-2.5">
       <button
         type="button"
         aria-label="Open menu"

@@ -4,7 +4,7 @@ import { createRequest, NrsApprovalError } from "@/lib/nrs/approvals";
 import { guard, jsonError, readBody } from "@/app/tools/nr-synergy/_home/server";
 import { parseProjectInput, projectFields, replaceMembers } from "./_lib";
 
-// POST /api/nr-synergy/projects — any member starts a project. It is stored
+// POST /api/nr-synergy/projects — any member starts a project (they own it). It is stored
 // with approval_status = 'pending' and routed through the approval engine
 // (kind 'project': the creator's reporting manager; HR may also decide).
 // Writes use the service-role client: nrs_projects has no client write policy.
@@ -17,7 +17,14 @@ export async function POST(req: Request) {
   if (!body) return jsonError("Invalid request body");
 
   const admin = createAdminClient();
-  const parsed = await parseProjectInput(admin, member.org_id, body, member.id);
+  // The person who starts a project owns it and it starts as "Pending";
+  // only HR may start one on someone else's behalf or with another status.
+  const parsed = await parseProjectInput(admin, member.org_id, body, {
+    defaultOwner: member.id,
+    defaultStatus: "pending",
+    canAssignOwner: ctx.isHr,
+    canSetStatus: ctx.isHr,
+  });
   if (!parsed.ok) return jsonError(parsed.error);
   const input = parsed.input;
 

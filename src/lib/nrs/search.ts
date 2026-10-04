@@ -16,6 +16,7 @@ export type SearchGroupKey =
   | "tickets"
   | "posts"
   | "values"
+  | "joe"
   | "links";
 
 export interface SearchItem {
@@ -49,6 +50,7 @@ export const GROUP_ORDER: readonly SearchGroupKey[] = [
   "tickets",
   "posts",
   "values",
+  "joe",
   "links",
 ];
 
@@ -144,4 +146,59 @@ export function highlightParts(text: string, query: string): { text: string; mat
 export function joinSub(...bits: (string | null | undefined)[]): string | null {
   const s = bits.map((b) => (b ?? "").trim()).filter(Boolean).join(" · ");
   return s || null;
+}
+
+export const SNIPPET_LEN = 140;
+
+/** Markdown to plain, single-line text (headings, emphasis, links, images, lists, tables, code, HTML). */
+export function stripMarkdown(md: string | null | undefined): string {
+  if (!md) return "";
+  return md
+    .replace(/```[^\n]*\n?/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm, "")
+    .replace(/^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)*\|?\s*$/gm, " ")
+    .replace(/\|/g, " ")
+    .replace(/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/gm, " ")
+    .replace(/(^|[^\w*~])(\*\*|__|\*|_|~~)(?=\S)([^\n]*?\S)\2(?![\w*~])/g, "$1$3")
+    .replace(/`/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * ~`len` characters of `text` around the first case-insensitive match of
+ * `query` (falling back to its first word), snapped to word boundaries with
+ * ellipses. Null when nothing matches.
+ */
+export function snippetAround(text: string, query: string, len = SNIPPET_LEN): string | null {
+  const plain = text.replace(/\s+/g, " ").trim();
+  const q = query.trim().toLowerCase();
+  if (!plain || !q) return null;
+  const lower = plain.toLowerCase();
+  let at = lower.indexOf(q);
+  let qLen = q.length;
+  if (at < 0) {
+    const word = q.split(/\s+/).find((w) => w.length >= 3 && lower.includes(w));
+    if (!word) return null;
+    at = lower.indexOf(word);
+    qLen = word.length;
+  }
+  if (plain.length <= len) return plain;
+  let start = Math.max(0, at - Math.floor((len - qLen) / 3));
+  let end = Math.min(plain.length, start + len);
+  if (end === plain.length) start = Math.max(0, end - len);
+  if (start > 0) {
+    const sp = plain.indexOf(" ", start);
+    if (sp > 0 && sp < at) start = sp + 1;
+  }
+  if (end < plain.length) {
+    const sp = plain.lastIndexOf(" ", end);
+    if (sp > at + qLen) end = sp;
+  }
+  return `${start > 0 ? "…" : ""}${plain.slice(start, end).trim()}${end < plain.length ? "…" : ""}`;
 }

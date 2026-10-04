@@ -40,6 +40,8 @@ export default function ProjectForm({
   currencies,
   divisions,
   cancelHref,
+  canAssignOwner = false,
+  canSetStatus = false,
 }: {
   mode: ProjectFormMode;
   projectId?: string;
@@ -50,6 +52,10 @@ export default function ProjectForm({
   currencies: string[];
   divisions: string[];
   cancelHref: string;
+  /** HR, or the owner's manager when editing. Others always own what they start. */
+  canAssignOwner?: boolean;
+  /** HR, or the owner's manager. Others suggest a status in the weekly update. */
+  canSetStatus?: boolean;
 }) {
   const uid = useId();
   const router = useRouter();
@@ -88,8 +94,8 @@ export default function ProjectForm({
       ...(mode === "create" ? {} : { action: mode }),
       name: v.name,
       description: v.description,
-      owner_member_id: v.owner_member_id,
-      status: v.status,
+      ...(canAssignOwner ? { owner_member_id: v.owner_member_id } : {}),
+      ...(canSetStatus ? { status: v.status } : {}),
       value_amount: amount || null,
       value_currency: amount ? v.value_currency : null,
       next_steps: v.next_steps,
@@ -111,6 +117,8 @@ export default function ProjectForm({
   const submitLabel = mode === "create" ? s.form.submit : mode === "resubmit" ? s.form.resubmit : s.form.saveChanges;
   const opt = <span className="font-normal text-ink-muted"> ({s.fields.optional})</span>;
   const nameOf = (p: PersonOption) => (p.id === meId ? `${p.full_name} (${s.you})` : p.full_name);
+  const ownerPerson = people.find((p) => p.id === v.owner_member_id);
+  const ownerName = ownerPerson ? nameOf(ownerPerson) : v.owner_member_id === meId ? s.you : "—";
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-5" noValidate aria-busy={pending}>
@@ -145,36 +153,55 @@ export default function ProjectForm({
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label htmlFor={f("owner")} className={labelClass}>
-              {s.fields.owner}
-            </label>
-            <select id={f("owner")} className={inputClass} value={v.owner_member_id} onChange={(e) => set("owner_member_id", e.target.value)}>
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {nameOf(p)}
-                  {p.designation ? ` · ${p.designation}` : ""}
-                </option>
-              ))}
-            </select>
+            {canAssignOwner ? (
+              <>
+                <label htmlFor={f("owner")} className={labelClass}>
+                  {s.fields.owner}
+                </label>
+                <select id={f("owner")} className={inputClass} value={v.owner_member_id} onChange={(e) => set("owner_member_id", e.target.value)}>
+                  {people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {nameOf(p)}
+                      {p.designation ? ` · ${p.designation}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <>
+                <p className={labelClass}>{s.fields.owner}</p>
+                <p className="text-[13px] text-ink py-2">{ownerName}</p>
+              </>
+            )}
           </div>
           <div>
-            <label htmlFor={f("status")} className={labelClass}>
-              {s.fields.status}
-            </label>
-            <select
-              id={f("status")}
-              className={inputClass}
-              value={v.status}
-              onChange={(e) => {
-                if (isProjectStatus(e.target.value)) set("status", e.target.value);
-              }}
-            >
-              {PROJECT_STATUSES.map((st) => (
-                <option key={st} value={st}>
-                  {s.status[st]}
-                </option>
-              ))}
-            </select>
+            {canSetStatus ? (
+              <>
+                <label htmlFor={f("status")} className={labelClass}>
+                  {s.fields.status}
+                </label>
+                <select
+                  id={f("status")}
+                  className={inputClass}
+                  value={v.status}
+                  onChange={(e) => {
+                    if (isProjectStatus(e.target.value)) set("status", e.target.value);
+                  }}
+                >
+                  {PROJECT_STATUSES.map((st) => (
+                    <option key={st} value={st}>
+                      {s.status[st]}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <>
+                <p className={labelClass}>{s.fields.status}</p>
+                <p className="text-[13px] text-ink pt-2">{s.status[v.status]}</p>
+                <p className="text-[11.5px] text-ink-muted">{mode === "create" ? s.form.statusStartsPending : s.form.statusSetByManager}</p>
+              </>
+            )}
           </div>
         </div>
 

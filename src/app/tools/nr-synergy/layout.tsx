@@ -51,7 +51,7 @@ export default async function NrSynergyLayout({ children }: { children: React.Re
   return (
     <AppShell title={title}>
       <div className="flex-1 min-h-0 flex flex-col gap-4 sm:gap-5">
-        <div className="flex flex-col gap-3 sm:gap-4">
+        <div className="flex flex-col gap-4 sm:gap-5">
           <GlobalSearch helpHref={helpHref} />
           <NrsNav items={items} />
         </div>

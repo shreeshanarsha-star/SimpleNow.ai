@@ -6,8 +6,8 @@ import { home as s } from "@/lib/nrs/i18n/en/home";
 import { loadLibrary } from "../knowledge/_lib";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { projects as ps } from "@/lib/nrs/i18n/en/projects";
-import { PROJECT_COLUMNS, normaliseProject, type ProjectRow } from "../projects/_lib";
-import { withMeta } from "../projects/_server";
+import { PROJECT_COLUMNS, normaliseProject, type ProjectRow, type ProjectStatus } from "../projects/_lib";
+import { canManageProject, withMeta } from "../projects/_server";
 import { memberNames } from "./server";
 import { Card, EmptyLine, ErrorLine, SectionTitle, fill, fmtDateTime } from "./ui";
 
@@ -101,9 +101,9 @@ async function ackItems(supabase: SupabaseClient, ctx: NrsContext, member: NrsMe
 // Projects: the owner's approved projects that are overdue for a weekly
 // update (owner's timezone, Friday onward), plus the caller's submissions
 // that were sent back for changes.
-async function projectItems(supabase: SupabaseClient, member: NrsMember): Promise<NeedItem[]> {
+async function projectItems(supabase: SupabaseClient, ctx: NrsContext, member: NrsMember): Promise<NeedItem[]> {
   const admin = createAdminClient();
-  const [ownedRes, sentBackRes] = await Promise.all([
+  const [ownedRes, sentBackRes, statusReqRes] = await Promise.all([
     supabase
       .from("nrs_projects")
       .select(PROJECT_COLUMNS)
@@ -120,6 +120,16 @@ async function projectItems(supabase: SupabaseClient, member: NrsMember): Promis
       .eq("created_by_member", member.id)
       .eq("approval_status", "sent_back")
       .is("archived_at", null),
+    // status changes suggested in weekly updates, for the manager / HR to settle
+    ctx.isManager || ctx.isHr
+      ? supabase
+          .from("nrs_projects")
+          .select("id, org_id, name, status, status_requested, owner_member_id, created_by_member")
+          .eq("org_id", member.org_id)
+          .not("status_requested", "is", null)
+          .is("archived_at", null)
+          .limit(50)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (ownedRes.error) throw new Error(ownedRes.error.message);
   if (sentBackRes.error) throw new Error(sentBackRes.error.message);
@@ -140,6 +150,17 @@ async function projectItems(supabase: SupabaseClient, member: NrsMember): Promis
       title: fill(ps.home.sentBack, { name: p.name }),
       detail: ps.home.sentBackBody,
       href: `/tools/nr-synergy/projects/${p.id}/edit`,
+    });
+  }
+  type Req = { id: string; org_id: string; name: string; status: ProjectStatus; status_requested: ProjectStatus; owner_member_id: string; created_by_member: string | null };
+  for (const p of (statusReqRes.data ?? []) as Req[]) {
+    if (!(await canManageProject(admin, ctx, p))) continue;
+    items.push({
+      key: `proj-status-${p.id}`,
+      icon: "chart",
+      title: fill(ps.home.statusRequest, { name: p.name }),
+      detail: fill(ps.home.statusRequestBody, { from: ps.status[p.status], to: ps.status[p.status_requested] }),
+      href: `/tools/nr-synergy/projects/${p.id}`,
     });
   }
   return items;
@@ -185,7 +206,7 @@ export default async function NeedsYou({
   const settled = await Promise.allSettled([
     approvalItems(supabase, ctx, member),
     ctx.features.knowledge ? ackItems(supabase, ctx, member) : Promise.resolve([]),
-    ctx.features.projects ? projectItems(supabase, member) : Promise.resolve([]),
+    ctx.features.projects ? projectItems(supabase, ctx, member) : Promise.resolve([]),
     ctx.features.time ? checkInItems(supabase, member, tz) : Promise.resolve([]),
   ]);
   const [appr, acks, projs, logs] = settled;

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRequest, NrsApprovalError } from "@/lib/nrs/approvals";
 import { logAudit } from "@/lib/nrs/audit";
+import { notifyMembers } from "@/lib/nrs/notify";
+import { projects as strings } from "@/lib/nrs/i18n/en/projects";
 import { guard, isUuid, jsonError, readBody } from "@/app/tools/nr-synergy/_home/server";
 import { PROJECT_COLUMNS, normaliseProject, type ProjectRow } from "@/app/tools/nr-synergy/projects/_lib";
 import { canManageProject } from "@/app/tools/nr-synergy/projects/_server";
@@ -13,7 +15,11 @@ import { parseProjectInput, projectFields, replaceMembers, type ProjectInput } f
 //                                      While approval is pending, a change to an
 //                                      approval-relevant field restarts the approval.
 //   { action: "archive" | "unarchive" } owner's/creator's manager or HR
+//   { action: "status_decision", approve } owner's/creator's manager or HR: approve or
+//                                      decline the status suggested in a weekly update
 // Weekly updates are never edited here (see ./updates).
+
+const STATUS_LABEL = strings.status;
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const g = await guard("projects");
   if (!g.ok) return g.res;
@@ -38,7 +44,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (project.created_by_member !== member.id) return jsonError("Only the person who started this project can resubmit it.", 403);
     if (project.approval_status !== "sent_back") return jsonError("Only a project that was sent back can be resubmitted.", 409);
     if (project.archived_at) return jsonError("This project is archived.", 409);
-    const parsed = await parseProjectInput(admin, project.org_id, body, project.owner_member_id);
+    // Owner and status stay as they are: the starter can't reassign or re-status.
+    const parsed = await parseProjectInput(admin, project.org_id, body, {
+      defaultOwner: project.owner_member_id,
+      defaultStatus: project.status,
+      canAssignOwner: ctx.isHr,
+      canSetStatus: ctx.isHr,
+    });
     if (!parsed.ok) return jsonError(parsed.error);
     const { error: upErr } = await admin.from("nrs_projects").update(projectFields(parsed.input)).eq("id", id);
     if (upErr) return jsonError(upErr.message, 500);
@@ -62,14 +74,56 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   }
 
+  if (action === "status_decision") {
+    if (!(await canManageProject(admin, ctx, project))) {
+      return jsonError("Only the owner's manager or HR can change the status.", 403);
+    }
+    if (!project.status_requested) return jsonError("There's no status change waiting.", 409);
+    const approve = body.approve === true;
+    const requested = project.status_requested;
+    const patch = approve
+      ? { status: requested, status_requested: null, status_requested_by: null, status_requested_at: null }
+      : { status_requested: null, status_requested_by: null, status_requested_at: null };
+    const { error: stErr } = await admin.from("nrs_projects").update(patch).eq("id", id).eq("status_requested", requested);
+    if (stErr) return jsonError(stErr.message, 500);
+    await logAudit(admin, {
+      orgId: project.org_id,
+      actorUser: ctx.user.id,
+      entity: "nrs_projects",
+      entityId: id,
+      action: approve ? "status_approved" : "status_declined",
+      before: { status: project.status, status_requested: requested },
+      after: { status: approve ? requested : project.status },
+    });
+    const notify = [project.status_requested_by, project.owner_member_id].filter((m): m is string => !!m && m !== member.id);
+    await notifyMembers(admin, project.org_id, notify, {
+      title: approve
+        ? `${project.name}: status changed to ${STATUS_LABEL[requested]}`
+        : `${project.name}: status change to ${STATUS_LABEL[requested]} was declined`,
+      body: `${member.full_name} ${approve ? "approved" : "declined"} the suggested status.`,
+      link: `/tools/nr-synergy/projects/${id}`,
+    });
+    return NextResponse.json({ ok: true, id, status: approve ? requested : project.status });
+  }
+
   if (action === "update" || action === "archive" || action === "unarchive") {
     if (!(await canManageProject(admin, ctx, project))) {
       return jsonError("Only the owner's manager or HR can change this project.", 403);
     }
     if (action === "update") {
-      const parsed = await parseProjectInput(admin, project.org_id, body, project.owner_member_id);
+      // Managers and HR may reassign the owner and set the status.
+      const parsed = await parseProjectInput(admin, project.org_id, body, {
+        defaultOwner: project.owner_member_id,
+        defaultStatus: project.status,
+        canAssignOwner: true,
+        canSetStatus: true,
+      });
       if (!parsed.ok) return jsonError(parsed.error);
-      const fields = projectFields(parsed.input);
+      // A manager setting the status settles any suggestion that was waiting.
+      const fields =
+        parsed.input.status !== project.status
+          ? { ...projectFields(parsed.input), status_requested: null, status_requested_by: null, status_requested_at: null }
+          : projectFields(parsed.input);
       const restart = project.approval_status === "pending" && approvalFieldsChanged(project, parsed.input);
       const { error: upErr } = await admin.from("nrs_projects").update(fields).eq("id", id);
       if (upErr) return jsonError(upErr.message, 500);

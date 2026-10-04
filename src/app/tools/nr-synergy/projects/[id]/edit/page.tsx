@@ -76,6 +76,8 @@ export default async function EditProjectPage({ params }: { params: Promise<{ id
           currencies={opts.currencies.includes(currency) ? opts.currencies : [...opts.currencies, currency]}
           divisions={opts.divisions}
           cancelHref={`/tools/nr-synergy/projects/${project.id}`}
+          canAssignOwner={mode === "update" || ctx.isHr}
+          canSetStatus={mode === "update" || ctx.isHr}
           initial={{
             name: project.name,
             description: project.description ?? "",

@@ -17,11 +17,13 @@ import {
   normalizeQuery,
   orIlike,
   SEARCH_LIMIT,
+  snippetAround,
+  stripMarkdown,
   type SearchGroupKey,
   type SearchItem,
   type StaticEntry,
 } from "@/lib/nrs/search";
-import { audienceMatches, type DocAudience, type DocCategory } from "@/app/tools/nr-synergy/knowledge/_lib";
+import { loadCurrentDocs, type DocRow, type VersionRow } from "@/app/tools/nr-synergy/knowledge/_lib";
 
 export const dynamic = "force-dynamic";
 
@@ -92,15 +94,6 @@ function rows<T>(label: string, res: Settled): T[] {
 
 const EMPTY = Promise.resolve({ data: [] as unknown[], error: null });
 
-/** Document audiences the caller may see (mirrors audienceMatches), or null for "all of them". */
-function allowedAudiences(ctx: NrsContext): DocAudience[] | null {
-  if (ctx.isHr) return null;
-  const out: DocAudience[] = ["all"];
-  if (ctx.isManager) out.push("managers");
-  if (ctx.engagementType) out.push(ctx.engagementType);
-  return out;
-}
-
 export async function GET(req: NextRequest) {
   let g: Awaited<ReturnType<typeof requireNrs>>;
   try {
@@ -128,23 +121,12 @@ export async function GET(req: NextRequest) {
   const wantTickets = !!member && canTab("help", ctx);
   const wantPosts = !!member && canTab("home", ctx);
   const wantKnowledge = !!member && canTab("knowledge", ctx);
-  const docCountry = member && /^[A-Za-z]{2}$/.test(member.home_country) ? member.home_country : null;
-  const docAudiences = allowedAudiences(ctx);
-
-  let docsQuery = supabase
-    .from("nrs_documents")
-    .select("id, title, category, country_code, audience")
-    .eq("org_id", mOrg)
-    .is("archived_at", null)
-    .ilike("title", like);
-  docsQuery = docCountry ? docsQuery.or(`country_code.is.null,country_code.eq.${docCountry}`) : docsQuery.is("country_code", null);
-  if (docAudiences) docsQuery = docsQuery.in("audience", docAudiences);
 
   const projectsQuery = supabase
     .from("nrs_projects")
     .select("id, name, division, status, value_minor, value_currency")
     .eq("org_id", mOrg)
-    // Projects appear only once approved (pending ones live in "My submissions").
+    // Approved projects the caller may see (RLS: own, team member, their manager, HR).
     .eq("approval_status", "approved")
     .is("archived_at", null)
     .ilike("name", like);
@@ -152,7 +134,7 @@ export async function GET(req: NextRequest) {
   let ticketsQuery = supabase.from("nrs_tickets").select("id, title, category, status").eq("org_id", mOrg).ilike("title", like);
   if (!ctx.isHr) ticketsQuery = ticketsQuery.or(`member_id.eq.${mId},assignee_member_id.eq.${mId}`);
 
-  const [peopleR, docsR, projectsR, ticketsR, postsR, valuesR, quickR] = await Promise.allSettled([
+  const [peopleR, docsR, projectsR, ticketsR, postsR, valuesR, quickR, joeR] = await Promise.allSettled([
     wantPeople
       ? supabase
           .from("nrs_members")
@@ -164,20 +146,21 @@ export async function GET(req: NextRequest) {
           .order("full_name", { ascending: true })
           .limit(SEARCH_LIMIT)
       : EMPTY,
-    // Audience and country are filtered in the query; the extra headroom only
-    // covers documents dropped below for having no published version yet.
-    wantDocs ? docsQuery.order("title", { ascending: true }).limit(SEARCH_LIMIT * 2) : EMPTY,
+    // Documents: exactly the Library's rules (country, audience, current
+    // published version); title and body are matched below in JS so a match
+    // in an older or unpublished version never surfaces.
+    wantDocs && member ? loadCurrentDocs(supabase, ctx, member, { withBody: true }).then((data) => ({ data, error: null })) : EMPTY,
     wantProjects ? projectsQuery.order("name", { ascending: true }).limit(SEARCH_LIMIT) : EMPTY,
     wantTickets ? ticketsQuery.order("created_at", { ascending: false }).limit(SEARCH_LIMIT) : EMPTY,
     wantPosts
       ? supabase
           .from("nrs_posts")
-          .select("id, title, kind, published_at")
+          .select("id, title, body, kind, published_at")
           .eq("org_id", mOrg)
           .is("deleted_at", null)
           .not("published_at", "is", null)
           .lte("published_at", now)
-          .ilike("title", like)
+          .or(orIlike(["title", "body"], q))
           .order("published_at", { ascending: false })
           .limit(SEARCH_LIMIT)
       : EMPTY,
@@ -186,7 +169,7 @@ export async function GET(req: NextRequest) {
           .from("nrs_values")
           .select("id, name, meaning")
           .eq("org_id", mOrg)
-          .ilike("name", like)
+          .or(orIlike(["name", "meaning"], q))
           .order("sort", { ascending: true })
           .limit(SEARCH_LIMIT)
       : EMPTY,
@@ -195,9 +178,17 @@ export async function GET(req: NextRequest) {
           .from("nrs_quick_links")
           .select("id, title, url, description")
           .eq("org_id", mOrg)
-          .ilike("title", like)
+          .or(orIlike(["title", "description"], q))
           .order("sort", { ascending: true })
           .limit(SEARCH_LIMIT)
+      : EMPTY,
+    wantKnowledge
+      ? supabase
+          .from("nrs_joe_media")
+          .select("md_message_title, md_transcript")
+          .eq("org_id", mOrg)
+          .or(orIlike(["md_message_title", "md_transcript"], q))
+          .limit(1)
       : EMPTY,
   ]);
 
@@ -215,32 +206,23 @@ export async function GET(req: NextRequest) {
     href: `${NRS_BASE}/people?member=${encodeURIComponent(p.id)}`,
   }));
 
-  // Documents: audience rule from the Library, and only those with a published version.
-  let documents: SearchItem[] = [];
-  const docRows = rows<{ id: string; title: string; category: DocCategory; country_code: string | null; audience: DocAudience }>(
-    "documents",
-    docsR
-  ).filter((d) => audienceMatches(d.audience, ctx));
-  if (docRows.length) {
-    const { data: verData, error: verErr } = await supabase
-      .from("nrs_document_versions")
-      .select("document_id")
-      .in(
-        "document_id",
-        docRows.map((d) => d.id)
-      )
-      .not("published_at", "is", null);
-    if (verErr) console.error("[nrs-search] document versions:", verErr.message);
-    const published = new Set(((verData ?? []) as { document_id: string }[]).map((v) => v.document_id));
-    documents = docRows
-      .filter((d) => published.has(d.id))
-      .map((d) => ({
-        id: d.id,
-        title: d.title,
-        subtitle: joinSub(ks.category[d.category] ?? d.category, d.country_code ?? ks.global),
-        href: `${NRS_BASE}/knowledge/doc/${d.id}`,
-      }));
+  // Documents: title matches first, then body matches (with a snippet).
+  const ql = q.toLowerCase();
+  const titleHits: SearchItem[] = [];
+  const bodyHits: SearchItem[] = [];
+  for (const { doc, version } of rows<{ doc: DocRow; version: VersionRow }>("documents", docsR)) {
+    const meta = joinSub(ks.category[doc.category] ?? doc.category, doc.country_code ?? ks.global);
+    const href = `${NRS_BASE}/knowledge/doc/${doc.id}`;
+    if (doc.title.toLowerCase().includes(ql)) {
+      titleHits.push({ id: doc.id, title: doc.title, subtitle: meta, href });
+      continue;
+    }
+    const plain = stripMarkdown([version.summary, version.body_markdown].filter(Boolean).join("\n\n"));
+    if (plain.toLowerCase().includes(ql)) {
+      bodyHits.push({ id: doc.id, title: doc.title, subtitle: snippetAround(plain, q) ?? meta, href });
+    }
   }
+  const documents = [...titleHits, ...bodyHits];
 
   const projects: SearchItem[] = rows<{
     id: string;
@@ -270,17 +252,22 @@ export async function GET(req: NextRequest) {
     href: `${NRS_BASE}/help/${tk.id}`,
   }));
 
-  const posts: SearchItem[] = rows<{ id: string; title: string; kind: string; published_at: string }>("posts", postsR).map((p) => ({
+  const posts: SearchItem[] = rows<{ id: string; title: string; body: string | null; kind: string; published_at: string }>(
+    "posts",
+    postsR
+  ).map((p) => ({
     id: p.id,
     title: p.title,
-    subtitle: joinSub(p.kind.charAt(0).toUpperCase() + p.kind.slice(1), p.published_at.slice(0, 10)),
+    subtitle: p.title.toLowerCase().includes(ql)
+      ? joinSub(p.kind.charAt(0).toUpperCase() + p.kind.slice(1), p.published_at.slice(0, 10))
+      : snippetAround(stripMarkdown(p.body), q) ?? joinSub(p.kind, p.published_at.slice(0, 10)),
     href: NRS_BASE,
   }));
 
   const values: SearchItem[] = rows<{ id: string; name: string; meaning: string }>("values", valuesR).map((v) => ({
     id: v.id,
     title: v.name,
-    subtitle: v.meaning.length > 90 ? `${v.meaning.slice(0, 89)}…` : v.meaning,
+    subtitle: snippetAround(v.meaning, q) ?? (v.meaning.length > 90 ? `${v.meaning.slice(0, 89)}…` : v.meaning),
     href: `${NRS_BASE}/knowledge/joe#nrs-values`,
   }));
 
@@ -293,8 +280,16 @@ export async function GET(req: NextRequest) {
       } catch {
         host = null;
       }
-      return { id: l.id, title: l.title, subtitle: l.description || host, href: l.url, external: true };
+      const desc = l.description ? stripMarkdown(l.description) : "";
+      return { id: l.id, title: l.title, subtitle: (desc && snippetAround(desc, q)) || desc || host, href: l.url, external: true };
     });
+
+  const joe: SearchItem[] = rows<{ md_message_title: string | null; md_transcript: string | null }>("joe", joeR).map((j) => ({
+    id: "joe-md-message",
+    title: j.md_message_title?.trim() || s.joeMdMessage,
+    subtitle: snippetAround(stripMarkdown(j.md_transcript), q) ?? s.joeMdMessage,
+    href: `${NRS_BASE}/knowledge/joe`,
+  }));
 
   const groups = buildGroups(
     {
@@ -306,6 +301,7 @@ export async function GET(req: NextRequest) {
       tickets,
       posts,
       values,
+      joe,
       links,
     },
     LABELS
