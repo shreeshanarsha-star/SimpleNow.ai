@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRequest, NrsApprovalError } from "@/lib/nrs/approvals";
 import { guard, jsonError, readBody } from "@/app/tools/nr-synergy/_home/server";
+import { markProjectStarted } from "@/app/tools/nr-synergy/projects/_server";
 import { parseProjectInput, projectFields, replaceMembers } from "./_lib";
 
 // POST /api/nr-synergy/projects — any member starts a project (they own it). It is stored
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
       createdBy: ctx.user.id,
       summary: input.description.slice(0, 300),
     });
+    if (result.status === "approved") await markProjectStarted(admin, projectId);
     return NextResponse.json({ ok: true, id: projectId, status: result.status });
   } catch (e) {
     await admin.from("nrs_requests").delete().eq("kind", "project").eq("subject_id", projectId);

@@ -126,7 +126,7 @@ export const admin = {
     stepRole: "{role}",
     stepMember: "Specific person",
     stepWhen: "if amount > {amount}",
-    kinds: { leave: "Leave", correction: "Correction", expense: "Expense", travel: "Travel", invoice: "Invoice" },
+    kinds: { leave: "Leave", correction: "Correction", expense: "Expense", travel: "Travel", invoice: "Invoice", project: "Project", project_update: "Weekly project update" },
   },
   content: {
     tabs: { posts: "Posts", events: "Events", documents: "Documents", values: "Values", quick_links: "Quick links", joe: "JOE" },

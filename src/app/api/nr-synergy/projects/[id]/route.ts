@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRequest, NrsApprovalError } from "@/lib/nrs/approvals";
 import { logAudit } from "@/lib/nrs/audit";
-import { notifyMembers } from "@/lib/nrs/notify";
-import { projects as strings } from "@/lib/nrs/i18n/en/projects";
 import { guard, isUuid, jsonError, readBody } from "@/app/tools/nr-synergy/_home/server";
 import { PROJECT_COLUMNS, normaliseProject, type ProjectRow } from "@/app/tools/nr-synergy/projects/_lib";
 import { canManageProject } from "@/app/tools/nr-synergy/projects/_server";
@@ -11,15 +9,12 @@ import { parseProjectInput, projectFields, replaceMembers, type ProjectInput } f
 
 // POST /api/nr-synergy/projects/:id
 //   { action: "resubmit", ...fields }  creator, after a send-back: edit + fresh approval
-//   { action: "update", ...fields }    owner's/creator's manager or HR: edit fields.
+//   { action: "update", ...fields }    admins (HR / super admin) only: edit fields.
 //                                      While approval is pending, a change to an
 //                                      approval-relevant field restarts the approval.
-//   { action: "archive" | "unarchive" } owner's/creator's manager or HR
-//   { action: "status_decision", approve } owner's/creator's manager or HR: approve or
-//                                      decline the status suggested in a weekly update
+//   { action: "archive" | "unarchive" } admins only
 // Weekly updates are never edited here (see ./updates).
 
-const STATUS_LABEL = strings.status;
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const g = await guard("projects");
   if (!g.ok) return g.res;
@@ -74,44 +69,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   }
 
-  if (action === "status_decision") {
-    if (!(await canManageProject(admin, ctx, project))) {
-      return jsonError("Only the owner's manager or HR can change the status.", 403);
-    }
-    if (!project.status_requested) return jsonError("There's no status change waiting.", 409);
-    const approve = body.approve === true;
-    const requested = project.status_requested;
-    const patch = approve
-      ? { status: requested, status_requested: null, status_requested_by: null, status_requested_at: null }
-      : { status_requested: null, status_requested_by: null, status_requested_at: null };
-    const { error: stErr } = await admin.from("nrs_projects").update(patch).eq("id", id).eq("status_requested", requested);
-    if (stErr) return jsonError(stErr.message, 500);
-    await logAudit(admin, {
-      orgId: project.org_id,
-      actorUser: ctx.user.id,
-      entity: "nrs_projects",
-      entityId: id,
-      action: approve ? "status_approved" : "status_declined",
-      before: { status: project.status, status_requested: requested },
-      after: { status: approve ? requested : project.status },
-    });
-    const notify = [project.status_requested_by, project.owner_member_id].filter((m): m is string => !!m && m !== member.id);
-    await notifyMembers(admin, project.org_id, notify, {
-      title: approve
-        ? `${project.name}: status changed to ${STATUS_LABEL[requested]}`
-        : `${project.name}: status change to ${STATUS_LABEL[requested]} was declined`,
-      body: `${member.full_name} ${approve ? "approved" : "declined"} the suggested status.`,
-      link: `/tools/nr-synergy/projects/${id}`,
-    });
-    return NextResponse.json({ ok: true, id, status: approve ? requested : project.status });
-  }
-
   if (action === "update" || action === "archive" || action === "unarchive") {
     if (!(await canManageProject(admin, ctx, project))) {
-      return jsonError("Only the owner's manager or HR can change this project.", 403);
+      return jsonError("Only admins can change a project. Raise a Help ticket to request a change.", 403);
     }
     if (action === "update") {
-      // Managers and HR may reassign the owner and set the status.
+      // Admins may reassign the owner and set the status.
       const parsed = await parseProjectInput(admin, project.org_id, body, {
         defaultOwner: project.owner_member_id,
         defaultStatus: project.status,

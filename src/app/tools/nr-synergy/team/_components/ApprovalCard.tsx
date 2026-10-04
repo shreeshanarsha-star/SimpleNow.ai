@@ -15,6 +15,7 @@ function submittedOn(iso: string): string {
 
 function kindLabel(kind: NrsRequestKind): string {
   if (kind === "project") return ps.kind;
+  if (kind === "project_update") return ps.kindUpdate;
   return (s.kinds as Record<string, string>)[kind] ?? kind;
 }
 
@@ -79,7 +80,7 @@ export default function ApprovalCard({ item }: { item: QueueItem }) {
         )}
       </div>
 
-      <p className={item.kind === "project" ? "text-[15px] font-bold text-ink break-words" : "text-[13px] text-ink-2"}>{item.title}</p>
+      <p className={item.kind === "project" || item.kind === "project_update" ? "text-[15px] font-bold text-ink break-words" : "text-[13px] text-ink-2"}>{item.title}</p>
 
       {item.details.length > 0 && (
         <dl className="grid grid-cols-[minmax(96px,auto)_1fr] gap-x-3 gap-y-1 rounded-sm bg-page px-3 py-2 text-[12.5px]">

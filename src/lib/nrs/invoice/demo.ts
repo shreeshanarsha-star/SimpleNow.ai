@@ -366,6 +366,7 @@ export async function loadDemoData(admin: SupabaseClient, orgId: string, actorUs
             next_milestone: u.next_milestone,
             next_milestone_on: u.next_milestone_on,
             next_steps: u.next_milestone,
+            review_status: "approved",
             is_demo: true,
           }))
         );

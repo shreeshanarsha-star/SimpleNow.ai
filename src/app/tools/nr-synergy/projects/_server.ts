@@ -193,17 +193,33 @@ export async function loadMySubmissions(admin: SupabaseClient, member: NrsMember
   });
 }
 
-/** Managers (of the owner or the creator) and HR may edit fields and archive. */
+/**
+ * Only admins (HR / super admin) change project details, owner, status or
+ * archive. Managers approve projects and weekly updates; owners raise a ticket.
+ */
 export async function canManageProject(
-  admin: SupabaseClient,
+  _admin: SupabaseClient,
   ctx: NrsContext,
-  project: Pick<ProjectRow, "org_id" | "owner_member_id" | "created_by_member">
+  _project: Pick<ProjectRow, "org_id" | "owner_member_id" | "created_by_member">
 ): Promise<boolean> {
-  if (ctx.isHr) return true;
-  const me = ctx.member?.id;
-  if (!me) return false;
-  const people = await memberInfo(admin, project.org_id, [project.owner_member_id, project.created_by_member]);
-  return [project.owner_member_id, project.created_by_member].some((id) => !!id && people.get(id)?.manager_id === me);
+  return ctx.isHr;
+}
+
+/** A newly approved project starts "In progress" (only if it still says Pending). */
+export async function markProjectStarted(admin: SupabaseClient, projectId: string): Promise<void> {
+  const { error } = await admin.from("nrs_projects").update({ status: "in_progress" }).eq("id", projectId).eq("status", "pending");
+  if (error) console.error("[nrs] start project failed", projectId, error.message);
+}
+
+/** Manager approved a weekly update: its status and next steps now apply to the project. */
+export async function applyApprovedUpdate(admin: SupabaseClient, updateId: string): Promise<void> {
+  const { data } = await admin.from("nrs_project_updates").select("project_id, status, next_steps").eq("id", updateId).maybeSingle();
+  const u = data as { project_id: string; status: string; next_steps: string | null } | null;
+  if (!u) return;
+  const patch: Record<string, unknown> = { status: u.status };
+  if (u.next_steps && u.next_steps.trim()) patch.next_steps = u.next_steps;
+  const { error } = await admin.from("nrs_projects").update(patch).eq("id", u.project_id);
+  if (error) console.error("[nrs] apply weekly update failed", updateId, error.message);
 }
 
 /** Member ids on the project (owner first). */

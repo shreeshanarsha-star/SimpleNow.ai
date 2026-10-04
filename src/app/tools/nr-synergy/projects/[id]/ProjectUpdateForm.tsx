@@ -62,9 +62,8 @@ export default function ProjectUpdateForm({
       help_needed_member_id: v.help_needed_member_id || null,
     });
     if (ok) {
-      const asked = !canSetStatus && v.status !== initialStatus;
-      setV({ ...blank, status: canSetStatus ? v.status : initialStatus, next_steps: v.next_steps });
-      setPosted(asked ? "request" : "plain");
+      setV({ ...blank, status: initialStatus, next_steps: v.next_steps });
+      setPosted(canSetStatus ? "plain" : "request");
     }
   }
 

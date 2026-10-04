@@ -13,7 +13,7 @@ import { notifyMembers } from "./notify";
 // Routes should catch NrsApprovalError and return
 //   NextResponse.json({ error: e.message }, { status: e.status }).
 
-export type NrsRequestKind = "leave" | "correction" | "expense" | "travel" | "invoice" | "project";
+export type NrsRequestKind = "leave" | "correction" | "expense" | "travel" | "invoice" | "project" | "project_update";
 export type NrsApproverRole = "hr_admin" | "finance" | "super_admin" | "travel_desk";
 
 const APPROVER_ROLES: readonly NrsApproverRole[] = ["hr_admin", "finance", "super_admin", "travel_desk"];
@@ -31,7 +31,7 @@ export type ChainStep =
   | { type: "role"; role: NrsApproverRole; when?: ChainStepCondition }
   | { type: "member"; member_id: string; when?: ChainStepCondition };
 
-export const NRS_REQUEST_KINDS: readonly NrsRequestKind[] = ["leave", "correction", "expense", "travel", "invoice", "project"];
+export const NRS_REQUEST_KINDS: readonly NrsRequestKind[] = ["leave", "correction", "expense", "travel", "invoice", "project", "project_update"];
 
 export const DEFAULT_CHAINS: Readonly<Record<NrsRequestKind, ChainStep[]>> = {
   leave: [{ type: "manager" }],
@@ -44,6 +44,7 @@ export const DEFAULT_CHAINS: Readonly<Record<NrsRequestKind, ChainStep[]>> = {
   ],
   invoice: [{ type: "manager" }, { type: "role", role: "hr_admin" }, { type: "role", role: "finance" }],
   project: [{ type: "manager" }],
+  project_update: [{ type: "manager" }],
 };
 
 /** kind -> the table holding the subject row. */
@@ -54,6 +55,7 @@ export const SUBJECT_TABLES: Readonly<Record<NrsRequestKind, string>> = {
   travel: "nrs_travel_requests",
   invoice: "nrs_invoices",
   project: "nrs_projects",
+  project_update: "nrs_project_updates",
 };
 
 /**
@@ -68,6 +70,7 @@ const SUBJECT_STATUS_COLUMN: Readonly<Record<NrsRequestKind, string>> = {
   travel: "status",
   invoice: "status",
   project: "approval_status",
+  project_update: "review_status",
 };
 
 // Subject status while the request is in flight / when fully approved.
@@ -78,6 +81,7 @@ const SUBMITTED_STATUS: Readonly<Record<NrsRequestKind, string>> = {
   travel: "pending",
   invoice: "submitted",
   project: "pending",
+  project_update: "pending",
 };
 const APPROVED_STATUS: Readonly<Record<NrsRequestKind, string>> = {
   leave: "approved",
@@ -86,9 +90,10 @@ const APPROVED_STATUS: Readonly<Record<NrsRequestKind, string>> = {
   travel: "approved",
   invoice: "finance_approved",
   project: "approved",
+  project_update: "approved",
 };
 
-const REQUESTER_LINK: Readonly<Record<Exclude<NrsRequestKind, "project">, string>> = {
+const REQUESTER_LINK: Readonly<Record<Exclude<NrsRequestKind, "project" | "project_update">, string>> = {
   leave: "/tools/nr-synergy/time",
   correction: "/tools/nr-synergy/time",
   expense: "/tools/nr-synergy/money",
@@ -97,7 +102,9 @@ const REQUESTER_LINK: Readonly<Record<Exclude<NrsRequestKind, "project">, string
 };
 
 function requesterLink(kind: NrsRequestKind, subjectId: string): string {
-  return kind === "project" ? `/tools/nr-synergy/projects/${subjectId}` : REQUESTER_LINK[kind];
+  if (kind === "project") return `/tools/nr-synergy/projects/${subjectId}`;
+  if (kind === "project_update") return "/tools/nr-synergy/projects";
+  return REQUESTER_LINK[kind];
 }
 const APPROVER_LINK = "/tools/nr-synergy/team";
 
@@ -234,7 +241,7 @@ async function notifyApprovers(
   msg: { title: string; body?: string | null; link: string },
   requester: { memberId: string; userId: string | null }
 ): Promise<void> {
-  if (kind === "project") {
+  if (kind === "project" || kind === "project_update") {
     const ids = (await approverMemberIds(admin, orgId, step)).filter((id) => id !== requester.memberId);
     await notifyMembers(admin, orgId, ids, { title: msg.title, body: msg.body ?? undefined, link: msg.link });
     return;
@@ -249,7 +256,7 @@ async function notifyRequester(
   requester: { memberId: string; userId: string | null },
   msg: { title: string; body?: string | null; link: string }
 ): Promise<void> {
-  if (kind === "project") {
+  if (kind === "project" || kind === "project_update") {
     await notifyMembers(admin, orgId, [requester.memberId], { title: msg.title, body: msg.body ?? undefined, link: msg.link });
     return;
   }
@@ -525,7 +532,12 @@ export async function createRequest(
       orgId,
       steps[0],
       {
-        title: kind === "project" ? `${member.full_name} submitted a project for approval` : `${member.full_name} needs your approval`,
+        title:
+          kind === "project"
+            ? `${member.full_name} submitted a project for approval`
+            : kind === "project_update"
+              ? `${member.full_name} posted a weekly project update`
+              : `${member.full_name} needs your approval`,
         body: title.trim(),
         link: APPROVER_LINK,
       },
@@ -616,7 +628,7 @@ export async function decide(
   if (!request) throw new NrsApprovalError("Request not found", 404);
 
   // HR / admins may also decide project approvals addressed to a manager.
-  const hrOverride = canAct !== true && request.kind === "project" && ctx.isHr;
+  const hrOverride = canAct !== true && (request.kind === "project" || request.kind === "project_update") && ctx.isHr;
   if (canAct !== true && !hrOverride) throw new NrsApprovalError("You can't act on this approval step", 403);
 
   if (!ctx.isPlatformAdmin && ctx.orgId !== request.org_id) {

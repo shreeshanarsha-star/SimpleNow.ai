@@ -213,6 +213,15 @@ function detailsFor(kind: NrsRequestKind, row: SubjectRow | undefined, req: Requ
     add(ps.queue.division, sv(row, "division"));
     add(ps.queue.country, sv(row, "country_code"));
     add(ps.queue.members, sv(row, "__member_names"));
+  } else if (kind === "project_update") {
+    const status = sv(row, "status");
+    add(ps.queue.project, sv(row, "__project_name"));
+    add(ps.queue.statusThisWeek, status && isProjectStatus(status) ? ps.status[status] : status);
+    add(ps.timeline.progress, sv(row, "progress"));
+    add(ps.timeline.challenges, sv(row, "challenges"));
+    add(ps.timeline.plan, sv(row, "plan_of_action"));
+    add(ps.timeline.nextSteps, sv(row, "next_steps"));
+    add(ps.queue.postedAt, sv(row, "created_at") ? formatDay((sv(row, "created_at") as string).slice(0, 10)) : null);
   } else if (kind === "invoice") {
     add(s.fieldNumber, sv(row, "number"));
     add(s.fieldPeriod, range(sv(row, "period_start"), sv(row, "period_end")));
@@ -285,7 +294,7 @@ export async function loadApprovalQueue(admin: SupabaseClient, ctx: NrsContext):
   const live = mine.filter((st) => {
     const r = requests.get(st.request_id);
     if (!r || r.current_step !== st.step_no || r.member_id === me) return false;
-    return !hrProjectSteps.has(st.id) || r.kind === "project";
+    return !hrProjectSteps.has(st.id) || r.kind === "project" || r.kind === "project_update";
   });
   if (!live.length) return [];
 
@@ -342,6 +351,19 @@ export async function loadApprovalQueue(admin: SupabaseClient, ctx: NrsContext):
     }
   }
 
+  // Weekly updates: show which project they belong to and link to it.
+  const updateRows = live
+    .map((st) => requests.get(st.request_id)!)
+    .filter((r) => r.kind === "project_update")
+    .map((r) => subjects.get(r.subject_id))
+    .filter((row): row is SubjectRow => !!row);
+  if (updateRows.length) {
+    const pids = Array.from(new Set(updateRows.map((row) => row.project_id).filter((v): v is string => typeof v === "string")));
+    const { data: pRows } = await admin.from("nrs_projects").select("id, name").in("id", pids);
+    const pName = new Map(((pRows ?? []) as { id: string; name: string }[]).map((x) => [x.id, x.name]));
+    for (const row of updateRows) row.__project_name = typeof row.project_id === "string" ? pName.get(row.project_id) ?? null : null;
+  }
+
   return live
     .map((st): QueueItem => {
       const r = requests.get(st.request_id)!;
@@ -362,7 +384,12 @@ export async function loadApprovalQueue(admin: SupabaseClient, ctx: NrsContext):
         actingFor,
         asRole: asHr ? "hr_admin" : st.approver_type === "role" ? st.approver_role : null,
         details: detailsFor(r.kind, subjects.get(r.subject_id), r, tz),
-        href: r.kind === "project" ? `/tools/nr-synergy/projects/${r.subject_id}` : null,
+        href:
+          r.kind === "project"
+            ? `/tools/nr-synergy/projects/${r.subject_id}`
+            : r.kind === "project_update" && typeof subjects.get(r.subject_id)?.project_id === "string"
+              ? `/tools/nr-synergy/projects/${subjects.get(r.subject_id)?.project_id as string}`
+              : null,
       };
     })
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));

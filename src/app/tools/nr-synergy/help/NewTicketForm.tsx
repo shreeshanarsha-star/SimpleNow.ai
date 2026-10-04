@@ -7,12 +7,12 @@ import { useAction } from "../_home/useAction";
 import { ErrorLine, inputClass, labelClass, primaryButtonClass } from "../_home/ui";
 import { TICKET_CATEGORIES, TICKET_PRIORITIES, isTicketCategory, isTicketPriority, type TicketCategory, type TicketPriority } from "./_lib";
 
-export default function NewTicketForm() {
+export default function NewTicketForm({ prefill }: { prefill?: { category?: string; title?: string; description?: string } }) {
   const uid = useId();
-  const [category, setCategory] = useState<TicketCategory>("it");
+  const [category, setCategory] = useState<TicketCategory>(isTicketCategory(prefill?.category) ? prefill.category : "it");
   const [priority, setPriority] = useState<TicketPriority>("normal");
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const [title, setTitle] = useState(prefill?.title ?? "");
+  const [description, setDescription] = useState(prefill?.description ?? "");
   const [done, setDone] = useState(false);
   const { run, pending, error, setError } = useAction();
 

@@ -62,15 +62,15 @@ export interface ProjectUpdateRow {
   plan_of_action: string | null;
   help_needed_member_id: string | null;
   next_steps: string | null;
-  /** true when the poster suggested this status (manager decides). */
-  status_proposed: boolean;
+  /** Manager's decision on this weekly update. */
+  review_status: "pending" | "approved" | "rejected" | "sent_back";
   created_at: string;
 }
 
 export const PROJECT_COLUMNS =
   "id, org_id, name, description, division, owner_member_id, created_by_member, status, value_minor, value_currency, next_steps, approval_status, approved_at, tags, country_code, created_at, archived_at, status_requested, status_requested_by, status_requested_at";
 export const UPDATE_COLUMNS =
-  "id, project_id, member_id, status, progress, challenges, plan_of_action, help_needed_member_id, next_steps, status_proposed, created_at";
+  "id, project_id, member_id, status, progress, challenges, plan_of_action, help_needed_member_id, next_steps, review_status, created_at";
 
 /** supabase-js may hand bigint back as a string; normalise. */
 export function normaliseProject(r: ProjectRow): ProjectRow {

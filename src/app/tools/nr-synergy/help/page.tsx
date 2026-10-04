@@ -20,7 +20,12 @@ interface AssetRow {
   returned_on: string | null;
 }
 
-export default async function NrSynergyHelpPage() {
+type SP = Record<string, string | string[] | undefined>;
+const first = (v: string | string[] | undefined, max: number) => (typeof (Array.isArray(v) ? v[0] : v) === "string" ? String(Array.isArray(v) ? v[0] : v).slice(0, max) : "");
+
+export default async function NrSynergyHelpPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const sp = await searchParams;
+  const prefill = { category: first(sp.category, 20), title: first(sp.title, 200), description: first(sp.body, 4000) };
   const gate = await gatePage("help");
   if (!gate.ok) return gate.node;
   const { member, ctx } = gate;
@@ -71,7 +76,7 @@ export default async function NrSynergyHelpPage() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card labelledBy="nrs-new-ticket" className="self-start">
           <SectionTitle id="nrs-new-ticket">{s.newTicket}</SectionTitle>
-          <NewTicketForm />
+          <NewTicketForm prefill={prefill} />
         </Card>
 
         <div className="flex flex-col gap-4 min-w-0">

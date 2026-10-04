@@ -21,9 +21,15 @@ import {
 import { canManageProject, latestUpdates, loadMySubmissions, memberInfo, projectMemberIds } from "../_server";
 import ArchiveButton from "./ArchiveButton";
 import ProjectUpdateForm from "./ProjectUpdateForm";
-import StatusRequestActions from "./StatusRequestActions";
 
 export const dynamic = "force-dynamic";
+
+const REVIEW_TONE: Record<string, "warning" | "good" | "critical"> = {
+  pending: "warning",
+  approved: "good",
+  rejected: "critical",
+  sent_back: "critical",
+};
 
 function Field({ label, children, wide = false }: { label: string; children: ReactNode; wide?: boolean }) {
   return (
@@ -139,21 +145,6 @@ export default async function NrSynergyProjectPage({ params }: { params: Promise
           )}
         </div>
       )}
-      {project.status_requested && !project.archived_at && (canManage || onProject) && (
-        <div role="status" className="rounded-md border border-warning bg-warning-wash px-4 py-3 text-[13px] text-ink">
-          <p className="font-bold">{s.statusRequest.title}</p>
-          <p className="mt-0.5">
-            {canManage
-              ? fill(s.statusRequest.body, {
-                  name: name(project.status_requested_by),
-                  from: s.status[project.status],
-                  to: s.status[project.status_requested],
-                })
-              : fill(s.statusRequest.waiting, { to: s.status[project.status_requested] })}
-          </p>
-          {canManage && <StatusRequestActions projectId={project.id} from={project.status} />}
-        </div>
-      )}
       {project.archived_at && (
         <p role="status" className="rounded-md border border-border bg-page px-4 py-2.5 text-[13px] text-ink-2">
           {s.manage.archivedNotice}
@@ -174,6 +165,17 @@ export default async function NrSynergyProjectPage({ params }: { params: Promise
             <h1 id="nrs-project-title" className="text-[20px] sm:text-[24px] font-bold text-ink tracking-tight break-words min-w-0">
               {project.name}
             </h1>
+            {!canManage && onProject && live && (
+              <Link
+                href={`/tools/nr-synergy/help?category=admin&title=${encodeURIComponent(fill(s.changeRequest.ticketTitle, { name: project.name }))}&body=${encodeURIComponent(
+                  fill(s.changeRequest.ticketBody, { name: project.name, link: `https://www.simplenow.ai/tools/nr-synergy/projects/${project.id}` })
+                )}#nrs-new-ticket`}
+                className={secondaryButtonClass}
+                title={s.changeRequest.hint}
+              >
+                {s.changeRequest.button}
+              </Link>
+            )}
             {canManage && (
               <div className="flex flex-wrap items-start gap-2">
                 <Link href={`/tools/nr-synergy/projects/${project.id}/edit`} className={secondaryButtonClass}>
@@ -227,7 +229,7 @@ export default async function NrSynergyProjectPage({ params }: { params: Promise
                 projectId={project.id}
                 people={pickable}
                 initialStatus={project.status}
-                canSetStatus={canManage}
+                canSetStatus={false}
                 initialNextSteps={project.next_steps ?? ""}
               />
             </Card>
@@ -255,11 +257,10 @@ export default async function NrSynergyProjectPage({ params }: { params: Promise
                           <time dateTime={u.created_at}>{fill(s.timeline.postedAt, { when: fmtDateTime(u.created_at, viewerTz) })}</time>
                         </span>
                       </p>
-                      {u.status_proposed ? (
-                        <Pill tone="warning">{fill(s.timeline.suggested, { status: s.status[u.status] ?? u.status })}</Pill>
-                      ) : (
+                      <span className="flex flex-wrap items-center gap-1.5">
                         <Pill tone={STATUS_TONE[u.status] ?? "neutral"}>{s.status[u.status] ?? u.status}</Pill>
-                      )}
+                        <Pill tone={REVIEW_TONE[u.review_status] ?? "neutral"}>{s.timeline.review[u.review_status] ?? u.review_status}</Pill>
+                      </span>
                     </div>
                     <p className="text-[13px] text-ink-2 whitespace-pre-line break-words">{u.progress}</p>
                     {u.challenges && (
