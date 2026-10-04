@@ -8,6 +8,7 @@ import {
   ASK_MAX,
   ASK_SYSTEM_PROMPT,
   ASK_TOP_K,
+  WEB_SOURCES_PROMPT,
   WEB_SYSTEM_PROMPT,
   buildAskPrompt,
   chunkMarkdown,
@@ -126,8 +127,85 @@ async function askWeb(question: string): Promise<{ answer: string; sources: AskS
   return { answer, sources };
 }
 
-async function askTextModel(prompt: string): Promise<string> {
-  return callTextModel(`${ASK_SYSTEM_PROMPT}\n\n${prompt}`, MAX_TOKENS, AI_TIMEOUT_MS);
+async function askTextModel(prompt: string, system = ASK_SYSTEM_PROMPT): Promise<string> {
+  return callTextModel(`${system}\n\n${prompt}`, MAX_TOKENS, AI_TIMEOUT_MS);
+}
+
+// When the Anthropic key is rejected (e.g. not scoped to a workspace) skip
+// Claude for a while instead of paying a failed round trip on every question.
+let claudeDownUntil = 0;
+const CLAUDE_BACKOFF_MS = 10 * 60_000;
+
+function claudeUsable(): boolean {
+  return !!process.env.ANTHROPIC_API_KEY && process.env.NRS_ASK_PROVIDER !== "openai" && Date.now() >= claudeDownUntil;
+}
+
+function markClaudeDown(err: unknown) {
+  claudeDownUntil = Date.now() + CLAUDE_BACKOFF_MS;
+  console.error("[nrs-ask] claude unavailable, using fallback:", err instanceof Error ? err.message : err);
+}
+
+/** Company-knowledge answer: Claude first, OpenAI if Claude isn't usable. */
+async function answerInternal(prompt: string): Promise<string> {
+  if (claudeUsable()) {
+    try {
+      return await askClaude(prompt);
+    } catch (err) {
+      if (!hasAiKey()) throw err;
+      markClaudeDown(err);
+    }
+  }
+  return askTextModel(prompt);
+}
+
+/** Web results from Serper (Google), as numbered chunks. */
+async function serperResults(question: string): Promise<KnowledgeChunk[]> {
+  const key = process.env.SERPER_API_KEY;
+  if (!key) return [];
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12_000);
+  try {
+    const res = await fetch("https://google.serper.dev/search", {
+      method: "POST",
+      headers: { "X-API-KEY": key, "Content-Type": "application/json" },
+      body: JSON.stringify({ q: question, num: 6 }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`Serper ${res.status}`);
+    const json = (await res.json()) as {
+      answerBox?: { title?: string; answer?: string; snippet?: string; link?: string };
+      organic?: { title?: string; link?: string; snippet?: string }[];
+    };
+    const out: KnowledgeChunk[] = [];
+    const ab = json.answerBox;
+    if (ab && (ab.answer || ab.snippet) && ab.link && /^https:\/\//i.test(ab.link)) {
+      out.push({ id: "web-ab", title: ab.title || ab.link, text: [ab.answer, ab.snippet].filter(Boolean).join(" — "), href: ab.link, external: true });
+    }
+    for (const [i, o] of (json.organic ?? []).entries()) {
+      if (!o.link || !/^https:\/\//i.test(o.link) || !o.snippet) continue;
+      out.push({ id: `web-${i}`, title: o.title || o.link, text: o.snippet, href: o.link, external: true });
+    }
+    return out.slice(0, 6);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Public-web answer: Claude's web search tool, else Serper results + the text model. */
+async function answerWeb(question: string): Promise<{ answer: string; sources: AskSource[] } | null> {
+  if (claudeUsable()) {
+    try {
+      return await askWeb(question);
+    } catch (err) {
+      markClaudeDown(err);
+    }
+  }
+  if (!hasAiKey()) return null;
+  const results = await serperResults(question);
+  if (!results.length) return null;
+  const answer = normalizeCitations(await askTextModel(buildAskPrompt(question, results), WEB_SOURCES_PROMPT));
+  if (isNotFound(answer)) return null;
+  return { answer, sources: citedSources(answer, results) };
 }
 
 // Extracted PDF text per document version (versions are immutable once published).
@@ -384,7 +462,7 @@ export async function POST(req: NextRequest) {
     let answer: string;
     try {
       const prompt = buildAskPrompt(question, top);
-      answer = normalizeCitations(useClaude ? await askClaude(prompt) : await askTextModel(prompt));
+      answer = normalizeCitations(await answerInternal(prompt));
     } catch (err) {
       console.error("[nrs-ask] model:", err instanceof Error ? err.message : err);
       return NextResponse.json({ error: s.ask.failed }, { status: 502 });
@@ -401,12 +479,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(out, { headers });
   }
 
-  // 2. Then the public web (Claude's web search tool), when available.
-  if (useClaude && process.env.NRS_ASK_WEB !== "off") {
+  // 2. Then the public web: Claude's web search tool, else Serper + text model.
+  if (process.env.NRS_ASK_WEB !== "off") {
     try {
-      const web = await askWeb(question);
-      const out: AskResponse = { answer: normalizeCitations(web.answer), sources: web.sources, origin: "web" };
-      return NextResponse.json(out, { headers });
+      const web = await answerWeb(question);
+      if (web) {
+        const out: AskResponse = { answer: normalizeCitations(web.answer), sources: web.sources, origin: "web" };
+        return NextResponse.json(out, { headers });
+      }
     } catch (err) {
       console.error("[nrs-ask] web:", err instanceof Error ? err.message : err);
     }
