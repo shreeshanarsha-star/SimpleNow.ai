@@ -6,6 +6,7 @@ import Icon from "./Icon";
 import { VScroller } from "./Scroller";
 import ThemeSwitcher from "./ThemeSwitcher";
 import AppLauncher from "./AppLauncher";
+import TopbarCheckIn from "./TopbarCheckIn";
 import { createClient } from "@/lib/supabase/client";
 
 // Bengaluru -- fallback location used only when the browser doesn't
@@ -228,6 +229,9 @@ export default function TopbarStatus() {
       )}
 
       {now && <span className="hidden sm:block w-px h-6 bg-border flex-shrink-0" />}
+
+      {/* NR Synergy check-in (renders nothing for non-members) */}
+      <TopbarCheckIn />
 
       {/* 9-Dots App Launcher (Personal & Licensed Tools) */}
       <AppLauncher

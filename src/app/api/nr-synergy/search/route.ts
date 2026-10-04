@@ -70,7 +70,10 @@ function staticActions(ctx: NrsContext): StaticEntry[] {
     add("action-check-in", a.checkIn, `${NRS_BASE}/time`, "clock");
     add("action-apply-leave", a.applyLeave, `${NRS_BASE}/time`, "calendar");
   }
-  if (ctx.member && canTab("money", ctx)) add("action-submit-expense", a.submitExpense, `${NRS_BASE}/money`, "receipt");
+  if (ctx.member && canTab("money", ctx)) {
+    add("action-submit-expense", a.submitExpense, `${NRS_BASE}/money`, "receipt");
+    add("action-payslips", a.payslips, `${NRS_BASE}/money?tab=payslips`, "download");
+  }
   if (ctx.member && canTab("help", ctx)) add("action-raise-ticket", a.raiseTicket, `${NRS_BASE}/help#nrs-new-ticket`, "headset");
   // Admin lives in the separate Admin Console; HR get exactly one way there.
   if (ctx.isHr) add("action-open-admin-console", a.openAdminConsole, NRS_ADMIN_BASE, "gear");

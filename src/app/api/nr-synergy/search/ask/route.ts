@@ -25,6 +25,7 @@ import {
 } from "@/lib/nrs/ask";
 import { stripMarkdown } from "@/lib/nrs/search";
 import { formatMoney } from "@/lib/nrs/money";
+import { PAYSLIP_STATUSES, payslipMonth, payslipNumber } from "@/lib/nrs/invoice/payslip";
 import { NRS_BUCKET } from "@/lib/nrs/invoice/kit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadCurrentDocs } from "@/app/tools/nr-synergy/knowledge/_lib";
@@ -240,7 +241,7 @@ async function loadMine(ctx: NrsContext, member: NrsMember): Promise<KnowledgeCh
   const today = new Date().toISOString().slice(0, 10);
   const year = Number(today.slice(0, 4));
   const out: KnowledgeChunk[] = [];
-  const [mgrR, engR, termsR, balR] = await Promise.allSettled([
+  const [mgrR, engR, termsR, balR, slipsR] = await Promise.allSettled([
     member.manager_id
       ? admin.from("nrs_members").select("full_name, designation").eq("id", member.manager_id).eq("org_id", member.org_id).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -267,6 +268,15 @@ async function loadMine(ctx: NrsContext, member: NrsMember): Promise<KnowledgeCh
       [{ id: member.id, home_country: member.home_country, joined_on: member.joined_on, left_on: member.left_on }],
       [year]
     ),
+    admin
+      .from("nrs_invoices")
+      .select("id, number, period_start, total_minor, currency, status, paid_at")
+      .eq("org_id", member.org_id)
+      .eq("member_id", member.id)
+      .in("status", [...PAYSLIP_STATUSES])
+      .is("deleted_at", null)
+      .order("period_start", { ascending: false })
+      .limit(12),
   ]);
 
   const mgr = mgrR.status === "fulfilled" ? (mgrR.value.data as { full_name: string; designation: string | null } | null) : null;
@@ -333,6 +343,32 @@ async function loadMine(ctx: NrsContext, member: NrsMember): Promise<KnowledgeCh
       href: `${NRS_BASE}/money`,
     });
   }
+
+  const slips =
+    slipsR.status === "fulfilled" && !slipsR.value.error
+      ? ((slipsR.value.data ?? []) as { id: string; number: string; period_start: string; total_minor: number | string; currency: string; status: string; paid_at: string | null }[])
+      : [];
+  out.push({
+    id: "me-payslips",
+    title: s.ask.myPayslips,
+    text: slips.length
+      ? `Payslips (download from Money → Payslips): ` +
+        slips
+          .map((p) => {
+            let net = `${p.total_minor} ${p.currency}`;
+            try {
+              net = formatMoney(Number(p.total_minor), p.currency);
+            } catch {
+              // keep raw
+            }
+            return `${payslipMonth(p.period_start)} payslip ${payslipNumber(p.number)}, net pay ${net}, ${p.status === "paid" ? `paid ${String(p.paid_at ?? "").slice(0, 10)}` : "approved, payment in process"}.`;
+          })
+          .join(" ")
+      : ctx.engagementType === "payroll"
+        ? "Payslip / salary slip: payroll payslips are not available in NR Synergy yet; they will appear in Money → Payslips once the HR system is linked."
+        : "Payslip / salary slip: no payslips yet. A payslip is created automatically in Money → Payslips when an invoice is finance-approved.",
+    href: `${NRS_BASE}/money?tab=payslips`,
+  });
 
   const bal = balR.status === "fulfilled" ? balR.value.get(member.id)?.get(year) : undefined;
   if (bal) {

@@ -1,3 +1,4 @@
+import { notifyPayslipReady } from "@/lib/nrs/invoice/payslip";
 import { createRequest } from "@/lib/nrs/approvals";
 import { logAudit } from "@/lib/nrs/audit";
 import { notifyMembers } from "@/lib/nrs/notify";
@@ -88,7 +89,10 @@ export async function PATCH(req: Request, { params }: Params) {
       }
       const { error: expErr } = await g.admin.from("nrs_expenses").update({ status: "invoiced" }).eq("invoice_id", row.id);
       dbCheck(expErr, "Marking expenses invoiced");
-      if (requestId) await emailRequesterOutcome(g.admin, requestId);
+      if (requestId) {
+        await emailRequesterOutcome(g.admin, requestId);
+        await notifyPayslipReady(g.admin, row.id);
+      }
       await logAudit(g.admin, {
         orgId: g.orgId,
         actorUser: g.user.id,
@@ -118,8 +122,8 @@ export async function PATCH(req: Request, { params }: Params) {
       // In-app + email to the consultant (notifyMembers is best-effort, never throws).
       await notifyMembers(g.admin, g.orgId, [row.member_id], {
         title: `Paid: invoice ${row.number}`,
-        body: `${formatMoney(Number(row.total_minor), row.currency)} · ref ${paymentRef}`,
-        link: "/tools/nr-synergy/money",
+        body: `${formatMoney(Number(row.total_minor), row.currency)} · ref ${paymentRef}. Your payslip now shows it as paid.`,
+        link: "/tools/nr-synergy/money?tab=payslips",
       });
       await logAudit(g.admin, {
         orgId: g.orgId,

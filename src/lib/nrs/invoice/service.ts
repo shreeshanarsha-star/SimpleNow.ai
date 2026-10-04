@@ -286,12 +286,12 @@ export async function generateInvoice(
   return row;
 }
 
-async function brandName(admin: SupabaseClient, orgId: string): Promise<string> {
+export async function brandName(admin: SupabaseClient, orgId: string): Promise<string> {
   const { data } = await admin.from("nrs_org_settings").select("display_name").eq("org_id", orgId).maybeSingle();
   return (data as { display_name: string | null } | null)?.display_name || "NR Synergy";
 }
 
-async function orgName(admin: SupabaseClient, orgId: string): Promise<string> {
+export async function orgName(admin: SupabaseClient, orgId: string): Promise<string> {
   const { data } = await admin.from("organizations").select("name").eq("id", orgId).maybeSingle();
   return (data as { name: string | null } | null)?.name || "Natural Remedies";
 }

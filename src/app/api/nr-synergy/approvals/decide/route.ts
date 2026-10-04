@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { jsonError, readJson, str } from "../../time/_lib/server";
 import { applyCorrection } from "../_lib/applyCorrection";
 import { emailRequesterOutcome } from "../../invoices/_decisionEmail";
+import { notifyPayslipReady } from "@/lib/nrs/invoice/payslip";
 import { notifyTravelReadyToBook } from "@/app/tools/nr-synergy/desk/travel/_lib/server";
 
 const DECISIONS: readonly NrsDecision[] = ["approve", "reject", "send_back"];
@@ -52,6 +53,9 @@ export async function POST(req: Request) {
           if (applied.error) console.error("[nrs] apply correction failed", reqRow.subject_id, applied.error);
         } else if (reqRow?.kind === "travel") {
           await notifyTravelReadyToBook(admin, reqRow.org_id, reqRow.subject_id);
+        } else if (reqRow?.kind === "invoice") {
+          // Final approval: the consultant's payslip for the period now exists.
+          await notifyPayslipReady(admin, reqRow.subject_id);
         }
       }
       // Final outcomes (and invoice stage progress); no-op for other kinds/states.

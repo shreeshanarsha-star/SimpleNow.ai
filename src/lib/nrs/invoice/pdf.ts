@@ -25,7 +25,7 @@ export interface InvoicePdfInput {
 
 const TRANSLIT: Record<string, string> = { "\u0141": "L", "\u0142": "l", "\u0131": "i", "\u0110": "D", "\u0111": "d", "\u20b9": "INR " };
 
-function safeText(font: PDFFont, s: string): string {
+export function safeText(font: PDFFont, s: string): string {
   const stripped = s
     .replace(/[\u0141\u0142\u0131\u0110\u0111\u20b9]/g, (c) => TRANSLIT[c] ?? c)
     .normalize("NFD")
@@ -42,7 +42,7 @@ function safeText(font: PDFFont, s: string): string {
   return out;
 }
 
-function money(minor: number, currency: string): string {
+export function pdfMoney(minor: number, currency: string): string {
   const [whole, frac] = fromMinor(minor, currency).split(".");
   const neg = whole.startsWith("-");
   const digits = neg ? whole.slice(1) : whole;
@@ -50,7 +50,7 @@ function money(minor: number, currency: string): string {
   return `${neg ? "-" : ""}${grouped}${frac ? `.${frac}` : ""}`;
 }
 
-function fit(font: PDFFont, text: string, size: number, maxWidth: number): string {
+export function fit(font: PDFFont, text: string, size: number, maxWidth: number): string {
   if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
   let t = text;
   while (t.length > 1 && font.widthOfTextAtSize(`${t}...`, size) > maxWidth) t = t.slice(0, -1);
@@ -132,8 +132,8 @@ export async function renderInvoicePdf(inv: InvoicePdfInput): Promise<Uint8Array
     }
     text(fit(font, safeText(font, l.description), 9.5, cols.qty - cols.desc - 50), cols.desc, y, 9.5);
     right(l.quantity, cols.qty, y, 9.5);
-    right(money(l.unit_minor, inv.currency), cols.unit, y, 9.5);
-    right(money(l.amount_minor, inv.currency), cols.amt, y, 9.5, l.amount_minor < 0 ? bold : font);
+    right(pdfMoney(l.unit_minor, inv.currency), cols.unit, y, 9.5);
+    right(pdfMoney(l.amount_minor, inv.currency), cols.amt, y, 9.5, l.amount_minor < 0 ? bold : font);
     y -= 6;
     page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.4, color: rgb(0.88, 0.88, 0.85) });
     y -= 13;
@@ -142,7 +142,7 @@ export async function renderInvoicePdf(inv: InvoicePdfInput): Promise<Uint8Array
   y -= 6;
   const totalRow = (label: string, minor: number, strong = false) => {
     right(label, cols.unit - 10, y, strong ? 11 : 9.5, strong ? bold : font, strong ? ink : muted);
-    right(`${money(minor, inv.currency)} ${inv.currency}`, cols.amt, y, strong ? 11 : 9.5, strong ? bold : font);
+    right(`${pdfMoney(minor, inv.currency)} ${inv.currency}`, cols.amt, y, strong ? 11 : 9.5, strong ? bold : font);
     y -= strong ? 18 : 15;
   };
   totalRow("Fees", inv.subtotalMinor);

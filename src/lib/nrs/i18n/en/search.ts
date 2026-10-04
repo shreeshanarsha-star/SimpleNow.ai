@@ -41,7 +41,7 @@ export const search = {
   pageKeywords: {
     home: ["dashboard", "feed", "news", "kudos", "events"],
     time: ["attendance", "timesheet", "leave", "check in", "holidays"],
-    money: ["expenses", "invoices", "travel", "reimbursement", "payments"],
+    money: ["expenses", "invoices", "travel", "reimbursement", "payments", "payslips"],
     projects: ["milestones", "status", "updates"],
     people: ["directory", "colleagues", "org chart", "employees"],
     knowledge: ["policies", "documents", "library", "handbook", "sop", "forms"],
@@ -57,6 +57,7 @@ export const search = {
     checkIn: { title: "Check in", subtitle: "Start your day in Time", keywords: ["clock in", "attendance", "start day", "check-in"] },
     applyLeave: { title: "Apply leave", subtitle: "Request time off in Time", keywords: ["leave", "vacation", "holiday", "time off", "pto", "sick"] },
     submitExpense: { title: "Submit expense", subtitle: "Claim a receipt in Money", keywords: ["expense", "receipt", "claim", "reimbursement"] },
+    payslips: { title: "My payslips", subtitle: "Download your payslips in Money", keywords: ["payslip", "pay slip", "salary slip", "salary", "payment", "net pay", "download payslip"] },
     raiseTicket: { title: "Raise ticket", subtitle: "Ask IT, HR, payroll or admin", keywords: ["ticket", "support", "help", "issue", "problem", "request"] },
     openAdminConsole: {
       title: "Open Admin Console",
@@ -91,6 +92,7 @@ export const search = {
     myEngagement: "My engagement",
     myContract: "My contract",
     myLeave: "My leave balance",
+    myPayslips: "My payslips",
     privateOnly: "I can only share your own contract, pay and leave details, and I couldn't find this in your records. For anything else, please contact HR through a Help ticket.",
     fromCompany: "From NR Synergy",
     fromWeb: "From the web",
