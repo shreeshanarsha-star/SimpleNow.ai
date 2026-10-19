@@ -116,7 +116,7 @@ export function normalizeScene(raw: Record<string, unknown>, i: number, imageCou
 
 export function enforceReadability(s: Scene) {
   // Narration must fit the scene; headline kept punchy.
-  const maxVoiceWords = Math.max(3, Math.floor(s.duration * WORDS_PER_SECOND * 0.85));
+  const maxVoiceWords = Math.max(3, Math.floor(s.duration * WORDS_PER_SECOND * 0.78));
   s.voice = trimWords(s.voice || s.headline, maxVoiceWords);
   s.headline = trimWords(s.headline, s.kind === "hook" || s.kind === "cta" ? 8 : 9);
   if (s.sub) s.sub = trimWords(s.sub, 16);

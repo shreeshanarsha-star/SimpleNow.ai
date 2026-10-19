@@ -32,6 +32,7 @@ export interface RenderOptions {
   captions: boolean;
   watermarkLogo: boolean;
   voiceLengths?: (number | null)[]; // seconds of narration per scene
+  cpu?: boolean; // software (CPU-backed) canvases -- used for export, avoids GPU/encoder deadlocks
 }
 
 export const DIMENSIONS: Record<VideoFormat, [number, number]> = {
@@ -122,7 +123,20 @@ export class Renderer {
     const c = document.createElement("canvas");
     c.width = this.W;
     c.height = this.H;
+    // First getContext call fixes the backing store: CPU for export.
+    c.getContext("2d", this.opts.cpu ? { willReadFrequently: true } : undefined);
     return c;
+  }
+
+  // Free the large off-screen buffers (browsers cap total canvas memory).
+  private disposed = false;
+  dispose() {
+    this.disposed = true;
+    for (const c of [this.offA, this.offB, this.measure.canvas]) {
+      c.width = 0;
+      c.height = 0;
+    }
+    this.layoutCache.clear();
   }
 
   private makeGrain() {
@@ -793,6 +807,7 @@ export class Renderer {
 
   // ---------- frame ----------
   draw(ctx: Ctx, t: number) {
+    if (this.disposed) return;
     t = clamp(t, 0, this.total - 1e-3);
     const i = this.sceneAt(t);
     const lt = t - this.starts[i];

@@ -81,7 +81,7 @@ Rules:
 - Pace: 15s ≈ 4-5 scenes, 30s ≈ 6-8, 45s ≈ 8-10, 60s ≈ 10-12. Durations in seconds must add up to the video length. Hook 2-3s, logo_sting 2-3s, CTA 3-5s.
 - Vary scene kinds and visual rhythm; spread different imageIndex values across scenes.
 - On-screen text is short and punchy. Headlines max 7 words.
-- "voice" = narration line for that scene, natural spoken English, about 2.3 words per second of scene duration (fewer is fine).
+- "voice" = narration line for that scene, natural spoken English, about 2 words per second of scene duration (fewer is fine; leave breathing room).
 - Use only facts present in the brief or visible in the images. Never invent prices, numbers, awards, certifications, testimonials or health claims.
 - Choose "transition" (fade|slide|zoom|wipe) and "motion" (push_in|pull_out|pan_left|pan_right) per scene for variety.
 Return JSON only:

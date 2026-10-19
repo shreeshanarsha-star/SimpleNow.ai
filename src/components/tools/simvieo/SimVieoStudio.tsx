@@ -168,6 +168,8 @@ export default function SimVieoStudio() {
   }, [plan, palette, assets, fonts, captionsOn, voiceLengths, format, fontsReady]);
 
   // ---------- drawing ----------
+  useEffect(() => () => previewRenderer?.dispose(), [previewRenderer]);
+
   const drawAt = useCallback(
     (t: number) => {
       const c = canvasRef.current;
@@ -446,6 +448,7 @@ export default function SimVieoStudio() {
     if (!plan || !palette || !previewRenderer || phase !== "ready") return;
     const r = new Renderer(format, plan, palette, assets, fonts, { captions: captionsOn, watermarkLogo: true, voiceLengths }, 0.25);
     setQuality(reviewQuality(plan, palette, r, duration, { hasLogo: !!logo, imageCount: images.length, voiceFixes }));
+    r.dispose();
   }, [plan, palette, previewRenderer, phase, format, assets, fonts, captionsOn, voiceLengths, duration, logo, images.length, voiceFixes]);
 
   const updateScene = (i: number, patch: Partial<Scene>) => {
@@ -502,8 +505,8 @@ export default function SimVieoStudio() {
     cancelRef.current = { cancelled: false };
     try {
       await ensureFontsLoaded();
-      const r = new Renderer(format, plan, palette, assets, fonts, { captions: captionsOn, watermarkLogo: true, voiceLengths }, hq ? 1 : 2 / 3);
-      const res = await exportVideo(r, soundtrack, setProgress, cancelRef.current);
+      const r = new Renderer(format, plan, palette, assets, fonts, { captions: captionsOn, watermarkLogo: true, voiceLengths, cpu: true }, hq ? 1 : 2 / 3);
+      const res = await exportVideo(r, soundtrack, setProgress, cancelRef.current).finally(() => r.dispose());
       const slug = (plan.brandName || plan.title || "video").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "video";
       const name = `simvieo-${slug}-${format.replace(":", "x")}.${res.ext}`;
       const url = URL.createObjectURL(res.blob);

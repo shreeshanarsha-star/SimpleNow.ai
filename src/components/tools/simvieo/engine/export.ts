@@ -21,14 +21,19 @@ export async function exportVideo(
   const canvas = document.createElement("canvas");
   canvas.width = renderer.W;
   canvas.height = renderer.H;
-  const ctx = canvas.getContext("2d", { alpha: false })!;
+  // CPU-backed canvas: frames are read back for encoding every tick, and
+  // GPU-canvas + hardware-encoder combos can stall on some machines.
+  const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true })!;
 
   if (typeof window !== "undefined" && "VideoEncoder" in window) {
-    try {
-      return await viaWebCodecs(renderer, canvas, ctx, audio, onProgress, signal);
-    } catch (err) {
-      if (signal.cancelled) throw err;
-      console.warn("WebCodecs export failed, falling back to MediaRecorder:", err);
+    for (const hw of ["no-preference", "prefer-software"] as const) {
+      try {
+        return await viaWebCodecs(renderer, canvas, ctx, audio, onProgress, signal, hw);
+      } catch (err) {
+        if (signal.cancelled) throw err;
+        console.warn(`WebCodecs export (${hw}) failed:`, err);
+        onProgress(0);
+      }
     }
   }
   return viaRecorder(renderer, canvas, ctx, audio, onProgress, signal);
@@ -40,7 +45,8 @@ async function viaWebCodecs(
   ctx: CanvasRenderingContext2D,
   audio: AudioBuffer | null,
   onProgress: (p: number) => void,
-  signal: { cancelled: boolean }
+  signal: { cancelled: boolean },
+  hardwareAcceleration: "no-preference" | "prefer-software"
 ): Promise<ExportResult> {
   const mb = await import("mediabunny");
   const videoCodec = await mb.getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"], {
@@ -60,6 +66,7 @@ async function viaWebCodecs(
     codec: videoCodec,
     bitrate: canvas.width * canvas.height > 1_500_000 ? 8_000_000 : 5_000_000,
     keyFrameInterval: 2,
+    hardwareAcceleration,
   });
   output.addVideoTrack(video, { frameRate: FPS });
   let audioSrc: InstanceType<typeof mb.AudioBufferSource> | null = null;
@@ -77,14 +84,18 @@ async function viaWebCodecs(
     }
     const t = f / FPS;
     renderer.draw(ctx, t);
-    await video.add(t, 1 / FPS);
+    // Watchdog: an encoder that stops accepting frames is abandoned so the
+    // next strategy can run, instead of spinning forever.
+    await withTimeout(video.add(t, 1 / FPS), f === 0 ? 20000 : 10000, async () => {
+      await output.cancel().catch(() => {});
+    });
     if (f % 6 === 0) {
       onProgress((f / frames) * 0.95);
       await new Promise((r) => setTimeout(r, 0)); // keep the UI responsive
     }
   }
-  if (audioSrc && audio) await audioSrc.add(audio);
-  await output.finalize();
+  if (audioSrc && audio) await withTimeout(audioSrc.add(audio), 30000, () => output.cancel().catch(() => {}));
+  await withTimeout(output.finalize(), 30000, () => output.cancel().catch(() => {}));
   onProgress(1);
   const buf = (output.target as InstanceType<typeof mb.BufferTarget>).buffer!;
   return { blob: new Blob([buf], { type: "video/mp4" }), ext: "mp4", method: "webcodecs", codec: videoCodec };
@@ -133,7 +144,21 @@ async function viaRecorder(
   await done;
   ac.close();
   if (signal.cancelled) throw new Error("cancelled");
+  if (!chunks.length) throw new Error("This browser couldn't encode the video. Please reload the page or try Chrome or Edge.");
   const isMp4 = (rec.mimeType || mime).includes("mp4");
   onProgress(1);
   return { blob: new Blob(chunks, { type: isMp4 ? "video/mp4" : "video/webm" }), ext: isMp4 ? "mp4" : "webm", method: "recorder", codec: isMp4 ? "avc" : "vp9" };
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => unknown): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    p.finally(() => clearTimeout(timer)),
+    new Promise<T>((_, reject) => {
+      timer = setTimeout(() => {
+        onTimeout();
+        reject(new Error("encoder_stalled"));
+      }, ms);
+    }),
+  ]);
 }
