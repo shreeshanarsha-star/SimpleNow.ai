@@ -219,6 +219,7 @@ export const PERSONAL_TOOLS: Department = {
     { n: "Timer / Stopwatch", s: "live", href: "/tools/timer", bundled: true },
     { n: "Unit Converter", s: "live", href: "/tools/converter", bundled: true },
     { n: "Jotz", s: "live", href: "/tools/jotz", bundled: true },
+    { n: "SimVieo", s: "live", href: "/tools/simvieo", bundled: true },
     { n: "Intelexa.ai", s: "live", href: "/tools/intelexa", bundled: true },
     { n: "Shortlist.ai", s: "live", href: "/tools/shortlist-ai" },
     { n: "JD Studio.ai", s: "live", href: "/tools/jd-studio-ai" },

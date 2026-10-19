@@ -17,6 +17,7 @@ export const PERSONAL_TOOL_DEFS: LicensedTool[] = [
   { name: "Timer / Stopwatch", href: "/tools/timer", icon: "play", group: "personal" },
   { name: "Unit Converter", href: "/tools/converter", icon: "chart", group: "personal" },
   { name: "Jotz", href: "/tools/jotz", icon: "edit", group: "personal" },
+  { name: "SimVieo", href: "/tools/simvieo", icon: "film", group: "personal" },
 ];
 
 export const BUNDLED_TOOLS: LicensedTool[] = [
@@ -35,6 +36,7 @@ const TOOL_ICONS: Record<string, string> = {
   "Timer / Stopwatch": "play",
   "Unit Converter": "chart",
   "Jotz": "edit",
+  "SimVieo": "film",
   "Intelexa.ai": "mic",
   "Team Chat": "chat",
   "Contracts & eSign": "scale",

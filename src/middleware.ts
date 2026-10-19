@@ -49,7 +49,7 @@ export async function middleware(request: NextRequest) {
   // now — a real Supabase auth user, just unconfirmed — so every
   // existing owner_id/RLS-shaped route downstream works completely
   // unchanged; only the per-tool usage cap in guestAccess.ts is new.
-  const GUEST_ACCESSIBLE_PATHS = ["/tools/jd-studio-ai"];
+  const GUEST_ACCESSIBLE_PATHS = ["/tools/jd-studio-ai", "/tools/simvieo"];
   const isGuestAccessiblePath = GUEST_ACCESSIBLE_PATHS.some((p) =>
     request.nextUrl.pathname.startsWith(p)
   );
