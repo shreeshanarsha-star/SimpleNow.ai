@@ -143,6 +143,15 @@ export function normalizePlan(raw: unknown, brief: BriefInput, source: Plan["sou
       )
     );
   }
+  // If the user gave product images, the product must be seen: promote the
+  // first non-hook/non-CTA scene to a product hero when the AI skipped images.
+  if (brief.imageCount > 0 && !scenes.some((s) => s.imageIndex !== undefined)) {
+    const k = scenes.findIndex((s, i) => i > 0 && i < scenes.length - 1 && s.kind !== "logo_sting");
+    if (k > 0) {
+      scenes[k].kind = "product_hero";
+      scenes[k].imageIndex = 0;
+    }
+  }
   fitDurations(scenes, brief.duration);
   scenes.forEach(enforceReadability);
 

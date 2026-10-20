@@ -801,6 +801,7 @@ export default function SimVieoStudio() {
                     <div className="w-56 h-2 rounded-full bg-white/20 overflow-hidden">
                       <div className="h-full bg-white" style={{ width: `${Math.round(progress * 100)}%` }} />
                     </div>
+                    <p className="text-white/70 text-[11px]">Keep this tab open and in front until it finishes.</p>
                     <button type="button" onClick={() => (cancelRef.current.cancelled = true)} className="text-white/80 text-[12px] underline">
                       Cancel
                     </button>

@@ -94,13 +94,13 @@ async function viaWebCodecs(
     renderer.draw(ctx, t);
     // Watchdog: an encoder that stops accepting frames is abandoned so the
     // next strategy can run, instead of spinning forever.
-    await withTimeout(video.add(t, 1 / FPS), f === 0 ? 20000 : 10000, async () => {
+    await withTimeout(video.add(t, 1 / FPS), f === 0 ? 30000 : 20000, async () => {
       await output.cancel().catch(() => {});
     });
     if (f === 0) log("first frame accepted");
     if (f % 6 === 0) {
       onProgress((f / frames) * 0.95);
-      await new Promise((r) => setTimeout(r, 0)); // keep the UI responsive
+      await yieldToUi(); // keep the UI responsive (not throttled in background tabs)
     }
   }
   if (audioSrc && audio) await withTimeout(audioSrc.add(audio), 30000, () => output.cancel().catch(() => {}));
@@ -159,15 +159,32 @@ async function viaRecorder(
   return { blob: new Blob(chunks, { type: isMp4 ? "video/mp4" : "video/webm" }), ext: isMp4 ? "mp4" : "webm", method: "recorder", codec: isMp4 ? "avc" : "vp9" };
 }
 
+// MessageChannel callbacks aren't subject to background-tab timer throttling.
+function yieldToUi() {
+  return new Promise<void>((resolve) => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => resolve();
+    ch.port2.postMessage(0);
+  });
+}
+
+// Watchdog that only counts time while the tab is visible: a hidden tab is
+// throttled by the browser and must not be mistaken for a stuck encoder.
 function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => unknown): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
+  let timer: ReturnType<typeof setInterval>;
+  let waited = 0;
   return Promise.race([
-    p.finally(() => clearTimeout(timer)),
+    p.finally(() => clearInterval(timer)),
     new Promise<T>((_, reject) => {
-      timer = setTimeout(() => {
-        onTimeout();
-        reject(new Error("encoder_stalled"));
-      }, ms);
+      timer = setInterval(() => {
+        if (typeof document !== "undefined" && document.hidden) return;
+        waited += 500;
+        if (waited >= ms) {
+          clearInterval(timer);
+          onTimeout();
+          reject(new Error("encoder_stalled"));
+        }
+      }, 500);
     }),
   ]);
 }
