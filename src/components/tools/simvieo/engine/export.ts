@@ -11,6 +11,7 @@ export interface ExportResult {
 }
 
 export const FPS = 30;
+const MEDIABUNNY_URL = "/simvieo/mediabunny-1.61.6.min.mjs";
 
 export async function exportVideo(
   renderer: Renderer,
@@ -48,7 +49,13 @@ async function viaWebCodecs(
   signal: { cancelled: boolean },
   hardwareAcceleration: "no-preference" | "prefer-software"
 ): Promise<ExportResult> {
-  const mb = await import("mediabunny");
+  // Load Mediabunny's prebuilt browser bundle as-is (served from /public)
+  // rather than the webpack-processed source: the bundled build stalled the
+  // H.264 encoder on its first frame in some Chromium builds, the prebuilt
+  // one does not.
+  const mb = (await import(/* webpackIgnore: true */ MEDIABUNNY_URL)) as typeof import("mediabunny");
+  const log = (m: string) => console.info(`[simvieo-export] ${m}`);
+  log(`module loaded (${hardwareAcceleration})`);
   const videoCodec = await mb.getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"], {
     width: canvas.width,
     height: canvas.height,
@@ -75,6 +82,7 @@ async function viaWebCodecs(
     output.addAudioTrack(audioSrc);
   }
   await output.start();
+  log(`started ${videoCodec}/${audioCodec} ${canvas.width}x${canvas.height}`);
 
   const frames = Math.ceil(renderer.total * FPS);
   for (let f = 0; f < frames; f++) {
@@ -89,6 +97,7 @@ async function viaWebCodecs(
     await withTimeout(video.add(t, 1 / FPS), f === 0 ? 20000 : 10000, async () => {
       await output.cancel().catch(() => {});
     });
+    if (f === 0) log("first frame accepted");
     if (f % 6 === 0) {
       onProgress((f / frames) * 0.95);
       await new Promise((r) => setTimeout(r, 0)); // keep the UI responsive
