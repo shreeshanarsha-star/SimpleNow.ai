@@ -104,3 +104,62 @@ export function toBcp47(codeOrName: string | null | undefined): string {
 export function isRtl(codeOrName: string | null | undefined): boolean {
   return !!findLanguage(codeOrName)?.rtl;
 }
+
+// Unicode script ranges -> the languages written in that script. Used to
+// sanity-check speech-to-text language labels (Whisper sometimes labels
+// Kannada or other Indic speech as Arabic/Urdu), and to name the language
+// of a transcript when the STT model returns no label.
+const SCRIPTS: { re: RegExp; codes: string[] }[] = [
+  { re: /[ಀ-೿]/g, codes: ["kn"] },
+  { re: /[஀-௿]/g, codes: ["ta"] },
+  { re: /[ఀ-౿]/g, codes: ["te"] },
+  { re: /[ഀ-ൿ]/g, codes: ["ml"] },
+  { re: /[઀-૿]/g, codes: ["gu"] },
+  { re: /[਀-੿]/g, codes: ["pa"] },
+  { re: /[଀-୿]/g, codes: ["or"] },
+  { re: /[ঀ-৿]/g, codes: ["bn", "as"] },
+  { re: /[඀-෿]/g, codes: ["si"] },
+  { re: /[ऀ-ॿ]/g, codes: ["hi", "mr", "ne", "sa"] },
+  { re: /[؀-ۿݐ-ݿ]/g, codes: ["ar", "ur", "fa", "ps", "sd"] },
+  { re: /[֐-׿]/g, codes: ["he", "yi"] },
+  { re: /[฀-๿]/g, codes: ["th"] },
+  { re: /[က-႟]/g, codes: ["my"] },
+  { re: /[ក-៿]/g, codes: ["km"] },
+  { re: /[ሀ-፿]/g, codes: ["am"] },
+  { re: /[Ͱ-Ͽ]/g, codes: ["el"] },
+  { re: /[Ѐ-ӿ]/g, codes: ["ru", "uk", "bg", "sr", "kk", "be", "mk", "mn"] },
+  { re: /[가-힯ᄀ-ᇿ]/g, codes: ["ko"] },
+  { re: /[぀-ヿ]/g, codes: ["ja"] },
+  { re: /[一-鿿]/g, codes: ["zh", "ja"] },
+];
+
+/**
+ * Languages consistent with the dominant non-Latin script in `text`, or
+ * null when the text is Latin-script / too short to tell.
+ */
+export function scriptLanguages(text: string): string[] | null {
+  let best: { n: number; codes: string[] } | null = null;
+  for (const s of SCRIPTS) {
+    const n = (text.match(s.re) || []).length;
+    if (n >= 2 && (!best || n > best.n)) best = { n, codes: s.codes };
+  }
+  return best ? best.codes : null;
+}
+
+/**
+ * Reconcile an STT language label with the transcript's own script. The
+ * script wins when they disagree; a label is kept only when consistent.
+ */
+export function reconcileSpokenLanguage(text: string, label: string | null): string | null {
+  const labelCode = findLanguage(label)?.code || (label && /^[a-z]{2,3}$/.test(label) ? label : null);
+  const codes = scriptLanguages(text);
+  if (!codes) {
+    // Latin (or unknown) script: a non-Latin label is certainly wrong.
+    if (labelCode && NON_LATIN.has(labelCode)) return null;
+    return labelCode;
+  }
+  if (labelCode && codes.includes(labelCode)) return labelCode;
+  return codes[0];
+}
+
+const NON_LATIN = new Set(SCRIPTS.flatMap((s) => s.codes));

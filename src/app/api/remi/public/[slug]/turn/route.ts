@@ -42,7 +42,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     const audio = Buffer.from(body.audio, "base64");
     if (audio.byteLength > MAX_AUDIO_BYTES) return json({ error: "That recording is too long." }, 413);
     const mime = typeof body.mime === "string" ? body.mime.slice(0, 60) : "audio/webm";
-    const t = await transcribe(audio, mime, languagePref);
+    const t = await transcribe(audio, mime, null);
     if (!t.ok) return json({ error: "I couldn't hear that clearly. Please try again.", reason: t.reason }, 422);
     text = t.text.slice(0, 1500);
     transcript = text;

@@ -1,11 +1,13 @@
 // Dr.Remi -- server-only AI plumbing. Same provider choice as the rest of
-// SimpleNow (OpenAI over raw fetch, Groq Whisper first for speech-to-text),
+// SimpleNow (OpenAI over raw fetch; gpt-4o-transcribe, then Groq Whisper, for speech-to-text),
 // so no new keys are needed. Every call has a timeout and a typed failure.
 //
 //   chatJson()      -> structured JSON reply (response_format json_object)
 //   embed()         -> multilingual embeddings (text-embedding-3-small, 1536d)
 //   transcribe()    -> speech-to-text + detected language
 //   synthesize()    -> mp3 speech in whatever language the text is written in
+
+import { reconcileSpokenLanguage } from "./languages";
 
 const OPENAI = "https://api.openai.com/v1";
 
@@ -167,14 +169,25 @@ export type TranscribeResult =
   | { ok: false; reason: string };
 
 /**
- * Speech-to-text with language detection. `hint` (ISO code) is passed only
- * when the customer explicitly picked a language -- otherwise Whisper
- * auto-detects, which is what makes "speak any language" work.
+ * Speech-to-text with language detection.
+ *
+ * gpt-4o-transcribe goes first: its language identification is far more
+ * reliable than Whisper's on Indian and other non-European languages
+ * (Whisper was labelling Kannada speech as Arabic). It returns no language
+ * label, so the language is read from the transcript's own script; for
+ * Latin-script text the reply model judges the language from the words.
+ * Whisper (Groq, then OpenAI) is the fallback, and its label is only kept
+ * when it agrees with the script of what it transcribed.
+ *
+ * `hint` (ISO code) is passed only when we know what the customer SPEAKS,
+ * never the reply language -- forcing the reply language onto STT breaks
+ * "speak English, answer in Spanish".
  */
 export async function transcribe(audio: Buffer, mime: string, hint?: string | null): Promise<TranscribeResult> {
-  const attempts: { url: string; key?: string; model: string; name: string }[] = [
-    { url: "https://api.groq.com/openai/v1/audio/transcriptions", key: process.env.GROQ_API_KEY, model: "whisper-large-v3", name: "groq" },
-    { url: `${OPENAI}/audio/transcriptions`, key: process.env.OPENAI_API_KEY, model: "whisper-1", name: "openai" },
+  const attempts: { url: string; key?: string; model: string; name: string; verbose: boolean }[] = [
+    { url: `${OPENAI}/audio/transcriptions`, key: process.env.OPENAI_API_KEY, model: "gpt-4o-transcribe", name: "openai-4o", verbose: false },
+    { url: "https://api.groq.com/openai/v1/audio/transcriptions", key: process.env.GROQ_API_KEY, model: "whisper-large-v3", name: "groq", verbose: true },
+    { url: `${OPENAI}/audio/transcriptions`, key: process.env.OPENAI_API_KEY, model: "whisper-1", name: "openai", verbose: true },
   ];
   let lastReason = "no_stt_configured";
   for (const a of attempts) {
@@ -183,7 +196,7 @@ export async function transcribe(audio: Buffer, mime: string, hint?: string | nu
       const form = new FormData();
       form.append("file", new Blob([new Uint8Array(audio)], { type: mime || "audio/webm" }), `speech.${extFor(mime)}`);
       form.append("model", a.model);
-      form.append("response_format", "verbose_json");
+      form.append("response_format", a.verbose ? "verbose_json" : "json");
       if (hint && /^[a-z]{2,3}$/.test(hint)) form.append("language", hint);
       const data = await withTimeout(30_000, async (signal) => {
         const res = await fetch(a.url, { method: "POST", headers: { Authorization: `Bearer ${a.key}` }, body: form, signal });
@@ -191,7 +204,10 @@ export async function transcribe(audio: Buffer, mime: string, hint?: string | nu
         return res.json();
       });
       const text = String(data?.text || "").trim();
-      if (text) return { ok: true, text, language: data?.language ? String(data.language) : null, provider: a.name };
+      if (text) {
+        const label = data?.language ? String(data.language) : null;
+        return { ok: true, text, language: reconcileSpokenLanguage(text, label), provider: a.name };
+      }
       lastReason = "empty_transcript";
     } catch (e) {
       lastReason = e instanceof Error ? e.message : "transcription_failed";
