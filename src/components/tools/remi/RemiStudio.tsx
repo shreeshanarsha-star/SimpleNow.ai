@@ -23,11 +23,11 @@ export function LanguageSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      title="Reply language"
+      title="Reply language — pick one to always answer in it, whatever language is spoken"
       aria-label="Reply language"
       className={`h-8 rounded-xl border border-border bg-page text-[11px] text-ink px-2 outline-none focus:border-brand cursor-pointer ${className}`}
     >
-      <option value="auto">🌐 Auto-detect</option>
+      <option value="auto">🌐 Reply in: same as customer</option>
       {REMI_LANGUAGES.map((l) => (
         <option key={l.code} value={l.code}>
           {l.native} · {l.name}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toBcp47 } from "@/lib/remi/languages";
+import { findLanguage, toBcp47 } from "@/lib/remi/languages";
 import { useRemiAudio } from "./useRemiAudio";
 import type { RemiMessage, RemiPublicWorkspace } from "./types";
 
@@ -23,6 +23,21 @@ export function useRemiChat(ws: RemiPublicWorkspace, channel: Channel) {
   const [thinking, setThinking] = useState(false);
   const [voiceOn, setVoiceOn] = useState(channel === "kiosk");
   const [language, setLanguage] = useState<string>(ws.default_language || "auto");
+
+  // Personal devices (web / QR / embed): if the workspace is on Auto and the
+  // visitor's phone or browser is set to a language other than English,
+  // pre-select it so answers come back in their language from the first word.
+  // Kiosks are shared devices, so they stay on pure auto-detect.
+  useEffect(() => {
+    if (channel === "kiosk" || (ws.default_language && ws.default_language !== "auto")) return;
+    try {
+      const prefs = navigator.languages?.length ? navigator.languages : [navigator.language];
+      const first = findLanguage(prefs[0]);
+      if (first && first.code !== "en") setLanguage(first.code);
+    } catch {
+      /* ignore */
+    }
+  }, [channel, ws.default_language]);
   const [suggestions, setSuggestions] = useState<string[]>(ws.suggested_questions || []);
   const [lastActivity, setLastActivity] = useState(Date.now());
   const [error, setError] = useState<string | null>(null);
