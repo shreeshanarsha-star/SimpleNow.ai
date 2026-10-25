@@ -1,6 +1,7 @@
 import { loadWorkspaceBySlug, json } from "@/lib/remi/public";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 
 // Public profile for the customer-facing page: branding, greeting and the
 // product shelf. Never returns prices when pricing is hidden, and never

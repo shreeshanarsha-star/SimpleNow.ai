@@ -1,6 +1,7 @@
 import { handle, requireRemi, audit, jsonError, isUuid } from "@/lib/remi/access";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 type Ctx = { params: Promise<{ id: string }> };
 const ROLES = ["admin", "rep", "viewer"];
 

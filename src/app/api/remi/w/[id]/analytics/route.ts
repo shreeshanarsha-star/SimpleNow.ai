@@ -2,6 +2,7 @@ import { handle, requireRemi } from "@/lib/remi/access";
 import { findLanguage } from "@/lib/remi/languages";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 type Ctx = { params: Promise<{ id: string }> };
 
 function bump(map: Map<string, number>, key: string | null | undefined, by = 1) {

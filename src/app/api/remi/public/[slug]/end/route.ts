@@ -2,6 +2,7 @@ import { loadWorkspaceBySlug, loadSession, json } from "@/lib/remi/public";
 import { endSession } from "@/lib/remi/engine";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 export const maxDuration = 45;
 
 // Called when a visitor leaves (navigator.sendBeacon on page hide) or a kiosk

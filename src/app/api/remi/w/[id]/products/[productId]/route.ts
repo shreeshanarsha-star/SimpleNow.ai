@@ -2,6 +2,7 @@ import { handle, requireRemi, audit, jsonError, isUuid } from "@/lib/remi/access
 import { productInput } from "@/lib/remi/productInput";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 type Ctx = { params: Promise<{ id: string; productId: string }> };
 
 export async function PATCH(req: Request, { params }: Ctx) {

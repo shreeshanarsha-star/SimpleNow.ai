@@ -4,6 +4,7 @@ import { extractFileText, fetchWebText, processBrain, MAX_BRAIN_CHARS } from "@/
 import { hasRemiAi } from "@/lib/remi/ai";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 export const maxDuration = 60;
 type Ctx = { params: Promise<{ id: string }> };
 

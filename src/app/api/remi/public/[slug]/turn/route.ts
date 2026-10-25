@@ -3,9 +3,12 @@ import { allowUsage, ipHash } from "@/lib/remi/security";
 import { hasRemiAi, transcribe } from "@/lib/remi/ai";
 import { runTurn } from "@/lib/remi/engine";
 import { findLanguage } from "@/lib/remi/languages";
+import { after } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+// Co-locate with the Supabase database (Singapore) and Indian/APAC visitors.
+export const preferredRegion = "sin1";
 
 const MAX_AUDIO_BYTES = 3_500_000; // ~3 minutes of opus; Vercel body cap is 4.5MB
 
@@ -50,7 +53,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   if (!(await allowUsage(ip, "turn", ws.id))) return json({ error: "Too many requests. Please wait a moment." }, 429);
 
   try {
-    const result = await runTurn({ admin, ws, session, userText: text, languagePref, spokenLanguage });
+    const result = await runTurn({ admin, ws, session, userText: text, languagePref, spokenLanguage, defer: (fn) => after(fn) });
     return json({ ...result, transcript });
   } catch (e) {
     console.error("[remi turn]", e);

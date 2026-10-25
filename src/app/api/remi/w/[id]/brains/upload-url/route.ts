@@ -2,6 +2,7 @@ import { handle, requireRemi, jsonError } from "@/lib/remi/access";
 import { randomUUID } from "crypto";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 type Ctx = { params: Promise<{ id: string }> };
 
 const ALLOWED = /\.(pdf|docx|xlsx|xls|csv|ods|txt|md|html?|json|png|jpe?g|webp)$/i;

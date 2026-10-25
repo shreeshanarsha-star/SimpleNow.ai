@@ -2,6 +2,7 @@ import { handle, requireRemi, clean, audit, jsonError, isUuid, roleAtLeast } fro
 import { postWebhook } from "@/lib/remi/notify";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 type Ctx = { params: Promise<{ id: string; leadId: string }> };
 
 async function loadLead(id: string, leadId: string, min: "viewer" | "rep" = "viewer") {

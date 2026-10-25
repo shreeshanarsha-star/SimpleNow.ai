@@ -3,6 +3,7 @@ import { brainMeta } from "@/lib/remi/brainInput";
 import { fetchWebText, processBrain, MAX_BRAIN_CHARS } from "@/lib/remi/ingest";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 export const maxDuration = 60;
 type Ctx = { params: Promise<{ id: string; brainId: string }> };
 

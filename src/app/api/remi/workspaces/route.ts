@@ -1,6 +1,7 @@
 import { handle, requireRemiUser, clean, audit, jsonError } from "@/lib/remi/access";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 
 // GET: the caller's Dr.Remi workspaces (and auto-accepts pending invites
 // addressed to their verified email). POST: create a new workspace.

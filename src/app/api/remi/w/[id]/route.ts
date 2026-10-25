@@ -5,6 +5,7 @@ import { findLanguage } from "@/lib/remi/languages";
 import { randomBytes } from "crypto";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 
 type Ctx = { params: Promise<{ id: string }> };
 

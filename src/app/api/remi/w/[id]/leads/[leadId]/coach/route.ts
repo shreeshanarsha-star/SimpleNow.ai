@@ -4,6 +4,7 @@ import { loadCatalog, type Workspace } from "@/lib/remi/engine";
 import { WS_PUBLIC_COLUMNS } from "@/lib/remi/public";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 export const maxDuration = 60;
 type Ctx = { params: Promise<{ id: string; leadId: string }> };
 

@@ -2,6 +2,7 @@ import { loadWorkspaceBySlug, json } from "@/lib/remi/public";
 import { allowUsage, ipHash, newSessionToken } from "@/lib/remi/security";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 
 const CHANNELS = ["web", "kiosk", "qr", "test", "embed"];
 

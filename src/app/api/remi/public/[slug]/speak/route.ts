@@ -4,6 +4,7 @@ import { hasRemiAi, synthesize } from "@/lib/remi/ai";
 import { findLanguage } from "@/lib/remi/languages";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 export const maxDuration = 45;
 
 // Text-to-speech for one of THIS session's assistant messages. The text is

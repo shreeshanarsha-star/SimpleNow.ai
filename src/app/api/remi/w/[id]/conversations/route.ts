@@ -1,6 +1,7 @@
 import { handle, requireRemi, jsonError, isUuid } from "@/lib/remi/access";
 
 export const dynamic = "force-dynamic";
+export const preferredRegion = "sin1";
 type Ctx = { params: Promise<{ id: string }> };
 
 // GET ?session=<id> -> full transcript; otherwise the latest 200 sessions.
