@@ -42,6 +42,8 @@ export interface RemiMessage {
   pending?: boolean;
   hidden?: boolean;
   justification?: string | null;
+  labelDoses?: { product: string; dosage: string }[];
+  streaming?: boolean;
   sources?: RemiSource[];
   language?: { code: string; name: string };
   messageId?: number | null;

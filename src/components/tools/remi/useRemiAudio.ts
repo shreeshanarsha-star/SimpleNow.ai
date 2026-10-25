@@ -240,12 +240,21 @@ export function useRemiAudio(opts: {
     }
   }, [getAudio]);
 
+  // Bumped on every stop so queued audio chunks from an interrupted answer are skipped.
+  const genRef = useRef(0);
+  // Resolves the in-flight playUrl() promise when playback is stopped early
+  // (pause() never fires "ended", which would otherwise hang the caller).
+  const endRef = useRef<(() => void) | null>(null);
+
   const stopPlayback = useCallback(() => {
+    genRef.current++;
     const a = audioRef.current;
     if (a) {
       a.pause();
       a.currentTime = 0;
     }
+    endRef.current?.();
+    endRef.current = null;
     try {
       window.speechSynthesis?.cancel();
     } catch {
@@ -282,8 +291,10 @@ export function useRemiAudio(opts: {
         const done = () => {
           a.onended = null;
           a.onerror = null;
+          endRef.current = null;
           resolve();
         };
+        endRef.current = done;
         a.onended = done;
         a.onerror = done;
         a.play().catch(done);
@@ -350,6 +361,7 @@ export function useRemiAudio(opts: {
     playUrl,
     speakBrowser,
     stopPlayback,
+    gen: () => genRef.current,
     refreshDevices,
   };
 }

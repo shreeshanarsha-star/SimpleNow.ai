@@ -116,6 +116,8 @@ export function useRemiChat(ws: RemiPublicWorkspace, channel: Channel) {
             audio: input.audio,
             mime: input.mime,
             language: langRef.current === "auto" ? null : langRef.current,
+            stream: true,
+            voice: voiceOnRef.current,
           }),
         });
 
@@ -126,29 +128,86 @@ export function useRemiChat(ws: RemiPublicWorkspace, channel: Channel) {
           token = await startSession();
           res = await call(token);
         }
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
+        if (!res.ok || !res.body) {
+          const data = await res.json().catch(() => ({}));
           setMessages((m) => m.filter((x) => !(x.key === userKey && x.pending)));
           throw new Error(data.error || "Something went wrong.");
         }
-        if (data.transcript) {
-          setMessages((m) => m.map((x) => (x.key === userKey ? { ...x, text: data.transcript, pending: false } : x)));
-        }
-        const reply: RemiMessage = {
-          key: k(),
-          role: "assistant",
-          text: data.reply,
-          justification: data.justification,
-          sources: data.sources,
-          language: data.language,
-          messageId: data.messageId,
-          handoff: data.handoff,
+
+        // ---- Server-Sent Events: delta (text), audio (mp3 per sentence), done
+        const replyKey = k();
+        let started = false;
+        let txt = "";
+        let audioCount = 0;
+        let playChain: Promise<void> = Promise.resolve();
+        let done: Record<string, unknown> | null = null;
+        const gen = audioRef.current.gen();
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = "";
+        const handle = (event: string, data: Record<string, unknown>) => {
+          if (event === "transcript") {
+            setMessages((m) => m.map((x) => (x.key === userKey ? { ...x, text: String(data.text || ""), pending: false } : x)));
+          } else if (event === "delta") {
+            txt += String(data.text || "");
+            if (!started) {
+              started = true;
+              setThinking(false);
+              setMessages((m) => [...m, { key: replyKey, role: "assistant", text: txt, streaming: true }]);
+            } else {
+              const t = txt;
+              setMessages((m) => m.map((x) => (x.key === replyKey ? { ...x, text: t } : x)));
+            }
+          } else if (event === "audio" && voiceOnRef.current) {
+            audioCount++;
+            const bin = atob(String(data.mp3 || ""));
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const url = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
+            playChain = playChain.then(async () => {
+              if (audioRef.current.gen() !== gen || !voiceOnRef.current) return;
+              await audioRef.current.playUrl(url);
+              URL.revokeObjectURL(url);
+            });
+          } else if (event === "done") {
+            done = data;
+          } else if (event === "error") {
+            throw new Error(String(data.error || "Something went wrong."));
+          }
         };
-        setMessages((m) => [...m, reply]);
-        if (Array.isArray(data.suggestions) && data.suggestions.length) setSuggestions(data.suggestions);
+        for (;;) {
+          const { done: end, value } = await reader.read();
+          if (end) break;
+          buf += dec.decode(value, { stream: true });
+          let sep: number;
+          while ((sep = buf.indexOf("\n\n")) >= 0) {
+            const block = buf.slice(0, sep);
+            buf = buf.slice(sep + 2);
+            const ev = block.match(/^event: (.*)$/m)?.[1]?.trim() || "message";
+            const dl = block.match(/^data: ([\s\S]*)$/m)?.[1];
+            if (dl) handle(ev, JSON.parse(dl));
+          }
+        }
+        if (!done) throw new Error("The answer was interrupted. Please try again.");
+        const d = done as Record<string, unknown>;
+        const reply: RemiMessage = {
+          key: replyKey,
+          role: "assistant",
+          text: String(d.reply || txt),
+          justification: (d.justification as string) || null,
+          labelDoses: (d.labelDoses as RemiMessage["labelDoses"]) || [],
+          sources: d.sources as RemiMessage["sources"],
+          language: d.language as RemiMessage["language"],
+          messageId: d.messageId as number,
+          handoff: !!d.handoff,
+        };
+        setMessages((m) => (m.some((x) => x.key === replyKey) ? m.map((x) => (x.key === replyKey ? reply : x)) : [...m, reply]));
+        if (Array.isArray(d.suggestions) && d.suggestions.length) setSuggestions(d.suggestions as string[]);
         setThinking(false);
         setLastActivity(Date.now());
-        await speak(reply);
+        await playChain;
+        // No streamed audio (TTS unavailable or voice switched on mid-answer) -> fall back.
+        if (voiceOnRef.current && audioCount === 0 && audioRef.current.gen() === gen) await speak(reply);
       } catch (e) {
         setThinking(false);
         const msg = e instanceof Error ? e.message : "Something went wrong.";

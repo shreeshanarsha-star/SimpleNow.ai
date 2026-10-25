@@ -3,7 +3,7 @@
 //   persist message, lead, gaps, safety reports -> notify.
 // The reply language follows the customer automatically unless they picked one.
 import { createAdminClient } from "@/lib/supabase/admin";
-import { chatJson, embed, toVectorLiteral, type ChatMsg } from "./ai";
+import { chatJson, chatStream, embed, toVectorLiteral, type ChatMsg } from "./ai";
 import { findLanguage } from "./languages";
 import { computeScore, mergeSignals, type IntentSignals } from "./scoring";
 import { notifyQualifiedLead, notifySafety, notifySessionSummary, esc, type WorkspaceLite } from "./notify";
@@ -46,6 +46,7 @@ export interface SourceRef {
 export interface TurnResult {
   reply: string;
   justification: string | null;
+  labelDoses: { product: string; dosage: string }[];
   language: { code: string; name: string };
   sources: SourceRef[];
   suggestions: string[];
@@ -125,7 +126,7 @@ export async function loadCatalog(admin: Admin, ws: Workspace) {
       .filter(Boolean)
       .join("\n");
   });
-  return { count: items.length, names: items.map((p) => p.name as string), text: lines.join("\n").slice(0, 16000) };
+  return { count: items.length, names: items.map((p) => p.name as string), doses: items.filter((p) => p.dosage).map((p) => ({ product: p.name as string, dosage: p.dosage as string })), text: lines.join("\n").slice(0, 16000) };
 }
 
 export async function retrieve(admin: Admin, workspaceId: string, query: string, k = 8) {
@@ -161,6 +162,7 @@ function systemPrompt(ws: Workspace, opts: {
   consent: boolean;
   firstTurn: boolean;
   knowledgeEmpty: boolean;
+  stream?: boolean;
 }) {
   return `You are ${ws.assistant_name}, the 24/7 AI sales consultant for ${ws.name}${ws.industry ? ` (${ws.industry})` : ""}.
 ${ws.about ? `Company background (for context ONLY — it is NOT a source of product facts, claims or recommendations): ${ws.about}\n` : ""}Channel: ${opts.channel === "kiosk" ? "voice kiosk at an EXHIBITION STALL — visitors are walking by; be warm, proactive and quick." : "website / mobile chat with voice."}
@@ -186,6 +188,7 @@ PRICING: ${PRICING[ws.pricing_mode]} Never invent a price for a product with no 
 REGULATED-CLAIMS SAFETY (animal health, nutraceuticals, agri inputs)
 - Never diagnose a disease or prescribe treatment. For symptoms or disease questions, share relevant product information from the sources and advise them to consult their veterinarian / nutritionist / doctor.
 - Dosage, withdrawal periods, species and usage exactly as in the sources; never extrapolate to a species or use not listed.
+- The exact label dose of any product you mention is shown in writing under your answer automatically, so in speech you may give the main dose and say the full label dose is on screen — but never contradict or alter it.
 - When you state a dose, keep EVERY element of it: amount, unit, per-what (per ton of feed / per litre of water / per N birds), duration AND frequency (e.g. "for 10 days a month", "for 5–7 days a month"), and the target group. Never shorten, round or drop a part. If it is long, say the main dose and offer to share the full schedule.
 - If a product isn't listed for the customer's country, don't promise availability — offer to check.
 - If the customer reports a problem after using a product (animals sick or dying, side effects, quality complaint): respond with empathy, don't argue or admit fault, collect what happened, product, when and how to contact them, and fill "safety_event".
@@ -216,10 +219,9 @@ ${opts.catalog || "(no catalog entries yet — rely on sources)"}
 SOURCES
 ${opts.sources || "(no matching sources found for this question)"}
 
-Reply with ONE JSON object only:
+${opts.stream ? `OUTPUT FORMAT (strict): first write ONLY the spoken reply as plain text. Then a new line containing exactly ${META_MARK} . Then ONE JSON object:` : `Reply with ONE JSON object only:`}
 {
- "reply": string,
- "justification": string|null (WRITTEN IN THE REPLY LANGUAGE — translate the evidence; keep product names and numbers),
+${opts.stream ? "" : ` "reply": string,\n`} "justification": string|null (WRITTEN IN THE REPLY LANGUAGE — translate the evidence; keep product names and numbers),
  "language": {"code": string, "name": string},
  "sources": string[],
  "topic": string (2-5 word English topic label),
@@ -232,6 +234,12 @@ Reply with ONE JSON object only:
 }`;
 }
 
+export const META_MARK = "<<<META>>>";
+
+function normName(n: string) {
+  return n.toLowerCase().replace(/[™®©]/g, "").replace(/\s+/g, " ").trim();
+}
+
 export async function runTurn(args: {
   admin: Admin;
   ws: Workspace;
@@ -241,6 +249,8 @@ export async function runTurn(args: {
   spokenLanguage: string | null; // what speech-to-text detected
   /** Run slow side-effects (emails, webhooks, logs) after the response is sent. */
   defer?: (fn: () => Promise<void>) => void;
+  /** Stream the spoken reply text as it is generated. */
+  onDelta?: (t: string) => void;
 }): Promise<TurnResult> {
   const { admin, ws, session } = args;
   const userText = args.userText.trim().slice(0, 1500);
@@ -300,13 +310,46 @@ export async function runTurn(args: {
         consent: session.consent,
         firstTurn: past.length === 0,
         knowledgeEmpty: catalog.count === 0 && labelled.length === 0,
+        stream: !!args.onDelta,
       }),
     },
     ...past.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
     { role: "user", content: userText },
   ];
 
-  const out = await chatJson<ModelOut>(messages, { maxTokens: 450, temperature: 0.4 });
+  let out: ModelOut;
+  if (args.onDelta) {
+    // Forward reply text live; hold back enough characters to never leak the marker.
+    let sent = 0;
+    let acc = "";
+    let metaSeen = false;
+    const full = await chatStream(messages, (t) => {
+      acc += t;
+      if (metaSeen) return;
+      const idx = acc.indexOf(META_MARK);
+      const limit = idx >= 0 ? idx : Math.max(0, acc.length - META_MARK.length);
+      if (idx >= 0) metaSeen = true;
+      if (limit > sent) {
+        args.onDelta!(acc.slice(sent, limit));
+        sent = limit;
+      }
+    }, { maxTokens: 700, temperature: 0.4 });
+    const idx = full.indexOf(META_MARK);
+    const replyText = (idx >= 0 ? full.slice(0, idx) : full).trim();
+    if (!metaSeen && full.length > sent) args.onDelta(full.slice(sent));
+    let meta: ModelOut = {};
+    if (idx >= 0) {
+      const m = full.slice(idx + META_MARK.length).match(/\{[\s\S]*\}/);
+      try {
+        meta = m ? (JSON.parse(m[0]) as ModelOut) : {};
+      } catch {
+        meta = {};
+      }
+    }
+    out = { ...meta, reply: replyText };
+  } else {
+    out = await chatJson<ModelOut>(messages, { maxTokens: 450, temperature: 0.4 });
+  }
 
   const reply = str(out.reply, 2000) || "Sorry, could you say that again?";
   const lang = findLanguage(out.language?.code) || findLanguage(out.language?.name) || pref || spoken;
@@ -332,6 +375,14 @@ export async function runTurn(args: {
   // source, or (for catalog benefits) a non-empty catalog. Never free-floating.
   const justification = sources.length || catalog.count ? str(out.justification, 400) : null;
 
+  // Exact label doses (verbatim from the catalog) for every product mentioned —
+  // shown in writing under the answer so a dose can never be mis-stated.
+  const mentioned = new Set(strList(out.recommended_products, 5).map(normName));
+  const replyNorm = normName(reply);
+  const labelDoses = catalog.doses
+    .filter((d) => mentioned.has(normName(d.product)) || replyNorm.includes(normName(d.product)))
+    .slice(0, 3);
+
   // ---------------------------------------------------------- persist messages
   const now = new Date().toISOString();
   const { data: inserted } = await admin
@@ -355,6 +406,7 @@ export async function runTurn(args: {
         source_ids: sources.map((s) => s.brain_id),
         meta: {
           justification,
+          label_doses: labelDoses,
           recommended_products: strList(out.recommended_products, 5),
           handoff: !!out.handoff,
           sources: sources.map((s) => ({ title: s.title, kind: s.kind, evidence_type: s.evidence_type })),
@@ -408,6 +460,7 @@ export async function runTurn(args: {
   return {
     reply,
     justification,
+    labelDoses,
     language,
     sources,
     suggestions: strList(out.suggested_replies, 3),

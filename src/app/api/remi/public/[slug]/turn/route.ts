@@ -1,6 +1,6 @@
 import { loadWorkspaceBySlug, loadSession, json, MAX_TURNS_PER_SESSION } from "@/lib/remi/public";
 import { allowUsage, ipHash } from "@/lib/remi/security";
-import { hasRemiAi, transcribe } from "@/lib/remi/ai";
+import { hasRemiAi, synthesize, transcribe } from "@/lib/remi/ai";
 import { runTurn } from "@/lib/remi/engine";
 import { findLanguage } from "@/lib/remi/languages";
 import { after } from "next/server";
@@ -51,6 +51,76 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   if (!text) return json({ error: "Please type or say something." }, 400);
 
   if (!(await allowUsage(ip, "turn", ws.id))) return json({ error: "Too many requests. Please wait a moment." }, 429);
+
+  // Streaming mode (Server-Sent Events): reply text arrives word by word and,
+  // when voice is on, each finished sentence is synthesised and streamed as
+  // audio immediately — so the customer hears the answer within seconds.
+  if (body.stream === true) {
+    const wantVoice = body.voice === true && (await allowUsage(ip, "tts", ws.id));
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (event: string, data: unknown) => {
+          try {
+            controller.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+          } catch {
+            /* client went away */
+          }
+        };
+        if (transcript) send("transcript", { text: transcript });
+        let pending = "";
+        let seq = 0;
+        let chain: Promise<void> = Promise.resolve();
+        let langName: string | null = findLanguage(languagePref)?.name || findLanguage(spokenLanguage)?.name || null;
+        const speak = (sentence: string) => {
+          const t = sentence.trim();
+          if (!wantVoice || !t) return;
+          const n = seq++;
+          const audioP = synthesize(t, ws.voice, langName).then((b) => b.toString("base64")).catch(() => null);
+          chain = chain.then(async () => {
+            const b64 = await audioP;
+            if (b64) send("audio", { seq: n, mp3: b64 });
+          });
+        };
+        const flushSentences = (final: boolean) => {
+          // Split on sentence ends (Latin, Devanagari danda, CJK); keep >= 25 chars per chunk.
+          for (;;) {
+            const m = pending.match(/^[\s\S]{25,}?[.!?।。！？](\s|$)/);
+            if (!m) break;
+            speak(m[0]);
+            pending = pending.slice(m[0].length);
+          }
+          if (final && pending.trim()) {
+            speak(pending);
+            pending = "";
+          }
+        };
+        try {
+          const result = await runTurn({
+            admin, ws, session, userText: text, languagePref, spokenLanguage,
+            defer: (fn) => after(fn),
+            onDelta: (d) => {
+              send("delta", { text: d });
+              pending += d;
+              flushSentences(false);
+            },
+          });
+          langName = result.language.name;
+          flushSentences(true);
+          await chain;
+          send("done", { ...result, transcript, audioChunks: seq });
+        } catch (e) {
+          console.error("[remi turn stream]", e);
+          send("error", { error: "I couldn't answer just now. Please try again." });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(stream, {
+      headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no" },
+    });
+  }
 
   try {
     const result = await runTurn({ admin, ws, session, userText: text, languagePref, spokenLanguage, defer: (fn) => after(fn) });

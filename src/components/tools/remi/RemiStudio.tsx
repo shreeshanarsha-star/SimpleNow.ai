@@ -54,11 +54,22 @@ export function MessageBubble({ m, assistantName }: { m: RemiMessage; assistantN
       <div className={`max-w-[90%] rounded-2xl rounded-bl-[4px] px-3.5 py-2.5 border shadow-soft-sm ${m.error ? "bg-critical-wash border-critical/30 text-ink" : "bg-surface border-border text-ink"}`}>
         <div dir={rtl ? "rtl" : "ltr"} className="whitespace-pre-wrap leading-relaxed">
           {m.text}
+          {m.streaming && <span className="inline-block w-1.5 h-3.5 bg-brand/60 ml-0.5 align-middle animate-pulse" />}
         </div>
         {m.justification && (
           <div dir={rtl ? "rtl" : "ltr"} className="mt-2 flex items-start gap-1.5 text-[11px] text-good-text bg-good-wash/70 border border-good/20 rounded-lg px-2 py-1.5">
             <Icon name="check" className="w-3.5 h-3.5 mt-[1px] flex-shrink-0" />
             <span>{m.justification}</span>
+          </div>
+        )}
+        {!!m.labelDoses?.length && (
+          <div className="mt-2 space-y-1">
+            {m.labelDoses.map((d) => (
+              <div key={d.product} className="text-[11px] bg-brand-wash/60 border border-brand/20 rounded-lg px-2 py-1.5 text-ink">
+                <span className="font-semibold text-brand">📋 Label dose · {d.product}: </span>
+                <span dir="ltr">{d.dosage}</span>
+              </div>
+            ))}
           </div>
         )}
         {!!m.sources?.length && (

@@ -69,6 +69,59 @@ export async function chatJson<T = Record<string, unknown>>(
   }
 }
 
+/** Streamed plain-text completion; calls onDelta with each text fragment and returns the full text. */
+export async function chatStream(
+  messages: ChatMsg[],
+  onDelta: (t: string) => void,
+  opts: { maxTokens?: number; temperature?: number; timeoutMs?: number; model?: string } = {}
+): Promise<string> {
+  return withTimeout(opts.timeoutMs ?? 40_000, async (signal) => {
+    const res = await fetch(`${OPENAI}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key()}` },
+      body: JSON.stringify({
+        model: opts.model || remiModel(),
+        messages,
+        max_tokens: opts.maxTokens ?? 700,
+        temperature: opts.temperature ?? 0.4,
+        stream: true,
+      }),
+      signal,
+    });
+    if (!res.ok || !res.body) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error?.message || `OpenAI error ${res.status}`);
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    let full = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (payload === "[DONE]") continue;
+        try {
+          const t = JSON.parse(payload)?.choices?.[0]?.delta?.content;
+          if (t) {
+            full += t;
+            onDelta(t);
+          }
+        } catch {
+          /* partial line */
+        }
+      }
+    }
+    return full;
+  });
+}
+
 export const EMBED_DIM = 1536;
 
 export async function embed(texts: string[]): Promise<number[][]> {
