@@ -62,7 +62,7 @@ export default function RemiPublicPage({
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* LEFT: product shelf */}
-          <section className="lg:col-span-6 bg-surface border border-border rounded-2xl shadow-soft overflow-hidden flex flex-col lg:h-[calc(100vh-170px)] min-h-[520px] lg:sticky lg:top-20 order-2 lg:order-1">
+          <section className="lg:col-span-6 bg-surface border border-border rounded-2xl shadow-soft overflow-hidden flex flex-col h-[70vh] lg:h-[calc(100vh-150px)] min-h-[600px] lg:max-h-[960px] lg:sticky lg:top-20 order-2 lg:order-1">
             <div className="bg-gradient-to-b from-brand-wash/70 via-surface to-surface border-b border-border p-4 flex items-center justify-between gap-3 min-h-[88px]">
               <div className="flex items-center gap-3.5">
                 <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-brand to-brand-dark p-0.5 shadow-emblem">
@@ -154,8 +154,8 @@ export default function RemiPublicPage({
           </section>
 
           {/* RIGHT: Dr.Remi studio */}
-          <div className="lg:col-span-6 order-1 lg:order-2 lg:sticky lg:top-20">
-            <RemiStudio ws={ws} channel={channel} externalAsk={ask} className="h-[calc(100vh-170px)] min-h-[580px]" />
+          <div className="lg:col-span-6 order-1 lg:order-2 lg:sticky lg:top-20 lg:h-[calc(100vh-150px)] min-h-[600px] lg:max-h-[960px]">
+            <RemiStudio ws={ws} channel={channel} externalAsk={ask} className="h-[78vh] lg:h-full min-h-[600px]" />
           </div>
         </div>
       </main>

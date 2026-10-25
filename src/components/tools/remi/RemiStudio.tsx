@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import { REMI_LANGUAGES, findLanguage, isRtl } from "@/lib/remi/languages";
 import RemiAvatar, { type RemiState } from "./RemiAvatar";
+import AvatarLightbox from "./AvatarLightbox";
 import { useRemiChat } from "./useRemiChat";
 import { EVIDENCE_LABEL, type RemiMessage, type RemiPublicWorkspace } from "./types";
 
@@ -171,6 +172,7 @@ export default function RemiStudio({
   const { audio } = chat;
   const [input, setInput] = useState("");
   const [devicesOpen, setDevicesOpen] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
   const chipsRef = useRef<HTMLDivElement | null>(null);
 
@@ -193,7 +195,16 @@ export default function RemiStudio({
       {/* Header */}
       <div className="bg-gradient-to-b from-brand-wash/70 via-surface to-surface border-b border-border p-4 flex items-center justify-between gap-3 flex-shrink-0 min-h-[88px]">
         <div className="flex items-center gap-3.5 min-w-0">
-          <RemiAvatar size={56} state={state} level={audio.level} initials={initials === "Dr" ? "Dr" : initials} src={ws.avatar_url} alt={ws.assistant_name} />
+          <button
+            type="button"
+            onClick={() => ws.avatar_url && setPhotoOpen(true)}
+            disabled={!ws.avatar_url}
+            title={ws.avatar_url ? `View ${ws.assistant_name}'s photo` : undefined}
+            aria-label={ws.avatar_url ? `Enlarge ${ws.assistant_name}'s photo` : ws.assistant_name}
+            className="flex-shrink-0 rounded-full enabled:cursor-zoom-in enabled:hover:scale-105 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <RemiAvatar size={56} state={state} level={audio.level} initials={initials === "Dr" ? "Dr" : initials} src={ws.avatar_url} alt={ws.assistant_name} />
+          </button>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="font-bold text-sm text-ink truncate">{ws.assistant_name}</h2>
@@ -232,6 +243,9 @@ export default function RemiStudio({
         </div>
       </div>
       {devicesOpen && <DevicePanel audio={audio} onClose={() => setDevicesOpen(false)} />}
+      {ws.avatar_url && (
+        <AvatarLightbox open={photoOpen} onClose={() => setPhotoOpen(false)} src={ws.avatar_url} name={ws.assistant_name} caption={ws.tagline} />
+      )}
 
       {/* Transcript */}
       <div className="flex-1 flex flex-col overflow-hidden bg-page">

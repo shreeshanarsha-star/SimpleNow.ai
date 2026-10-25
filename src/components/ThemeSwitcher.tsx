@@ -7,6 +7,7 @@ const THEMES: { id: string; label: string; swatch: string }[] = [
   { id: "blue", label: "Blue", swatch: "#2563dc" },
   { id: "dark", label: "Dark", swatch: "#4b2f96" },
   { id: "teal", label: "Teal", swatch: "#149a80" },
+  { id: "onyx", label: "Golden Onyx", swatch: "linear-gradient(135deg, #0c0b09 50%, #d4af37 50%)" },
 ];
 
 export default function ThemeSwitcher() {

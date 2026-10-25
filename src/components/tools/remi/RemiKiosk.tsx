@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
 import Logo from "@/components/Logo";
 import RemiAvatar, { type RemiState } from "./RemiAvatar";
+import AvatarLightbox from "./AvatarLightbox";
 import { useRemiChat } from "./useRemiChat";
 import { DevicePanel, LanguageSelect, MessageBubble } from "./RemiStudio";
 import type { RemiPublicWorkspace } from "./types";
@@ -23,6 +24,7 @@ export default function RemiKiosk({ ws }: { ws: RemiPublicWorkspace }) {
   const [active, setActive] = useState(false);
   const [hello, setHello] = useState(0);
   const [devicesOpen, setDevicesOpen] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -100,7 +102,12 @@ export default function RemiKiosk({ ws }: { ws: RemiPublicWorkspace }) {
       ) : (
         <main className="flex-1 min-h-0 grid grid-rows-[auto_1fr_auto] gap-4 p-6 max-w-4xl w-full mx-auto">
           <div className="flex flex-col items-center gap-3">
-            <RemiAvatar size={170} state={state} level={audio.level} src={ws.avatar_url} alt={ws.assistant_name} />
+            <button type="button" onClick={() => ws.avatar_url && setPhotoOpen(true)} disabled={!ws.avatar_url} aria-label={`Enlarge ${ws.assistant_name}'s photo`} className="rounded-full enabled:cursor-zoom-in">
+              <RemiAvatar size={170} state={state} level={audio.level} src={ws.avatar_url} alt={ws.assistant_name} />
+            </button>
+            {ws.avatar_url && (
+              <AvatarLightbox open={photoOpen} onClose={() => setPhotoOpen(false)} src={ws.avatar_url} name={ws.assistant_name} caption={ws.tagline} />
+            )}
             <div className="text-lg font-bold text-brand h-7">
               {state === "speaking" ? "Speaking…" : state === "thinking" ? "Thinking…" : state === "listening" ? "Listening…" : audio.handsFree ? "Go ahead, I'm listening" : "Tap the mic to talk"}
             </div>
