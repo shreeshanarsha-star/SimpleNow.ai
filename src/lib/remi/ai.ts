@@ -203,7 +203,7 @@ export async function transcribe(audio: Buffer, mime: string, hint?: string | nu
 export const REMI_VOICES = ["sage", "coral", "alloy", "ash", "ballad", "echo", "fable", "nova", "onyx", "shimmer", "verse"] as const;
 
 /** mp3 bytes. gpt-4o-mini-tts speaks the language the text is written in. */
-export async function synthesize(text: string, voice: string, languageName?: string | null): Promise<Buffer> {
+export async function synthesize(text: string, voice: string, languageName?: string | null, fast = false): Promise<Buffer> {
   const v = (REMI_VOICES as readonly string[]).includes(voice) ? voice : "sage";
   const attempt = async (model: string) =>
     withTimeout(30_000, async (signal) => {
@@ -228,9 +228,11 @@ export async function synthesize(text: string, voice: string, languageName?: str
       if (!res.ok) throw new Error(`tts ${model} ${res.status}`);
       return Buffer.from(await res.arrayBuffer());
     });
+  // fast=true (streamed sentences): tts-1 starts speaking much sooner.
+  const primary = fast ? process.env.REMI_TTS_FAST_MODEL || "tts-1" : process.env.REMI_TTS_MODEL || "gpt-4o-mini-tts";
   try {
-    return await attempt(process.env.REMI_TTS_MODEL || "gpt-4o-mini-tts");
+    return await attempt(primary);
   } catch {
-    return attempt("tts-1");
+    return attempt(primary === "tts-1" ? "gpt-4o-mini-tts" : "tts-1");
   }
 }

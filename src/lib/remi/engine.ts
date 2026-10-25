@@ -257,12 +257,13 @@ export async function runTurn(args: {
 
   // One parallel round-trip for history, lead and catalog (the DB is in a
   // different region from some callers, so sequential awaits add up fast).
-  const [histRes, leadRes, catalog] = await Promise.all([
+  const [histRes, leadRes, catalog, brainCount] = await Promise.all([
     admin.from("remi_messages").select("role,content").eq("session_id", session.id).order("id", { ascending: false }).limit(14),
     session.lead_id
       ? admin.from("remi_leads").select("*").eq("id", session.lead_id).maybeSingle()
       : Promise.resolve({ data: null as Record<string, unknown> | null }),
     loadCatalog(admin, ws),
+    admin.from("remi_brains").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id).eq("status", "approved"),
   ]);
   const past = (histRes.data || []).reverse();
   const lead: Record<string, unknown> | null = (leadRes.data as Record<string, unknown> | null) || null;
@@ -270,7 +271,8 @@ export async function runTurn(args: {
   // Retrieval query: short follow-ups ("and the price?") need the previous user turn for context.
   const lastUser = [...past].reverse().find((m) => m.role === "user")?.content || "";
   const query = userText.length < 40 && lastUser ? `${lastUser}\n${userText}` : userText;
-  const hits = await retrieve(admin, ws.id, query).catch((e) => {
+  // No approved Brains -> skip the embedding + vector search round-trips entirely.
+  const hits = !brainCount.count ? ([] as Awaited<ReturnType<typeof retrieve>>) : await retrieve(admin, ws.id, query).catch((e) => {
     console.error("[remi retrieve]", e);
     return [] as Awaited<ReturnType<typeof retrieve>>;
   });

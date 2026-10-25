@@ -50,13 +50,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   }
   if (!text) return json({ error: "Please type or say something." }, 400);
 
-  if (!(await allowUsage(ip, "turn", ws.id))) return json({ error: "Too many requests. Please wait a moment." }, 429);
+  const [turnOk, ttsOk] = await Promise.all([
+    allowUsage(ip, "turn", ws.id),
+    body.stream === true && body.voice === true ? allowUsage(ip, "tts", ws.id) : Promise.resolve(false),
+  ]);
+  if (!turnOk) return json({ error: "Too many requests. Please wait a moment." }, 429);
 
   // Streaming mode (Server-Sent Events): reply text arrives word by word and,
   // when voice is on, each finished sentence is synthesised and streamed as
   // audio immediately — so the customer hears the answer within seconds.
   if (body.stream === true) {
-    const wantVoice = body.voice === true && (await allowUsage(ip, "tts", ws.id));
+    const wantVoice = ttsOk;
     const enc = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
@@ -76,7 +80,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
           const t = sentence.trim();
           if (!wantVoice || !t) return;
           const n = seq++;
-          const audioP = synthesize(t, ws.voice, langName).then((b) => b.toString("base64")).catch(() => null);
+          const audioP = synthesize(t, ws.voice, langName, true).then((b) => b.toString("base64")).catch(() => null);
           chain = chain.then(async () => {
             const b64 = await audioP;
             if (b64) send("audio", { seq: n, mp3: b64 });

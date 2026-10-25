@@ -58,7 +58,8 @@ export async function allowUsage(ip: string, kind: UsageKind, workspaceId: strin
       .gte("created_at", since);
     if (error) throw error;
     if ((count || 0) >= PER_HOUR[kind]) return false;
-    await admin.from("remi_usage").insert({ ip_hash: ip, kind, workspace_id: workspaceId });
+    // Fire-and-forget: the log write must not add a round-trip to the customer's wait.
+    void admin.from("remi_usage").insert({ ip_hash: ip, kind, workspace_id: workspaceId }).then(() => undefined, () => undefined);
     return true;
   } catch {
     const k = `${ip}:${kind}`;
