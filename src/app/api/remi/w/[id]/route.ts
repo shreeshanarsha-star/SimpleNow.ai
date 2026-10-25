@@ -64,6 +64,14 @@ export async function PATCH(req: Request, { params }: Ctx) {
       if (u && !b.keep_secret) patch.webhook_secret = randomBytes(24).toString("hex");
       if (!u) patch.webhook_secret = null;
     }
+    if ("avatar_url" in b) {
+      const u = clean(b.avatar_url, 500);
+      const storagePrefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/remi-avatars/${id}/`;
+      if (u && !u.startsWith(storagePrefix) && !/^\/remi\/[a-z0-9-]+\.(jpg|png|webp)$/.test(u)) {
+        return jsonError("Please upload the avatar image here.", 400);
+      }
+      patch.avatar_url = u;
+    }
     if ("slug" in b) {
       const s = String(b.slug || "").toLowerCase().trim();
       if (!/^[a-z0-9][a-z0-9-]{2,40}$/.test(s)) return jsonError("Link name: 3–40 lowercase letters, numbers or dashes.", 400);

@@ -4,7 +4,7 @@ import { hashToken } from "./security";
 import type { Workspace, SessionRow } from "./engine";
 
 export const WS_PUBLIC_COLUMNS =
-  "id,slug,name,assistant_name,tagline,industry,about,greeting,default_language,pricing_mode,handoff_message,consent_text,notify_emails,webhook_url,webhook_secret,voice,kiosk_idle_seconds,suggested_questions,active";
+  "id,slug,name,assistant_name,tagline,industry,about,greeting,default_language,pricing_mode,handoff_message,consent_text,notify_emails,webhook_url,webhook_secret,voice,kiosk_idle_seconds,suggested_questions,active,avatar_url";
 
 export async function loadWorkspaceBySlug(slug: string) {
   if (!/^[a-z0-9][a-z0-9-]{2,40}$/.test(slug)) return null;

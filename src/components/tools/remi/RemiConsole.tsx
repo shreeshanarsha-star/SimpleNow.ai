@@ -145,7 +145,7 @@ export default function RemiConsole() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
-          <RemiAvatar size={44} />
+          <RemiAvatar size={44} src={(ws?.avatar_url as string) || null} />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               {list.length > 1 ? (

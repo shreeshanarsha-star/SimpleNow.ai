@@ -87,7 +87,7 @@ export default function RemiKiosk({ ws }: { ws: RemiPublicWorkspace }) {
 
       {!active ? (
         <button onClick={start} className="flex-1 flex flex-col items-center justify-center gap-8 cursor-pointer select-none bg-[radial-gradient(ellipse_at_center,var(--brand-wash),var(--page)_70%)]">
-          <RemiAvatar size={220} state="idle" />
+          <RemiAvatar size={260} state="idle" src={ws.avatar_url} alt={ws.assistant_name} />
           <div className="text-center space-y-3 px-6">
             <div key={hello} className="text-5xl sm:text-6xl font-extrabold text-brand animate-pulse">{HELLOS[hello]}!</div>
             <div className="text-2xl font-bold">I&apos;m {ws.assistant_name} — {ws.name}&apos;s AI product expert</div>
@@ -100,7 +100,7 @@ export default function RemiKiosk({ ws }: { ws: RemiPublicWorkspace }) {
       ) : (
         <main className="flex-1 min-h-0 grid grid-rows-[auto_1fr_auto] gap-4 p-6 max-w-4xl w-full mx-auto">
           <div className="flex flex-col items-center gap-3">
-            <RemiAvatar size={150} state={state} level={audio.level} />
+            <RemiAvatar size={170} state={state} level={audio.level} src={ws.avatar_url} alt={ws.assistant_name} />
             <div className="text-lg font-bold text-brand h-7">
               {state === "speaking" ? "Speaking…" : state === "thinking" ? "Thinking…" : state === "listening" ? "Listening…" : audio.handsFree ? "Go ahead, I'm listening" : "Tap the mic to talk"}
             </div>

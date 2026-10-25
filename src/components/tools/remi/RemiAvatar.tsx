@@ -9,15 +9,20 @@ export default function RemiAvatar({
   state = "idle",
   level = 0,
   initials = "Dr",
+  src,
+  alt = "Sales assistant",
 }: {
   size?: number;
   state?: RemiState;
   level?: number;
   initials?: string;
+  /** Workspace avatar photo; falls back to the drawn emblem. */
+  src?: string | null;
+  alt?: string;
 }) {
   const ring = state === "listening" ? 1 + level * 0.18 : 1;
   return (
-    <div className="relative flex-shrink-0" style={{ width: size, height: size }} aria-hidden>
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }} aria-hidden={!src}>
       <style>{`@keyframes remiBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}.remi-breathe{animation:remiBreathe 4s ease-in-out infinite}`}</style>
       {(state === "speaking" || state === "listening") && (
         <>
@@ -29,6 +34,10 @@ export default function RemiAvatar({
         className={`relative w-full h-full rounded-full p-[3px] bg-gradient-to-tr from-brand to-brand-dark shadow-emblem ${state === "idle" ? "remi-breathe" : ""}`}
       >
         <div className="w-full h-full rounded-full bg-surface overflow-hidden relative">
+          {src ? (
+            // eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded avatar, arbitrary origin
+            <img src={src} alt={alt} className="w-full h-full object-cover select-none" draggable={false} />
+          ) : (
           <svg viewBox="0 0 100 100" className="w-full h-full">
             <defs>
               <radialGradient id="remiGlow" cx="50%" cy="38%" r="70%">
@@ -47,6 +56,7 @@ export default function RemiAvatar({
               {initials}
             </text>
           </svg>
+          )}
           {state === "thinking" && (
             <div className="absolute inset-x-0 bottom-[18%] flex justify-center gap-1">
               {[0, 1, 2].map((i) => (

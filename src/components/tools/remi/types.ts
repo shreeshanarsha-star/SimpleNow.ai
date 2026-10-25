@@ -11,6 +11,7 @@ export interface RemiPublicWorkspace {
   kiosk_idle_seconds: number;
   suggested_questions: string[];
   consent_text: string | null;
+  avatar_url?: string | null;
 }
 
 export interface RemiPublicProduct {

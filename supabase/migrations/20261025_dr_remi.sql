@@ -355,3 +355,9 @@ grant execute on function public.remi_match_chunks(uuid, extensions.vector, text
 insert into storage.buckets (id, name, public)
 values ('remi-brains', 'remi-brains', false)
 on conflict (id) do nothing;
+
+-- Avatar photo per workspace (public bucket, one folder per workspace).
+alter table public.remi_workspaces add column if not exists avatar_url text;
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('remi-avatars', 'remi-avatars', true, 3145728, array['image/png','image/jpeg','image/webp'])
+on conflict (id) do nothing;

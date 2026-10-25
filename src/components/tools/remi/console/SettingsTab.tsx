@@ -3,7 +3,42 @@
 import { useCallback, useEffect, useState } from "react";
 import Icon from "@/components/Icon";
 import { REMI_LANGUAGES } from "@/lib/remi/languages";
+import { createClient } from "@/lib/supabase/client";
+import RemiAvatar from "../RemiAvatar";
 import { api, areaCls, Btn, Card, Field, fmtDate, inputCls, canAdmin, type Role } from "./ui";
+
+function AvatarField({ wsId, value, onChange }: { wsId: string; value: string | null; onChange: (url: string | null) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function upload(f: File) {
+    setBusy(true);
+    setErr(null);
+    try {
+      const up = await api<{ path: string; token: string; publicUrl: string }>(`/api/remi/w/${wsId}/avatar`, { method: "POST", json: { mime: f.type, size: f.size } });
+      const { error } = await createClient().storage.from("remi-avatars").uploadToSignedUrl(up.path, up.token, f, { contentType: f.type });
+      if (error) throw new Error(error.message);
+      onChange(up.publicUrl);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex items-center gap-4">
+      <RemiAvatar size={84} src={value} />
+      <div className="space-y-1.5">
+        <label className="inline-flex">
+          <input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+          <span className="h-8 px-3 rounded-xl border border-border bg-surface text-[12px] font-semibold inline-flex items-center cursor-pointer hover:text-brand">{busy ? "Uploading…" : value ? "Change photo" : "Upload photo"}</span>
+        </label>
+        {value && <button onClick={() => onChange(null)} className="ml-2 text-[11.5px] text-ink-muted hover:text-critical">Remove</button>}
+        <div className="text-[10.5px] text-ink-muted">Square PNG/JPG/WebP, up to 3 MB. Shown in the chat, kiosk and link previews. Save settings to apply.</div>
+        {err && <div className="text-[11px] text-critical">{err}</div>}
+      </div>
+    </div>
+  );
+}
 
 type WS = Record<string, unknown> & { id: string; slug: string; name: string; active: boolean };
 type Member = { user_id: string; email: string | null; role: string; created_at: string };
@@ -97,7 +132,7 @@ export default function SettingsTab({ ws, role, meId, onSaved, onDeleted }: { ws
       const body = {
         name: v.name, assistant_name: v.assistant_name, tagline: v.tagline, industry: v.industry, about: v.about, greeting: v.greeting,
         default_language: v.default_language, pricing_mode: v.pricing_mode, voice: v.voice, handoff_message: v.handoff_message,
-        consent_text: v.consent_text, kiosk_idle_seconds: Number(v.kiosk_idle_seconds), active: v.active, slug: v.slug,
+        consent_text: v.consent_text, avatar_url: v.avatar_url || null, kiosk_idle_seconds: Number(v.kiosk_idle_seconds), active: v.active, slug: v.slug,
         notify_emails: String(v.notify_emails || ""), suggested_questions: String(v.suggested_questions || "").split("\n"),
         ...extra,
       };
@@ -126,6 +161,7 @@ export default function SettingsTab({ ws, role, meId, onSaved, onDeleted }: { ws
       <div className="grid lg:grid-cols-2 gap-4">
         <Card title="Assistant & company" icon="sparkle">
           <div className="space-y-3">
+            <AvatarField wsId={ws.id} value={(v.avatar_url as string) || null} onChange={(u) => setV((x) => ({ ...x, avatar_url: u }))} />
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Company / brand"><input className={inputCls} value={String(v.name || "")} onChange={s("name")} /></Field>
               <Field label="Assistant name"><input className={inputCls} value={String(v.assistant_name || "")} onChange={s("assistant_name")} /></Field>

@@ -32,6 +32,7 @@ async function load(slug: string) {
     kiosk_idle_seconds: ws.kiosk_idle_seconds,
     suggested_questions: ws.suggested_questions || [],
     consent_text: ws.consent_text,
+    avatar_url: (ws as { avatar_url?: string | null }).avatar_url || null,
   };
   return {
     ws: pub,
@@ -46,6 +47,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return {
     title: `${data.ws.assistant_name} — ${data.ws.name} · 24/7 AI Sales Assistant`,
     description: `Talk to ${data.ws.name}'s AI product expert in any language — product advice, results, availability and quotes, 24/7.`,
+    ...(data.ws.avatar_url
+      ? {
+          openGraph: { images: [{ url: data.ws.avatar_url }], title: `${data.ws.assistant_name} — ${data.ws.name}` },
+          icons: { icon: data.ws.avatar_url, apple: data.ws.avatar_url },
+        }
+      : {}),
   };
 }
 

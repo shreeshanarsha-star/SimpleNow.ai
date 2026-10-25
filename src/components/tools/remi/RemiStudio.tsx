@@ -193,7 +193,7 @@ export default function RemiStudio({
       {/* Header */}
       <div className="bg-gradient-to-b from-brand-wash/70 via-surface to-surface border-b border-border p-4 flex items-center justify-between gap-3 flex-shrink-0 min-h-[88px]">
         <div className="flex items-center gap-3.5 min-w-0">
-          <RemiAvatar size={56} state={state} level={audio.level} initials={initials === "Dr" ? "Dr" : initials} />
+          <RemiAvatar size={56} state={state} level={audio.level} initials={initials === "Dr" ? "Dr" : initials} src={ws.avatar_url} alt={ws.assistant_name} />
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="font-bold text-sm text-ink truncate">{ws.assistant_name}</h2>

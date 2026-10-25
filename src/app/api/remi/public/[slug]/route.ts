@@ -32,6 +32,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
       kiosk_idle_seconds: ws.kiosk_idle_seconds,
       suggested_questions: ws.suggested_questions || [],
       consent_text: ws.consent_text,
+      avatar_url: (ws as { avatar_url?: string | null }).avatar_url || null,
     },
     products: (products || []).map((p) =>
       ws.pricing_mode === "range" || ws.pricing_mode === "exact" ? p : { ...p, price_min: null, price_max: null }
