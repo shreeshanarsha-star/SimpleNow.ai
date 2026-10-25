@@ -219,7 +219,7 @@ ${opts.sources || "(no matching sources found for this question)"}
 Reply with ONE JSON object only:
 {
  "reply": string,
- "justification": string|null,
+ "justification": string|null (WRITTEN IN THE REPLY LANGUAGE — translate the evidence; keep product names and numbers),
  "language": {"code": string, "name": string},
  "sources": string[],
  "topic": string (2-5 word English topic label),
