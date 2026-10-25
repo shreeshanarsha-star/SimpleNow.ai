@@ -22,6 +22,7 @@ const TOOL_ACCENTS: Record<string, { bg: string }> = {
   "Unit Converter": { bg: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400" },
   Jotz: { bg: "bg-orange-500/10 text-orange-600 dark:text-orange-400" },
   "Intelexa.ai": { bg: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400" },
+  "Dr.Remi.ai": { bg: "bg-lime-500/10 text-lime-700 dark:text-lime-400" },
   "Team Chat": { bg: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400" },
   "Contracts & eSign": { bg: "bg-slate-500/10 text-slate-600 dark:text-slate-400" },
   "Gauri.ai": { bg: "bg-purple-500/10 text-purple-600 dark:text-purple-400" },
