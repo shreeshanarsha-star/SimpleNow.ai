@@ -17,9 +17,10 @@ export type PresenterCommand =
   | { type: "say"; text: string }
   | { type: "direct"; text: string }
   | { type: "mic"; on: boolean }
-  | { type: "layout"; layout: "slides" | "twin" | "handover" }
+  | { type: "layout"; layout: "slides" | "twin" | "handover" | "hub" }
   | { type: "auto"; on: boolean }
-  | { type: "reconnect" };
+  | { type: "reconnect" }
+  | { type: "hub" };
 
 export type PresenterStatus = {
   connected: boolean;
@@ -27,7 +28,7 @@ export type PresenterStatus = {
   paused: boolean;
   auto: boolean;
   micOn: boolean;
-  layout: "standby" | "slides" | "twin" | "handover";
+  layout: "standby" | "slides" | "twin" | "handover" | "hub";
   slide: number;
   slideCount: number;
   lastHeard?: string;

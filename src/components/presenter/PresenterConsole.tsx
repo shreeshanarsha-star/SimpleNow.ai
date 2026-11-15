@@ -67,6 +67,7 @@ export default function PresenterConsole() {
 
   const tv = `${origin}/presenter/live?s=${session.id}`;
   const ctl = `${origin}/presenter/control?s=${session.id}`;
+  const hubUrl = `${origin}/p/${session.code}`;
 
   return (
     <div className="space-y-6 p-1">
@@ -81,7 +82,7 @@ export default function PresenterConsole() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <a href={tv} target="_blank" className="rounded-2xl border border-border bg-surface p-5 hover:border-border-strong">
           <div className="text-sm font-semibold">1 · Open the TV screen</div>
           <div className="mt-1 text-xs text-ink-muted">On the presenting laptop (HDMI to TV). Click once to arm full screen.</div>
@@ -91,6 +92,11 @@ export default function PresenterConsole() {
           <div className="text-sm font-semibold">2 · Open the control page</div>
           <div className="mt-1 text-xs text-ink-muted">On your phone (signed in), with the Bluetooth earpiece.</div>
           <div className="mt-2 break-all text-xs">{ctl}</div>
+        </a>
+        <a href={hubUrl} target="_blank" className="rounded-2xl border border-border bg-surface p-5 hover:border-border-strong">
+          <div className="text-sm font-semibold">3 · Audience phones</div>
+          <div className="mt-1 text-xs text-ink-muted">No login. The TV lobby shows this as a QR code.</div>
+          <div className="mt-2 break-all text-xs">{hubUrl}</div>
         </a>
       </div>
 

@@ -1,0 +1,128 @@
+// Presenter.ai — session content shared by the TV, the phones and the server.
+// Quiz ANSWERS are deliberately NOT here (they live in quizKey.ts, server-only)
+// so no phone can read them from the page bundle.
+
+export type QuizQ = { section: string; q: string; options: [string, string, string, string] };
+
+// Source: "AI Qiz and assessment/Part1_Quiz_and_Assessment.pptx" (30 questions, same order).
+export const QUIZ: QuizQ[] = [
+  { section: "The names", q: "AI stands for…", options: ["Artificial Intelligence", "Automatic Internet", "Advanced Information", "Applied Instructions"] },
+  { section: "The names", q: "LLM stands for…", options: ["Long Learning Machine", "Large Language Model", "Live Language Monitor", "Logical Learning Method"] },
+  { section: "The names", q: "GPT stands for…", options: ["General Purpose Technology", "Google Processing Tool", "Generative Pre-trained Transformer", "Guided Prediction Text"] },
+  { section: "The names", q: "ML stands for…", options: ["Mobile Learning", "Model Language", "Main Logic", "Machine Learning"] },
+  { section: "The names", q: "ChatGPT is made by…", options: ["Google", "Microsoft", "OpenAI", "Meta"] },
+  { section: "The names", q: "Gemini is made by…", options: ["Google", "Apple", "Anthropic", "Amazon"] },
+  { section: "The names", q: "Claude is made by…", options: ["OpenAI", "Anthropic", "Google", "Microsoft"] },
+  { section: "The names", q: "Copilot is made by…", options: ["Meta", "Google", "Anthropic", "Microsoft"] },
+  { section: "The words", q: "The instruction you type into AI is called a…", options: ["Token", "Prompt", "Code", "Query box"] },
+  { section: "The words", q: "A small chunk of text the AI reads is called a…", options: ["Token", "Byte", "Pixel", "Cookie"] },
+  { section: "The words", q: "When AI confidently makes up a fact, it's called a…", options: ["Glitch", "Crash", "Hallucination", "Bug"] },
+  { section: "The words", q: "AI that creates new text, images or video is called…", options: ["Robotic AI", "Generative AI", "Narrow AI", "Search AI"] },
+  { section: "The words", q: "AI that takes actions toward a goal on its own is called…", options: ["Agentic AI", "Generative AI", "Smart search", "Autocorrect"] },
+  { section: "The words", q: "Building an app by describing it in plain English is called…", options: ["No-code", "Hard coding", "Pair coding", "Vibe coding"] },
+  { section: "The words", q: "A fake video or cloned voice made by AI is called a…", options: ["Filter", "Deepfake", "Meme", "Avatar"] },
+  { section: "The words", q: "AI that handles text, images and audio together is called…", options: ["Multimodal", "Multitask", "Multicloud", "Multilingual"] },
+  { section: "The words", q: "How much text an AI can hold in mind at once is its…", options: ["Memory card", "Hard disk", "Context window", "Cache"] },
+  { section: "The words", q: "The date where an AI's knowledge stops is its…", options: ["Expiry date", "Training cutoff", "Version date", "Deadline"] },
+  { section: "The history", q: "The test of whether a machine can pass as human is the…", options: ["Einstein test", "Turing test", "Gates test", "Jobs test"] },
+  { section: "The history", q: "In 2016, which AI beat Go world champion Lee Sedol?", options: ["Watson", "Siri", "Deep Blue", "AlphaGo"] },
+  { section: "The history", q: "The 2017 invention behind every modern LLM is the…", options: ["Transformer", "Processor", "Algorithm", "Browser"] },
+  { section: "The history", q: "ChatGPT was launched in…", options: ["2018", "2020", "2022", "2024"] },
+  { section: "Using it safely", q: "Which one should you never paste into a free AI tool?", options: ["A news article", "A recipe", "A Diwali wish", "Employee salary data"] },
+  { section: "Using it safely", q: "A human approving AI's work before it acts is called…", options: ["Human-in-the-loop", "Human override", "Manual mode", "Back-up"] },
+  { section: "Using it safely", q: "The setting that controls how random an AI's answers are is…", options: ["Volume", "Speed", "Temperature", "Brightness"] },
+  { section: "Using it safely", q: "Asking AI 'Are you sure?' usually…", options: ["Fixes every error", "Can make it change a correct answer too", "Locks the answer", "Deletes the chat"] },
+  { section: "Builder & agent creator", q: "RAG stands for…", options: ["Random Answer Generator", "Rapid AI Gateway", "Retrieval-Augmented Generation", "Real-time Agent Grid"] },
+  { section: "Builder & agent creator", q: "Training an existing AI further on your own data is called…", options: ["Fine-tuning", "Re-booting", "Prompting", "Uploading"] },
+  { section: "Builder & agent creator", q: "Hidden text that tricks an AI agent into obeying it is called…", options: ["Phishing", "Spam", "Malware", "Prompt injection"] },
+  { section: "Builder & agent creator", q: "MCP, the standard that lets AI agents plug into apps and tools, stands for…", options: ["Master Control Program", "Model Context Protocol", "Multi-Cloud Platform", "Machine Code Processor"] },
+];
+
+/** Quiz clock: every device derives the current question from the start time, so nothing has to "advance" it. */
+export const QUIZ_TIMING = { leadInMs: 5000, answerMs: 7000, revealMs: 2000 };
+export type QuizState = { start: number; stoppedAt?: number | null };
+export function quizClock(quiz: QuizState | null | undefined, now: number) {
+  if (!quiz?.start) return { status: "off" as const, idx: -1, msLeft: 0 };
+  if (quiz.stoppedAt && now >= quiz.stoppedAt) return { status: "done" as const, idx: QUIZ.length, msLeft: 0 };
+  const { answerMs, revealMs } = QUIZ_TIMING;
+  const t = now - quiz.start;
+  if (t < 0) return { status: "leadin" as const, idx: -1, msLeft: -t };
+  const slot = answerMs + revealMs;
+  const idx = Math.floor(t / slot);
+  if (idx >= QUIZ.length) return { status: "done" as const, idx: QUIZ.length, msLeft: 0 };
+  const inSlot = t - idx * slot;
+  return inSlot < answerMs
+    ? { status: "answer" as const, idx, msLeft: answerMs - inSlot }
+    : { status: "reveal" as const, idx, msLeft: slot - inSlot };
+}
+
+/* ------------------------- Self-assessment (DRAFT) ------------------------- */
+// DRAFT by Claude for Shreesha's approval (open item 3). Pick the HIGHEST true
+// statement; options score 1–4; total 20–80. Areas follow the quiz deck slide 34.
+export type AssessQ = { area: string; q: string; options: [string, string, string, string] };
+export const ASSESSMENT: AssessQ[] = [
+  { area: "Writing & communication", q: "Emails and messages", options: ["I write them fully myself", "I sometimes ask AI to draft or polish one", "I use AI every week for drafts and always edit before sending", "I have saved prompts or a project that drafts them in my style"] },
+  { area: "Writing & communication", q: "Letters, JDs and announcements", options: ["I start from an old file and edit by hand", "Now and then I get an AI first draft", "AI writes my first draft routinely, using role, context, ask and format", "I've built a reusable assistant that produces them consistently"] },
+  { area: "Writing & communication", q: "Tone, length and language", options: ["I haven't used AI for this", "I use AI to fix tone or grammar now and then", "I regularly use AI to shorten, adapt tone or translate for different readers", "I've set up a tool or workflow that does this for my team"] },
+  { area: "Reading & understanding", q: "Long documents and reports", options: ["I read them fully myself", "I sometimes paste one in for a summary", "I regularly summarise and question documents with AI, then check the source", "I query a knowledge hub of approved documents I set up"] },
+  { area: "Reading & understanding", q: "Finding answers in policies and SOPs", options: ["I search the files manually", "I ask a chatbot general questions occasionally", "I use AI on uploaded, approved policies and verify the exact section", "I built a policy assistant that others use"] },
+  { area: "Meetings", q: "Meeting notes and action items", options: ["Handwritten notes or none", "I sometimes ask AI to tidy my notes", "I regularly use AI for summaries and action items", "Notes flow automatically into action items, trackers or emails"] },
+  { area: "Meetings", q: "Preparing for meetings", options: ["No AI involved", "Occasionally I ask AI for an agenda", "I regularly prepare agendas, briefs and talking points with AI", "A reusable workflow prepares my briefs from my calendar and documents"] },
+  { area: "Research & thinking", q: "Researching a topic", options: ["Google and read pages myself", "Sometimes I ask a chatbot", "I use tools with sources (e.g. Perplexity, NotebookLM) and open the citations", "I've set up a recurring research or monitoring agent"] },
+  { area: "Research & thinking", q: "Thinking through a problem", options: ["I don't use AI for this", "Occasionally I brainstorm with AI", "I regularly ask AI to challenge my thinking, list options and trade-offs", "I use structured decision templates or an AI reviewer I set up"] },
+  { area: "Excel & data", q: "Formulas and data cleaning", options: ["I do it manually or ask a colleague", "I sometimes ask AI for a formula", "I regularly use Copilot or AI to clean, analyse and chart data, and I reconcile totals", "I've automated a data pipeline with AI steps"] },
+  { area: "Excel & data", q: "Monthly reports and MIS", options: ["I build them by hand each time", "Occasionally AI summarises a report for me", "AI helps every cycle and I verify the numbers", "The report refreshes automatically with AI insights"] },
+  { area: "Presentations & learning", q: "Presentations and decks", options: ["I build them manually", "Occasionally AI gives me ideas or text", "I regularly generate a draft deck with AI, then refine it", "I have a reusable template or workflow that produces branded decks"] },
+  { area: "Presentations & learning", q: "Learning something new", options: ["I don't use AI to learn", "Occasionally I ask AI to explain something", "I regularly learn with AI: explain, quiz me, make a plan", "I built a learning assistant or curriculum for me or my team"] },
+  { area: "Prompting & tools", q: "How I prompt", options: ["Short one-line questions", "I add some detail sometimes", "I consistently give role, context, ask and format, and iterate", "I write structured, reusable prompts or instructions others use"] },
+  { area: "Prompting & tools", q: "Tools I use", options: ["None, or one chatbot rarely", "One AI tool now and then", "Two or three tools every week, picked by task", "I connect tools together (integrations, APIs, MCP)"] },
+  { area: "Reuse & automation", q: "Reusing what works", options: ["I start from scratch every time", "I sometimes copy an old prompt", "I keep a prompt library, projects or custom GPTs I reuse", "I share reusable assistants with my team"] },
+  { area: "Reuse & automation", q: "Automation", options: ["Nothing automated", "I know which tasks could be automated, but haven't yet", "I've built at least one simple automation with AI in it", "I've built an agent that takes actions, with a human approving"] },
+  { area: "Safety & quality", q: "Data safety", options: ["I'm not sure what's safe to paste", "I avoid obviously sensitive data", "I always use approved accounts, no personal data, training turned off", "I help define or teach safe-use rules for others"] },
+  { area: "Safety & quality", q: "Checking AI output", options: ["I use the output as it is", "I skim it", "I always fact-check names, numbers and sources", "I've built checks into my workflow (review steps, second check)"] },
+  { area: "Mindset", q: "My mindset", options: ["AI isn't for my work yet", "Curious: I try when someone shows me", "I actively look for tasks where AI pays off (ROI)", "I redesign my work around AI and help others do it"] },
+];
+
+export const LEVELS = [
+  { name: "Explorer", min: 20, max: 35, line: "Starting out: tries AI now and then" },
+  { name: "Practitioner", min: 36, max: 50, line: "Uses AI weekly for real tasks" },
+  { name: "Builder", min: 51, max: 65, line: "Has templates, projects, repeatable workflows" },
+  { name: "Agent Creator", min: 66, max: 80, line: "Designs AI that acts, with checks" },
+] as const;
+export function levelFor(score: number) {
+  return LEVELS.find((l) => score >= l.min && score <= l.max) || LEVELS[0];
+}
+
+/* ------------------------------ Polls (DRAFT) ------------------------------ */
+// DRAFT by Claude for Shreesha's approval (open item 4).
+export type Poll = { key: string; label: string; q: string; options: string[] };
+export const POLLS: Poll[] = [
+  { key: "before", label: "Before poll", q: "How confident are you using AI in your daily work?", options: ["Not yet", "A little", "Fairly", "Very"] },
+  { key: "poll1", label: "Poll 1 · Reality check", q: "Has AI saved you real time this month, after checking its work?", options: ["Yes, a lot", "A little", "Not really", "I don't use it yet"] },
+  { key: "poll2", label: "Poll 2 · Tool by task", q: "Which task will you try with AI first?", options: ["Writing & emails", "Excel & data", "Policy answers", "Presentations & flyers", "Meeting notes"] },
+  { key: "debate", label: "Debate · 300 employees", q: "A 300-employee company: will AI agents replace jobs or redesign them?", options: ["Replace: jobs will shrink", "Redesign: jobs will change"] },
+  { key: "check-fact", label: "App check · Fact", q: "Fact check: are the event details, logo and colours right?", options: ["👍 Yes", "👌 Mostly", "👎 No"] },
+  { key: "check-value", label: "App check · Value", q: "Value: is it better than what we'd make in Canva or Word?", options: ["👍 Yes", "👌 About the same", "👎 No"] },
+  { key: "check-roi", label: "App check · ROI", q: "ROI: did it save time, once checking is included?", options: ["👍 Yes", "👌 Not sure", "👎 No"] },
+  { key: "after", label: "After poll", q: "How confident are you using AI in your daily work?", options: ["Not yet", "A little", "Fairly", "Very"] },
+];
+export const pollByKey = (k?: string | null) => POLLS.find((p) => p.key === k);
+
+/* ------------------------------ Hub state ------------------------------ */
+export type HubPhase = "lobby" | "quiz" | "assessment" | "poll" | "questions" | "flyer" | "commit" | "finale" | "closed";
+export type HubState = {
+  phase: HubPhase;
+  quiz?: QuizState | null;
+  poll?: string | null; // poll key while phase === "poll"
+  finaleStep?: number; // 0 nothing · 1 third · 2 second · 3 winner · 4 levels · 5 before vs after
+  flyerUrl?: string | null;
+  at?: number;
+};
+export const DEFAULT_HUB: HubState = { phase: "lobby" };
+
+export const PHONE_TAKEAWAYS = [
+  "The 3-check test: Fact, Value, ROI.",
+  "AI, HI or notepad: what matters is ROI.",
+  "Never paste employee data into personal AI tools.",
+  "Start small: one assistant, one design tool, one automation.",
+];

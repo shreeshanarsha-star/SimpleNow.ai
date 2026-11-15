@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, presenterChannel, type PresenterCommand, type PresenterStatus } from "@/lib/presenter/client";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { POLLS, quizClock, type HubState } from "@/lib/presenter/content";
 
 type Session = { id: string; code: string; title: string };
 
@@ -146,6 +147,8 @@ export default function ControlPad({ sessionId }: { sessionId?: string }) {
         <button className={`${btn} py-3 bg-neutral-900`} onClick={() => send({ type: "layout", layout: "handover" })}>Take over</button>
       </div>
 
+      {session && <HubControls sessionId={session.id} send={send} />}
+
       <div className="space-y-2">
         <textarea
           value={text}
@@ -174,6 +177,138 @@ export default function ControlPad({ sessionId }: { sessionId?: string }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------ audience hub controls ------------------------------ */
+type BoardLite = {
+  attendees: Array<{ name: string }>;
+  assessment: { completed: number };
+  polls: Record<string, number[]>;
+  questions: Array<{ id: string; text: string; status: string }>;
+  quiz: { players: number };
+  serverNow: number;
+};
+
+function HubControls({ sessionId, send }: { sessionId: string; send: (c: PresenterCommand) => void }) {
+  const [hub, setHub] = useState<HubState | null>(null);
+  const [board, setBoard] = useState<BoardLite | null>(null);
+  const [code, setCode] = useState("");
+  const [flyer, setFlyer] = useState("");
+  const [msg, setMsg] = useState("");
+  const [now, setNow] = useState(Date.now());
+
+  const load = useCallback(async () => {
+    try {
+      const d = await api<{ hub: HubState; board: BoardLite; code: string }>(`/api/presenter/hub/admin?id=${sessionId}`);
+      setHub(d.hub);
+      setBoard(d.board);
+      setCode(d.code);
+      if (d.hub.flyerUrl && !flyer) setFlyer(d.hub.flyerUrl);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Hub error");
+    }
+  }, [sessionId, flyer]);
+
+  useEffect(() => {
+    load();
+    const iv = setInterval(load, 3000);
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => {
+      clearInterval(iv);
+      clearInterval(t);
+    };
+  }, [load]);
+
+  const act = async (body: Record<string, unknown>) => {
+    setMsg("");
+    try {
+      const d = await api<{ hub?: HubState }>("/api/presenter/hub/admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sessionId, ...body }),
+      });
+      if (d.hub) setHub(d.hub);
+      send({ type: "hub" });
+      if (navigator.vibrate) navigator.vibrate(30);
+      load();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Failed");
+    }
+  };
+
+  const b = "rounded-xl px-2 py-3 text-sm font-semibold active:scale-95 transition";
+  const on = (cond: boolean) => (cond ? "bg-orange-600" : "bg-neutral-800");
+  const clock = hub?.phase === "quiz" ? quizClock(hub.quiz, now) : null;
+
+  return (
+    <div className="rounded-xl bg-neutral-900 p-3 space-y-3">
+      <div className="flex items-center justify-between text-sm">
+        <b>Audience hub {code && <span className="text-white/50">· /p/{code}</span>}</b>
+        <span className="text-white/60">{board?.attendees.length || 0} joined</span>
+      </div>
+      <div className="text-xs text-white/60">
+        Phase: <b className="text-white">{hub?.phase || "…"}</b>
+        {hub?.phase === "poll" && ` · ${hub.poll}`}
+        {clock && clock.status !== "off" && ` · quiz ${clock.status === "done" ? "done" : clock.status === "leadin" ? "starting" : `Q${clock.idx + 1}`}`}
+        {hub?.phase === "assessment" && ` · ${board?.assessment.completed || 0} done`}
+        {hub?.phase === "finale" && ` · step ${hub.finaleStep || 0}/5`}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <button className={`${b} ${on(hub?.phase === "lobby")}`} onClick={() => act({ action: "phase", phase: "lobby" })}>Lobby</button>
+        <button className={`${b} ${on(hub?.phase === "quiz")}`} onClick={() => act({ action: "phase", phase: "quiz" })}>Quiz screen</button>
+        <button className={`${b} bg-green-700`} onClick={() => confirm("Start the 30-question quiz now?") && act({ action: "quiz-start" })}>Quiz ▶ GO</button>
+        <button className={`${b} ${on(hub?.phase === "assessment")}`} onClick={() => act({ action: "phase", phase: "assessment" })}>Assessment</button>
+        <button className={`${b} ${on(hub?.phase === "questions")}`} onClick={() => act({ action: "phase", phase: "questions" })}>Q&A list</button>
+        <button className={`${b} ${on(hub?.phase === "commit")}`} onClick={() => act({ action: "phase", phase: "commit" })}>Commit</button>
+      </div>
+
+      <div className="grid grid-cols-4 gap-2">
+        {POLLS.map((p) => (
+          <button key={p.key} className={`${b} py-2 text-xs ${on(hub?.phase === "poll" && hub.poll === p.key)}`} onClick={() => act({ action: "phase", phase: "poll", poll: p.key })}>
+            {p.key}
+            <div className="text-[10px] font-normal text-white/60">{(board?.polls[p.key] || []).reduce((a, c) => a + c, 0)} votes</div>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <button className={`${b} bg-amber-600`} onClick={() => act({ action: "finale-step" })}>Finale next ▶</button>
+        <button className={`${b} bg-neutral-800`} onClick={() => act({ action: "finale-step", step: Math.max(0, (hub?.finaleStep || 0) - 1) })}>◀ Finale back</button>
+        <button className={`${b} ${on(hub?.phase === "closed")}`} onClick={() => act({ action: "phase", phase: "closed" })}>Thank you</button>
+      </div>
+      <div className="text-[11px] text-white/40">Finale steps: 1 third · 2 second · 3 winner · 4 levels · 5 before/after. Shree announces each one.</div>
+
+      <div className="flex gap-2">
+        <input value={flyer} onChange={(e) => setFlyer(e.target.value)} placeholder="Flyer app URL" className="flex-1 rounded-xl bg-neutral-800 px-3 text-sm outline-none" />
+        <button className={`${b} bg-orange-700 px-3`} onClick={() => act({ action: "flyer-url", url: flyer }).then(() => act({ action: "phase", phase: "flyer" }))}>Reveal app</button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <button className={`${b} bg-neutral-800`} onClick={() => send({ type: "hub" })}>Show hub on TV</button>
+        <button className={`${b} bg-neutral-800`} onClick={() => confirm("Wipe all quiz answers and reset the quiz?") && act({ action: "quiz-reset" })}>Reset quiz</button>
+      </div>
+
+      {!!board?.questions.length && (
+        <div className="space-y-2">
+          <div className="text-xs text-white/50">Phone questions</div>
+          {board.questions.filter((q) => q.status === "open").slice(0, 8).map((q) => (
+            <div key={q.id} className="rounded-lg bg-neutral-800 p-2 text-sm">
+              <div>{q.text}</div>
+              <div className="mt-2 flex gap-2">
+                <button className="rounded-lg bg-orange-700 px-3 py-1 text-xs" onClick={() => { send({ type: "direct", text: `Answer this audience question out loud in about 30 seconds: "${q.text}". If it's about building or tool setup, hand it to Shreesha.` }); act({ action: "question-status", qid: q.id, status: "answered" }); }}>
+                  Shree answers
+                </button>
+                <button className="rounded-lg bg-neutral-700 px-3 py-1 text-xs" onClick={() => act({ action: "question-status", qid: q.id, status: "answered" })}>Done</button>
+                <button className="rounded-lg bg-neutral-700 px-3 py-1 text-xs" onClick={() => act({ action: "question-status", qid: q.id, status: "hidden" })}>Hide</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {msg && <div className="text-xs text-red-400">{msg}</div>}
     </div>
   );
 }

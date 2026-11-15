@@ -16,6 +16,8 @@ import {
   type PresenterStatus,
 } from "@/lib/presenter/client";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import HubScreen, { type Board } from "@/components/presenter/HubScreen";
+import { DEFAULT_HUB, QUIZ, pollByKey, quizClock, type HubState } from "@/lib/presenter/content";
 
 type Session = { id: string; code: string; title: string; state: Record<string, unknown> };
 type Line = { role: "room" | "shree" | "shreesha"; text: string };
@@ -31,6 +33,17 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   const [connected, setConnected] = useState(false);
   const [note, setNote] = useState("Standby");
   const [armed, setArmed] = useState(false);
+  const [hub, setHub] = useState<HubState>(DEFAULT_HUB);
+  const [board, setBoard] = useState<Board | null>(null);
+  const [quizKey, setQuizKey] = useState<number[]>([]);
+  const [tick, setTick] = useState(Date.now());
+  const hubRef = useRef<{ hub: HubState; board: Board | null; offset: number; lastQuizNote: number; lastFinale: number }>({
+    hub: DEFAULT_HUB,
+    board: null,
+    offset: 0,
+    lastQuizNote: -1,
+    lastFinale: 0,
+  });
 
   const anamRef = useRef<AnamClient | null>(null);
   const chanRef = useRef<RealtimeChannel | null>(null);
@@ -154,7 +167,14 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       const out = await api<{ say: string }>("/api/presenter/director", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: session?.id, transcript: transcript.current.slice(-12), slideCount: s.current.slideCount, ...body }),
+        body: JSON.stringify({
+          sessionId: session?.id,
+          transcript: transcript.current.slice(-12),
+          slideCount: s.current.slideCount,
+          people: peopleContext(hubRef.current.board),
+          phase: hubContext(hubRef.current.hub, hubRef.current.board),
+          ...body,
+        }),
       });
       return out.say;
     },
@@ -217,6 +237,84 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     },
     [director, presentSlide, pushStatus, slideText, speak]
   );
+
+  /* ------------------------------ audience hub ------------------------------ */
+  const refreshHub = useCallback(async () => {
+    if (!session?.id) return;
+    try {
+      const t0 = Date.now();
+      const data = await api<{ hub: HubState; board: Board; quizKey: number[] }>(`/api/presenter/hub/admin?id=${session.id}`);
+      hubRef.current.offset = data.board.serverNow - (t0 + Date.now()) / 2;
+      hubRef.current.hub = data.hub;
+      hubRef.current.board = data.board;
+      setHub(data.hub);
+      setBoard(data.board);
+      setQuizKey(data.quizKey);
+    } catch {
+      /* keep the last good state on screen */
+    }
+  }, [session?.id]);
+
+  // Shree's own lines during the hub: a quick quiz comment every 5 questions, and the finale reveals.
+  const hubLines = useCallback(async () => {
+    const h = hubRef.current;
+    if (s.current.layout !== "hub" || s.current.paused || s.current.speaking) return;
+    if (h.hub.phase === "quiz") {
+      const c = quizClock(h.hub.quiz, Date.now() + h.offset);
+      if (c.status === "leadin" || c.status === "off") h.lastQuizNote = -1;
+      const checkpoint = c.status === "reveal" && (c.idx + 1) % 5 === 0 && c.idx + 1 < QUIZ.length ? c.idx : c.status === "done" ? QUIZ.length : -1;
+      if (checkpoint >= 0 && checkpoint !== h.lastQuizNote) {
+        h.lastQuizNote = checkpoint;
+        const pq = h.board?.quiz.perQuestion || [];
+        const from = checkpoint === QUIZ.length ? 0 : checkpoint - 4;
+        const slice = pq.slice(from, checkpoint === QUIZ.length ? QUIZ.length : checkpoint + 1);
+        const answered = slice.reduce((a, b) => a + b.answered, 0);
+        const correct = slice.reduce((a, b) => a + b.correct, 0);
+        const pct = answered ? Math.round((correct / answered) * 100) : 0;
+        const instruction =
+          checkpoint === QUIZ.length
+            ? `The quiz just ended. Room got about ${pct}% right overall. One or two short sentences: scores are locked, the winner is revealed at the finale. Name nobody.`
+            : `Quiz checkpoint after question ${checkpoint + 1} of 30. The room got about ${pct}% of the last five right. Make ONE short, witty sentence (under 15 words) to keep energy up. Don't read questions or answers. Name nobody. The next question starts in 2 seconds.`;
+        speak(await director({ mode: "free", instruction }).catch(() => "[SILENT]"));
+      }
+    }
+    if (h.hub.phase !== "finale") h.lastFinale = 0;
+    if (h.hub.phase === "finale") {
+      const step = h.hub.finaleStep || 0;
+      if (step !== h.lastFinale && step > 0) {
+        h.lastFinale = step;
+        const lb = h.board?.quiz.leaderboard || [];
+        const say = (i: number, place: string) =>
+          lb[i] ? `Announce ${place} place in the quiz: ${lb[i].name}, with ${lb[i].correct} out of 30. Build a little drama, one or two sentences, then congratulate them.` : `There's no ${place} place (not enough players). Say so lightly in one sentence.`;
+        const instruction =
+          step === 1
+            ? say(2, "third")
+            : step === 2
+              ? say(1, "second")
+              : step === 3
+                ? say(0, "first. They are tonight's quiz champion")
+                : step === 4
+                  ? `Reveal the team AI-level chart (counts only): ${(h.board?.assessment.levelCounts || []).map((l) => `${l.name} ${l.count}`).join(", ")}. Two or three sentences: celebrate honestly, then the goal of one level up in 90 days. Everyone's badge is on their phone, private. Name nobody.`
+                  : `Compare the before and after poll ("${pollByKey("before")?.q}"): before ${JSON.stringify(h.board?.polls["before"] || [])}, after ${JSON.stringify(h.board?.polls["after"] || [])} for options ${JSON.stringify(pollByKey("before")?.options || [])}. Two sentences, honest.`;
+        speak(await director({ mode: "free", instruction }).catch(() => "[SILENT]"));
+      }
+    }
+  }, [director, speak]);
+
+  useEffect(() => {
+    if (!session?.id) return;
+    refreshHub();
+    const iv = setInterval(() => {
+      refreshHub().then(hubLines);
+    }, hub.phase === "quiz" ? 1000 : 2500);
+    return () => clearInterval(iv);
+  }, [session?.id, refreshHub, hubLines, hub.phase]);
+
+  useEffect(() => {
+    if (layout !== "hub") return;
+    const iv = setInterval(() => setTick(Date.now()), 200);
+    return () => clearInterval(iv);
+  }, [layout]);
 
   /* ------------------------------ Anam ------------------------------ */
   const connectTwin = useCallback(async () => {
@@ -360,9 +458,16 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           await disconnectTwin();
           await connectTwin();
           break;
+        case "hub":
+          await refreshHub();
+          if (st.layout !== "hub") {
+            st.pendingAfterSpeech = null;
+            setLayoutBoth("hub");
+          }
+          break;
       }
     },
-    [connectTwin, director, disconnectTwin, drawSlide, markSpeechDone, presentSlide, pushStatus, setLayoutBoth, slideText, speak]
+    [connectTwin, director, disconnectTwin, drawSlide, markSpeechDone, presentSlide, pushStatus, refreshHub, setLayoutBoth, slideText, speak]
   );
 
   const handleRef = useRef(handle);
@@ -384,6 +489,22 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           setSlideCount(deckRef.current.numPages);
         } else setNote("No deck uploaded yet — upload it in the console.");
         if (urls.notes) notesRef.current = await openPdf(urls.notes).catch(() => null);
+        // Give the phone agent the deck + notes text (background, best effort).
+        (async () => {
+          const n = deckRef.current?.numPages || notesRef.current?.numPages || 0;
+          if (!n) return;
+          const slides: Array<{ body: string; notes: string }> = [];
+          for (let i = 0; i < n; i++) {
+            const body = deckRef.current && i < deckRef.current.numPages ? await pageText(deckRef.current, i + 1).catch(() => "") : "";
+            const notes = notesRef.current && i < notesRef.current.numPages ? await pageText(notesRef.current, i + 1).catch(() => "") : "";
+            slides.push({ body, notes });
+          }
+          await api("/api/presenter/hub/admin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: sess.id, action: "slides", slides }),
+          }).catch(() => {});
+        })();
         const ch = presenterChannel(sess.id);
         ch.on("broadcast", { event: "cmd" }, ({ payload }) => handleRef.current(payload as PresenterCommand));
         ch.on("broadcast", { event: "ping" }, () => pushStatus());
@@ -412,7 +533,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
 
   /* ------------------------------ render ------------------------------ */
   const twinBig = layout === "twin";
-  const showTwin = layout === "twin" || layout === "slides";
+  const showTwin = layout === "twin" || layout === "slides" || layout === "hub";
+  const twinSide = layout === "slides" || layout === "hub";
 
   return (
     <div className="fixed inset-0 bg-black text-white overflow-hidden select-none" style={{ cursor: armed ? "none" : "default" }}>
@@ -445,13 +567,20 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         <canvas ref={canvasRef} className="rounded-xl shadow-2xl bg-white" />
       </div>
 
+      {/* Audience hub */}
+      {layout === "hub" && session && (
+        <div className="absolute" style={{ left: "2%", top: "3%", width: "70%", height: "94%" }}>
+          <HubScreen hub={hub} board={board} quizKey={quizKey} code={session.code} title={session.title} serverNow={tick + hubRef.current.offset} />
+        </div>
+      )}
+
       {/* Twin */}
       <div
         className="absolute transition-all duration-500 overflow-hidden rounded-2xl bg-black"
         style={
           twinBig
             ? { left: "10%", top: "6%", width: "80%", height: "80%", opacity: 1 }
-            : layout === "slides"
+            : twinSide
               ? { left: "74%", top: "3%", width: "24%", height: "40%", opacity: 1 }
               : { left: "40%", top: "40%", width: "20%", height: "20%", opacity: 0 }
         }
@@ -491,4 +620,23 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       )}
     </div>
   );
+}
+
+/* Context for the Director: phone-tagged names are certain, so Shree may use them. */
+function peopleContext(board: Board | null) {
+  if (!board?.attendees.length) return undefined;
+  return board.attendees.map((a) => `- ${a.name}${a.intro ? ` (task they'd love to drop: ${a.intro})` : ""}`).join("\n");
+}
+
+function hubContext(hub: HubState, board: Board | null) {
+  const parts = [`Audience hub phase: ${hub.phase}. ${board?.attendees.length || 0} people signed in on phones.`];
+  if (hub.phase === "poll" && hub.poll) {
+    const p = pollByKey(hub.poll);
+    const counts = board?.polls[hub.poll] || [];
+    if (p) parts.push(`Live poll "${p.q}": ${p.options.map((o, i) => `${o} = ${counts[i] || 0}`).join("; ")}.`);
+  }
+  if (hub.phase === "assessment") parts.push(`${board?.assessment.completed || 0} have finished the self-assessment.`);
+  if (hub.phase === "questions" && board?.questions.length)
+    parts.push(`Open phone questions (most recent first): ${board.questions.filter((q) => q.status === "open").slice(0, 6).map((q) => `"${q.text}"`).join(" | ")}`);
+  return parts.join(" ");
 }
