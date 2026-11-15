@@ -37,6 +37,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   const [board, setBoard] = useState<Board | null>(null);
   const [quizKey, setQuizKey] = useState<number[]>([]);
   const [tick, setTick] = useState(Date.now());
+  const [buildText, setBuildText] = useState("");
+  const building = useRef(false);
   const hubRef = useRef<{ hub: HubState; board: Board | null; offset: number; lastQuizNote: number; lastFinale: number }>({
     hub: DEFAULT_HUB,
     board: null,
@@ -586,6 +588,45 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           await disconnectTwin();
           await connectTwin();
           break;
+        case "flyer-build": {
+          if (building.current) break;
+          building.current = true;
+          setBuildText("");
+          setLayoutBoth("hub");
+          // Runs in the background: the presentation never waits for it.
+          (async () => {
+            try {
+              const res = await fetch("/api/presenter/flyer", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: session?.id, inputs: cmd.inputs }),
+              });
+              if (!res.body) throw new Error("no stream");
+              const reader = res.body.getReader();
+              const dec = new TextDecoder();
+              let acc = "";
+              for (;;) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                acc += dec.decode(value, { stream: true });
+                setBuildText(acc.length > 20000 ? acc.slice(-20000) : acc);
+              }
+            } catch {
+              /* backup app covers this */
+            } finally {
+              building.current = false;
+              refreshHub();
+            }
+          })();
+          await refreshHub();
+          speak(
+            await director({
+              mode: "free",
+              instruction: `The room gave the flyer details: "${cmd.inputs.name}", ${cmd.inputs.date}, at ${cmd.inputs.venue}, highlights: ${cmd.inputs.highlights.join("; ")}. Say you've just handed the instruction to an AI and the build has started on screen. In 3 or 4 short sentences explain vibe coding: describe the app in plain English, the AI writes the code, a human checks it. Then hand over: "Shreesha, over to you."`,
+            }).catch(() => "[SILENT]")
+          );
+          break;
+        }
         case "hub":
           await refreshHub();
           if (st.layout !== "hub") {
@@ -698,7 +739,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       {/* Audience hub */}
       {layout === "hub" && session && (
         <div className="absolute" style={{ left: "2%", top: "3%", width: "70%", height: "94%" }}>
-          <HubScreen hub={hub} board={board} quizKey={quizKey} code={session.code} title={session.title} serverNow={tick + hubRef.current.offset} />
+          <HubScreen hub={hub} board={board} quizKey={quizKey} code={session.code} title={session.title} serverNow={tick + hubRef.current.offset} buildText={buildText} />
         </div>
       )}
 
@@ -771,6 +812,11 @@ function hubContext(hub: HubState, board: Board | null) {
     const p = pollByKey(hub.poll);
     const counts = board?.polls[hub.poll] || [];
     if (p) parts.push(`Live poll "${p.q}": ${p.options.map((o, i) => `${o} = ${counts[i] || 0}`).join("; ")}.`);
+  }
+  const fb = hub.flyerBuild;
+  if (fb) {
+    const secs = fb.finishedAt ? Math.round((fb.finishedAt - fb.startedAt) / 1000) : null;
+    parts.push(`Flyer app build: ${fb.status}${secs ? `, built in ${Math.floor(secs / 60)} min ${secs % 60} s (quote this real build time)` : ""}.`);
   }
   if (hub.phase === "assessment") parts.push(`${board?.assessment.completed || 0} have finished the self-assessment.`);
   if (hub.phase === "questions" && board?.questions.length)

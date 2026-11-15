@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, presenterChannel, type PresenterCommand, type PresenterStatus } from "@/lib/presenter/client";
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { POLLS, quizClock, type HubState } from "@/lib/presenter/content";
+import { FLYER_PRESETS, POLLS, backupFlyerUrl, quizClock, type FlyerInputs, type HubState } from "@/lib/presenter/content";
 
 type Session = { id: string; code: string; title: string };
 
@@ -195,7 +195,7 @@ function HubControls({ sessionId, send }: { sessionId: string; send: (c: Present
   const [hub, setHub] = useState<HubState | null>(null);
   const [board, setBoard] = useState<BoardLite | null>(null);
   const [code, setCode] = useState("");
-  const [flyer, setFlyer] = useState("");
+  const [fi, setFi] = useState<FlyerInputs>({ name: "", date: "", venue: "", highlights: ["", "", ""] });
   const [msg, setMsg] = useState("");
   const [now, setNow] = useState(Date.now());
 
@@ -205,11 +205,10 @@ function HubControls({ sessionId, send }: { sessionId: string; send: (c: Present
       setHub(d.hub);
       setBoard(d.board);
       setCode(d.code);
-      if (d.hub.flyerUrl && !flyer) setFlyer(d.hub.flyerUrl);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Hub error");
     }
-  }, [sessionId, flyer]);
+  }, [sessionId]);
 
   useEffect(() => {
     load();
@@ -281,10 +280,27 @@ function HubControls({ sessionId, send }: { sessionId: string; send: (c: Present
       </div>
       <div className="text-[11px] text-white/40">Finale steps: 1 third · 2 second · 3 winner · 4 levels · 5 before/after. Shree announces each one.</div>
 
-      <div className="flex gap-2">
-        <input value={flyer} onChange={(e) => setFlyer(e.target.value)} placeholder="Flyer app URL" className="flex-1 rounded-xl bg-neutral-800 px-3 text-sm outline-none" />
-        <button className={`${b} bg-orange-700 px-3`} onClick={() => act({ action: "flyer-url", url: flyer }).then(() => act({ action: "phase", phase: "flyer" }))}>Reveal app</button>
-      </div>
+      <FlyerControls
+        fi={fi}
+        setFi={setFi}
+        build={hub?.flyerBuild || null}
+        now={now}
+        onBuild={async () => {
+          if (!fi.name.trim() || !fi.date.trim() || !fi.venue.trim() || fi.highlights.some((h) => !h.trim())) {
+            setMsg("Fill all 4 flyer inputs (or tap a preset).");
+            return;
+          }
+          await act({ action: "phase", phase: "build" });
+          send({ type: "flyer-build", inputs: fi });
+        }}
+        onReveal={async () => {
+          const fb = hub?.flyerBuild;
+          // Silent switch: live build if it's ready, otherwise the pre-built backup with the same inputs.
+          const path = fb?.status === "ready" ? `/api/presenter/flyer/app?code=${code}` : backupFlyerUrl(fb?.inputs || (fi.name ? fi : FLYER_PRESETS[0].inputs));
+          await act({ action: "flyer-url", url: `${window.location.origin}${path}` });
+          await act({ action: "phase", phase: "flyer" });
+        }}
+      />
 
       <div className="grid grid-cols-2 gap-2">
         <button className={`${b} bg-neutral-800`} onClick={() => send({ type: "hub" })}>Show hub on TV</button>
@@ -309,6 +325,55 @@ function HubControls({ sessionId, send }: { sessionId: string; send: (c: Present
         </div>
       )}
       {msg && <div className="text-xs text-red-400">{msg}</div>}
+    </div>
+  );
+}
+
+function FlyerControls({
+  fi,
+  setFi,
+  build,
+  now,
+  onBuild,
+  onReveal,
+}: {
+  fi: FlyerInputs;
+  setFi: (f: FlyerInputs) => void;
+  build: HubState["flyerBuild"] | null;
+  now: number;
+  onBuild: () => void;
+  onReveal: () => void;
+}) {
+  const inp = "w-full rounded-lg bg-neutral-800 px-3 py-2 text-sm outline-none";
+  const secs = build ? Math.round(((build.finishedAt || now) - build.startedAt) / 1000) : 0;
+  return (
+    <div className="space-y-2 rounded-lg border border-white/10 p-2">
+      <div className="flex items-center justify-between text-xs">
+        <b>Flyer build</b>
+        <span className={build?.status === "ready" ? "text-green-400" : build?.status === "failed" ? "text-red-400" : "text-white/60"}>
+          {build ? `${build.status} · ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}${build.status === "failed" ? " · backup will be used" : ""}` : "not started"}
+        </span>
+      </div>
+      <div className="flex gap-2">
+        {FLYER_PRESETS.map((p) => (
+          <button key={p.label} className="rounded-lg bg-neutral-700 px-3 py-1.5 text-xs" onClick={() => setFi({ ...p.inputs, highlights: [...p.inputs.highlights] })}>
+            Preset: {p.label}
+          </button>
+        ))}
+      </div>
+      <input className={inp} placeholder="Event name" value={fi.name} onChange={(e) => setFi({ ...fi, name: e.target.value })} />
+      <div className="grid grid-cols-2 gap-2">
+        <input className={inp} placeholder="Date & time" value={fi.date} onChange={(e) => setFi({ ...fi, date: e.target.value })} />
+        <input className={inp} placeholder="Venue" value={fi.venue} onChange={(e) => setFi({ ...fi, venue: e.target.value })} />
+      </div>
+      {fi.highlights.map((h, i) => (
+        <input key={i} className={inp} placeholder={`Highlight ${i + 1}`} value={h} onChange={(e) => { const hs = [...fi.highlights]; hs[i] = e.target.value; setFi({ ...fi, highlights: hs }); }} />
+      ))}
+      <div className="grid grid-cols-2 gap-2">
+        <button className="rounded-xl bg-green-700 py-3 text-sm font-semibold" onClick={onBuild}>Start build ▶</button>
+        <button className="rounded-xl bg-orange-700 py-3 text-sm font-semibold" onClick={onReveal}>Reveal app</button>
+      </div>
+      <div className="text-[11px] text-white/40">Reveal uses the live build if it&apos;s ready, otherwise the tested backup app with the same details. Nobody sees the switch.</div>
     </div>
   );
 }

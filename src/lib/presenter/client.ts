@@ -20,7 +20,8 @@ export type PresenterCommand =
   | { type: "layout"; layout: "slides" | "twin" | "handover" | "hub" }
   | { type: "auto"; on: boolean }
   | { type: "reconnect" }
-  | { type: "hub" };
+  | { type: "hub" }
+  | { type: "flyer-build"; inputs: { name: string; date: string; venue: string; highlights: string[] } };
 
 export type PresenterStatus = {
   connected: boolean;

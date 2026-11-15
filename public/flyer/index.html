@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex" />
+<title>Natural Remedies Flyer Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --blue: #0066b3; --green: #6aa132; --orange: #f26522; --yellow: #fbb116;
+    --ink: #1c2430; --muted: #5d6877; --line: #e3e8ef; --bg: #f5f7fa;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: Roboto, system-ui, -apple-system, "Segoe UI", Arial, sans-serif; }
+  body { overflow-x: hidden; }
+  header { background: #fff; border-bottom: 1px solid var(--line); padding: 14px 16px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 5; }
+  header .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--green); box-shadow: 16px 0 0 var(--blue), 32px 0 0 var(--orange); margin-right: 34px; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 700; }
+  main { max-width: 1040px; margin: 0 auto; padding: 16px; display: grid; gap: 18px; grid-template-columns: 1fr; }
+  @media (min-width: 860px) { main { grid-template-columns: 380px 1fr; align-items: start; } .preview-wrap { position: sticky; top: 72px; } }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  label { display: block; font-size: 14px; font-weight: 500; margin: 12px 0 6px; }
+  label .req { color: var(--orange); }
+  input[type=text], textarea { width: 100%; font: inherit; font-size: 16px; padding: 12px; border: 1px solid #cfd6df; border-radius: 10px; background: #fff; color: var(--ink); min-height: 44px; }
+  input:focus, textarea:focus { outline: 2px solid var(--blue); outline-offset: 1px; border-color: var(--blue); }
+  .err { color: #c62828; font-size: 13px; margin-top: 4px; min-height: 0; }
+  .invalid { border-color: #c62828 !important; }
+  .layouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .layouts button { min-height: 44px; border-radius: 10px; border: 1px solid #cfd6df; background: #fff; font: inherit; font-size: 14px; font-weight: 500; color: var(--ink); cursor: pointer; }
+  .layouts button[aria-pressed=true] { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .file { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .file label.btn { margin: 0; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 16px; border-radius: 12px; border: 0; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; }
+  .btn.primary { background: var(--blue); color: #fff; }
+  .btn.green { background: var(--green); color: #fff; }
+  .btn.ghost { background: #fff; color: var(--ink); border: 1px solid #cfd6df; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .preview-wrap canvas { width: 100%; height: auto; display: block; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,30,60,.12); background: #fff; aspect-ratio: 4 / 5; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 12px 16px; border-radius: 12px; font-size: 14px; max-width: calc(100% - 32px); opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 10; }
+  .toast.show { opacity: 1; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<header><span class="dot" aria-hidden="true"></span><h1>Natural Remedies Flyer Studio</h1></header>
+<main>
+  <section class="card" aria-label="Flyer details">
+    <form id="form" novalidate>
+      <label for="name">Event name <span class="req">*</span></label>
+      <input id="name" type="text" maxlength="80" required />
+      <div class="err" id="err-name"></div>
+
+      <label for="date">Date and time <span class="req">*</span></label>
+      <input id="date" type="text" maxlength="60" required placeholder="e.g. Fri 28 Nov, 4:00 PM" />
+      <div class="err" id="err-date"></div>
+
+      <label for="venue">Venue <span class="req">*</span></label>
+      <input id="venue" type="text" maxlength="70" required />
+      <div class="err" id="err-venue"></div>
+
+      <label for="h1">Three highlights <span class="req">*</span></label>
+      <input id="h1" type="text" maxlength="70" required aria-label="Highlight 1" placeholder="Highlight 1" />
+      <input id="h2" type="text" maxlength="70" required aria-label="Highlight 2" placeholder="Highlight 2" style="margin-top:8px" />
+      <input id="h3" type="text" maxlength="70" required aria-label="Highlight 3" placeholder="Highlight 3" style="margin-top:8px" />
+      <div class="err" id="err-h"></div>
+
+      <label for="org">Organiser (optional)</label>
+      <input id="org" type="text" maxlength="60" placeholder="e.g. People & Culture team" />
+
+      <label>Logo (optional)</label>
+      <div class="file">
+        <label class="btn ghost" for="logo">Upload logo</label>
+        <input id="logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="sr" />
+        <span id="logo-name" class="hint" style="margin:0">None: the text "Natural Remedies" is shown</span>
+        <button type="button" id="logo-clear" class="btn ghost" style="display:none">Remove</button>
+      </div>
+
+      <label>Layout</label>
+      <div class="layouts" role="group" aria-label="Layout">
+        <button type="button" data-layout="corporate" aria-pressed="true">Corporate</button>
+        <button type="button" data-layout="celebration" aria-pressed="false">Celebration</button>
+        <button type="button" data-layout="minimal" aria-pressed="false">Minimal</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="preview-wrap" aria-label="Preview">
+    <canvas id="flyer" width="1080" height="1350" role="img" aria-label="Flyer preview"></canvas>
+    <div class="actions">
+      <button class="btn primary" id="download" type="button">Download PNG</button>
+      <button class="btn green" id="share" type="button">Share</button>
+      <button class="btn ghost" id="reset" type="button">Reset</button>
+    </div>
+    <div class="hint">Preview is exactly what downloads: 1080 × 1350 PNG. Nothing you type is stored or sent anywhere.</div>
+  </section>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const C = { blue: "#0066B3", green: "#6AA132", orange: "#F26522", yellow: "#FBB116", ink: "#1C2430", muted: "#5D6877", white: "#FFFFFF" };
+  const W = 1080, H = 1350, FONT = 'Roboto, system-ui, -apple-system, "Segoe UI", Arial, sans-serif';
+  const $ = (id) => document.getElementById(id);
+  const canvas = $("flyer"), ctx = canvas.getContext("2d");
+  const fields = ["name", "date", "venue", "h1", "h2", "h3", "org"];
+  const DEFAULTS = { name: "", date: "", venue: "", h1: "", h2: "", h3: "", org: "" };
+  let layout = "corporate", logoImg = null, touched = false;
+
+  // Prefill from the URL (the presenter passes the room's 4 inputs).
+  const q = new URLSearchParams(location.search);
+  fields.forEach((f) => { DEFAULTS[f] = (q.get(f) || "").slice(0, 80); $(f).value = DEFAULTS[f]; });
+  if (["corporate", "celebration", "minimal"].includes(q.get("layout"))) layout = q.get("layout");
+
+  const val = (f) => $(f).value.trim();
+  const data = () => ({ name: val("name"), date: val("date"), venue: val("venue"), hs: [val("h1"), val("h2"), val("h3")], org: val("org") });
+
+  /* ---------- text helpers: wrap and shrink so nothing overflows ---------- */
+  function wrapLines(text, maxW, size, weight) {
+    ctx.font = `${weight} ${size}px ${FONT}`;
+    const words = text.split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = "";
+    for (const w of words) {
+      const t = line ? line + " " + w : w;
+      if (ctx.measureText(t).width <= maxW) line = t;
+      else {
+        if (line) lines.push(line);
+        // break very long single words
+        if (ctx.measureText(w).width > maxW) {
+          let chunk = "";
+          for (const ch of w) { if (ctx.measureText(chunk + ch).width > maxW) { lines.push(chunk); chunk = ch; } else chunk += ch; }
+          line = chunk;
+        } else line = w;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+  // Largest font size (<= max) where text fits in maxLines within maxW.
+  function fit(text, maxW, maxSize, minSize, maxLines, weight) {
+    for (let s = maxSize; s >= minSize; s -= 2) {
+      const lines = wrapLines(text, maxW, s, weight);
+      if (lines.length <= maxLines) return { size: s, lines };
+    }
+    const lines = wrapLines(text, maxW, minSize, weight);
+    if (lines.length > maxLines) { lines.length = maxLines; lines[maxLines - 1] = lines[maxLines - 1].replace(/.{0,2}$/, "…"); }
+    return { size: minSize, lines };
+  }
+  function drawLines(fitRes, x, y, color, weight, lh = 1.15, align = "left") {
+    ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = "top";
+    ctx.font = `${weight} ${fitRes.size}px ${FONT}`;
+    fitRes.lines.forEach((l, i) => ctx.fillText(l, x, y + i * fitRes.size * lh));
+    return y + fitRes.lines.length * fitRes.size * lh;
+  }
+  function roundRect(x, y, w, h, r, fill) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); ctx.fillStyle = fill; ctx.fill(); }
+
+  function drawBrand(x, y, maxW, maxH, align = "left") {
+    if (logoImg) {
+      const r = Math.min(maxW / logoImg.width, maxH / logoImg.height);
+      const w = logoImg.width * r, h = logoImg.height * r;
+      const lx = align === "center" ? x - w / 2 : x;
+      ctx.drawImage(logoImg, lx, y, w, h);
+      return h;
+    }
+    ctx.textBaseline = "top"; ctx.textAlign = "left";
+    ctx.font = `700 40px ${FONT}`;
+    const w1 = ctx.measureText("Natural ").width, w2 = ctx.measureText("Remedies").width;
+    const sx = align === "center" ? x - (w1 + w2) / 2 : x;
+    ctx.fillStyle = C.green; ctx.fillText("Natural ", sx, y);
+    ctx.fillStyle = C.blue; ctx.fillText("Remedies", sx + w1, y);
+    return 48;
+  }
+  function placeholder(d) {
+    return {
+      name: d.name || "Your event name",
+      date: d.date || "Date and time",
+      venue: d.venue || "Venue",
+      hs: d.hs.map((h, i) => h || `Highlight ${i + 1}`),
+      org: d.org,
+    };
+  }
+
+  /* ---------------- layouts ---------------- */
+  function corporate(d) {
+    ctx.fillStyle = C.white; ctx.fillRect(0, 0, W, H);
+    drawBrand(80, 70, 340, 110);
+    ctx.fillStyle = C.blue; ctx.fillRect(0, 230, W, 8);
+    ctx.fillStyle = C.green; ctx.fillRect(0, 238, 360, 8);
+    ctx.fillStyle = C.orange; ctx.fillRect(360, 238, 360, 8);
+    ctx.fillStyle = C.yellow; ctx.fillRect(720, 238, 360, 8);
+    let y = drawLines(fit(d.name, W - 160, 96, 44, 3, 900), 80, 300, C.blue, 900, 1.08) + 40;
+    const rows = [["WHEN", d.date], ["WHERE", d.venue]];
+    rows.forEach(([k, v]) => {
+      ctx.font = `700 26px ${FONT}`; ctx.fillStyle = C.green; ctx.textAlign = "left"; ctx.fillText(k, 80, y + 8);
+      y = drawLines(fit(v, W - 340, 44, 26, 2, 500), 250, y, C.ink, 500, 1.2) + 26;
+    });
+    y += 10;
+    ctx.fillStyle = "#EEF4FA"; const boxY = y; const boxH = H - 150 - boxY;
+    roundRect(60, boxY, W - 120, boxH, 28, "#EEF4FA");
+    ctx.font = `700 28px ${FONT}`; ctx.fillStyle = C.blue; ctx.fillText("HIGHLIGHTS", 100, boxY + 36);
+    let hy = boxY + 96; const slot = (boxH - 120) / 3;
+    d.hs.forEach((h, i) => {
+      ctx.beginPath(); ctx.arc(122, hy + 26, 26, 0, Math.PI * 2); ctx.fillStyle = [C.green, C.orange, C.yellow][i]; ctx.fill();
+      ctx.font = `700 28px ${FONT}`; ctx.fillStyle = C.white; ctx.textAlign = "center"; ctx.fillText(String(i + 1), 122, hy + 12);
+      ctx.textAlign = "left";
+      drawLines(fit(h, W - 300, 40, 24, 2, 500), 170, hy + 4, C.ink, 500, 1.2);
+      hy += Math.max(90, slot);
+    });
+    ctx.fillStyle = C.blue; ctx.fillRect(0, H - 100, W, 100);
+    if (d.org) drawLines(fit("Organised by " + d.org, W - 160, 30, 20, 1, 500), W / 2, H - 66, C.white, 500, 1, "center");
+  }
+
+  function celebration(d) {
+    ctx.fillStyle = C.white; ctx.fillRect(0, 0, W, H);
+    // confetti + corner shapes in brand colours
+    const dots = [[90,420,22,C.yellow],[990,380,30,C.green],[60,900,18,C.orange],[1020,860,24,C.blue],[160,1210,26,C.green],[940,1230,20,C.orange],[520,1290,14,C.blue],[880,560,12,C.orange],[200,640,12,C.blue]];
+    ctx.beginPath(); ctx.arc(0, 0, 330, 0, Math.PI * 2); ctx.fillStyle = C.orange; ctx.fill();
+    ctx.beginPath(); ctx.arc(W, 0, 250, 0, Math.PI * 2); ctx.fillStyle = C.yellow; ctx.fill();
+    ctx.beginPath(); ctx.arc(W, H, 300, 0, Math.PI * 2); ctx.fillStyle = C.green; ctx.fill();
+    ctx.beginPath(); ctx.arc(0, H, 200, 0, Math.PI * 2); ctx.fillStyle = C.blue; ctx.fill();
+    dots.forEach(([x, y, r, c]) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = c; ctx.fill(); });
+    // white logo plate (logo only on white)
+    roundRect(W / 2 - 230, 60, 460, 140, 70, C.white);
+    drawBrand(W / 2, 92, 380, 80, "center");
+    ctx.font = `900 34px ${FONT}`; ctx.fillStyle = C.orange; ctx.textAlign = "center"; ctx.fillText("YOU'RE INVITED!", W / 2, 260);
+    let y = drawLines(fit(d.name, W - 220, 104, 46, 3, 900), W / 2, 320, C.blue, 900, 1.06, "center") + 36;
+    const pill = (text, color, yy) => {
+      const f = fit(text, W - 320, 38, 24, 2, 700);
+      const h = f.lines.length * f.size * 1.2 + 34;
+      roundRect(130, yy, W - 260, h, h / 2 > 50 ? 40 : h / 2, color);
+      drawLines(f, W / 2, yy + 17, C.white, 700, 1.2, "center");
+      return yy + h + 18;
+    };
+    y = pill("📅  " + d.date, C.blue, y);
+    y = pill("📍  " + d.venue, C.green, y);
+    y += 12;
+    d.hs.forEach((h, i) => {
+      const f = fit("★ " + h, W - 300, 40, 24, 2, 500);
+      y = drawLines(f, W / 2, y, [C.orange, C.blue, C.green][i], 700, 1.2, "center") + 18;
+    });
+    if (d.org) drawLines(fit(d.org, W - 500, 28, 18, 1, 500), W / 2, H - 92, C.ink, 500, 1, "center");
+  }
+
+  function minimal(d) {
+    ctx.fillStyle = C.white; ctx.fillRect(0, 0, W, H);
+    drawBrand(110, 110, 300, 90);
+    ctx.fillStyle = C.blue; ctx.fillRect(110, 300, 90, 6);
+    let y = drawLines(fit(d.name, W - 220, 88, 40, 4, 700), 110, 350, C.ink, 700, 1.1) + 60;
+    y = drawLines(fit(d.date, W - 220, 38, 24, 2, 400), 110, y, C.blue, 500, 1.25) + 8;
+    y = drawLines(fit(d.venue, W - 220, 38, 24, 2, 400), 110, y, C.muted, 400, 1.25) + 70;
+    d.hs.forEach((h, i) => {
+      ctx.fillStyle = [C.green, C.orange, C.yellow][i]; ctx.fillRect(110, y + 14, 14, 14);
+      y = drawLines(fit(h, W - 300, 34, 22, 2, 400), 150, y, C.ink, 400, 1.3) + 26;
+    });
+    if (d.org) drawLines(fit(d.org, W - 220, 26, 18, 1, 400), 110, H - 130, C.muted, 400, 1);
+    ctx.fillStyle = C.green; ctx.fillRect(W - 200, H - 120, 90, 6);
+  }
+
+  function render() {
+    const d = placeholder(data());
+    ctx.save();
+    ({ corporate, celebration, minimal })[layout](d);
+    ctx.restore();
+  }
+
+  /* ---------------- validation ---------------- */
+  function validate(show) {
+    const d = data();
+    const errs = {
+      name: d.name ? "" : "Enter the event name.",
+      date: d.date ? "" : "Enter the date and time.",
+      venue: d.venue ? "" : "Enter the venue.",
+      h: d.hs.every(Boolean) ? "" : "Enter all three highlights.",
+    };
+    if (show) {
+      ["name", "date", "venue"].forEach((f) => { $("err-" + f).textContent = errs[f]; $(f).classList.toggle("invalid", !!errs[f]); });
+      $("err-h").textContent = errs.h;
+      ["h1", "h2", "h3"].forEach((f) => $(f).classList.toggle("invalid", !val(f)));
+    }
+    return !Object.values(errs).some(Boolean);
+  }
+
+  const toast = (msg) => { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 3200); };
+  const fileName = () => (val("name") || "flyer").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase().slice(0, 40) + ".png";
+  const blob = () => new Promise((res) => canvas.toBlob(res, "image/png"));
+  async function download() {
+    const b = await blob();
+    const url = URL.createObjectURL(b);
+    const a = document.createElement("a"); a.href = url; a.download = fileName(); document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  /* ---------------- events ---------------- */
+  fields.forEach((f) => $(f).addEventListener("input", () => { render(); if (touched) validate(true); }));
+  document.querySelectorAll("[data-layout]").forEach((b) => b.addEventListener("click", () => {
+    layout = b.dataset.layout;
+    document.querySelectorAll("[data-layout]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    render();
+  }));
+  $("logo").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024) { toast("Logo is too large (max 5 MB)."); return; }
+    const img = new Image();
+    img.onload = () => { logoImg = img; $("logo-name").textContent = f.name; $("logo-clear").style.display = ""; render(); };
+    img.onerror = () => toast("That image couldn't be read. Try a PNG or JPG.");
+    img.src = URL.createObjectURL(f);
+  });
+  $("logo-clear").addEventListener("click", () => { logoImg = null; $("logo").value = ""; $("logo-name").textContent = 'None: the text "Natural Remedies" is shown'; $("logo-clear").style.display = "none"; render(); });
+
+  $("download").addEventListener("click", async () => {
+    touched = true;
+    if (!validate(true)) { toast("Please fill the required fields first."); return; }
+    await download(); toast("Flyer downloaded (1080 × 1350 PNG).");
+  });
+  $("share").addEventListener("click", async () => {
+    touched = true;
+    if (!validate(true)) { toast("Please fill the required fields first."); return; }
+    const b = await blob();
+    const file = new File([b], fileName(), { type: "image/png" });
+    const text = `${val("name")}: ${val("date")} at ${val("venue")}`;
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: val("name"), text });
+        return;
+      }
+    } catch (e) {
+      if (e && e.name === "AbortError") return;
+    }
+    await download();
+    window.open(`https://wa.me/?text=${encodeURIComponent(text + " (flyer image attached)")}`, "_blank", "noopener");
+    toast("Image downloaded. Attach it in WhatsApp.");
+  });
+  $("reset").addEventListener("click", () => {
+    fields.forEach((f) => { $(f).value = DEFAULTS[f]; $(f).classList.remove("invalid"); });
+    ["name", "date", "venue", "h"].forEach((k) => ($("err-" + k).textContent = ""));
+    touched = false;
+    $("logo-clear").click();
+    document.querySelector('[data-layout="corporate"]').click();
+  });
+
+  document.querySelector(`[data-layout="${layout}"]`).click();
+  render();
+  (document.fonts ? Promise.all([document.fonts.load(`900 40px Roboto`), document.fonts.load(`500 40px Roboto`), document.fonts.load(`700 40px Roboto`), document.fonts.load(`400 40px Roboto`)]) : Promise.resolve()).then(render, render);
+})();
+</script>
+</body>
+</html>

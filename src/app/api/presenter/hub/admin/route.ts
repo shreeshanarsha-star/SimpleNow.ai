@@ -5,7 +5,7 @@ import { QUIZ_KEY, buildBoard, hubOf, patchHub, sessionById } from "@/lib/presen
 
 export const dynamic = "force-dynamic";
 
-const PHASES: HubPhase[] = ["lobby", "quiz", "assessment", "poll", "questions", "flyer", "commit", "finale", "closed"];
+const PHASES: HubPhase[] = ["lobby", "quiz", "assessment", "poll", "questions", "build", "flyer", "commit", "finale", "closed"];
 
 export async function GET(req: Request) {
   const g = await ownerGuard();

@@ -35,6 +35,7 @@ export default function HubScreen({
   code,
   title,
   serverNow,
+  buildText = "",
 }: {
   hub: HubState;
   board: Board | null;
@@ -42,6 +43,7 @@ export default function HubScreen({
   code: string;
   title: string;
   serverNow: number;
+  buildText?: string;
 }) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const joinUrl = `${origin}/p/${code}`;
@@ -205,6 +207,38 @@ export default function HubScreen({
           ))}
         </div>
         <div className="self-end">{joinBox(true)}</div>
+      </div>
+    );
+  }
+
+  /* ------------------------------ live build ------------------------------ */
+  if (hub.phase === "build") {
+    const b = hub.flyerBuild;
+    const secs = b ? Math.max(0, Math.round(((b.finishedAt || serverNow) - b.startedAt) / 1000)) : 0;
+    const tail = buildText.slice(-2600);
+    const lines = buildText.split("\n").length;
+    return (
+      <div className="flex h-full flex-col px-[3vw] py-[2vw]">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Live: we build an app</div>
+            <div className="mt-1 text-[3vw] font-black leading-none">Natural Remedies Flyer Studio</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[3vw] font-black tabular-nums">{Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}</div>
+            <div className="text-[1.1vw] text-white/50">{b?.status === "ready" ? "Built ✓" : b?.status === "failed" ? "Retrying…" : `${lines} lines written`}</div>
+          </div>
+        </div>
+        {b && (
+          <div className="mt-[1.2vw] flex flex-wrap gap-2 text-[1.1vw]">
+            {[b.inputs.name, b.inputs.date, b.inputs.venue, ...b.inputs.highlights].map((t, i) => (
+              <span key={i} className="rounded-full bg-white/10 px-3 py-1">{t}</span>
+            ))}
+          </div>
+        )}
+        <pre className="mt-[1.2vw] flex-1 overflow-hidden whitespace-pre-wrap break-all rounded-2xl bg-[#0b1220] p-[1.2vw] font-mono text-[0.85vw] leading-snug text-emerald-300/90">
+          {tail || "Sending the instruction to the AI…"}
+        </pre>
       </div>
     );
   }

@@ -187,6 +187,12 @@ function Now({ st, serverNow, post, reload, pending, goAsk }: { st: State; serve
   if (hub.phase === "assessment") return <Assessment me={me} post={post} reload={reload} />;
   if (hub.phase === "poll") return <PollCard pollKey={hub.poll} me={me} post={post} reload={reload} />;
   if (hub.phase === "commit") return <Commit me={me} post={post} reload={reload} />;
+  if (hub.phase === "build")
+    return (
+      <Card title="Shree is building an app">
+        <p className="text-white/60">From your ideas, live. Nobody is writing code. It lands on this phone when it&apos;s ready.</p>
+      </Card>
+    );
   if (hub.phase === "flyer")
     return (
       <Card title="Your app is ready">

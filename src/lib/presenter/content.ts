@@ -109,15 +109,30 @@ export const POLLS: Poll[] = [
 export const pollByKey = (k?: string | null) => POLLS.find((p) => p.key === k);
 
 /* ------------------------------ Hub state ------------------------------ */
-export type HubPhase = "lobby" | "quiz" | "assessment" | "poll" | "questions" | "flyer" | "commit" | "finale" | "closed";
+export type HubPhase = "lobby" | "quiz" | "assessment" | "poll" | "questions" | "build" | "flyer" | "commit" | "finale" | "closed";
 export type HubState = {
   phase: HubPhase;
   quiz?: QuizState | null;
   poll?: string | null; // poll key while phase === "poll"
   finaleStep?: number; // 0 nothing · 1 third · 2 second · 3 winner · 4 levels · 5 before vs after
   flyerUrl?: string | null;
+  flyerBuild?: FlyerBuild | null;
   at?: number;
 };
+export type FlyerInputs = { name: string; date: string; venue: string; highlights: string[] };
+export type FlyerBuild = { status: "building" | "ready" | "failed"; startedAt: number; finishedAt?: number; inputs: FlyerInputs; provider?: string; error?: string };
+
+/** Backup flyer app (pre-built, tested), prefilled with the room's inputs. */
+export function backupFlyerUrl(i: FlyerInputs) {
+  const q = new URLSearchParams({ name: i.name, date: i.date, venue: i.venue, h1: i.highlights[0] || "", h2: i.highlights[1] || "", h3: i.highlights[2] || "" });
+  return `/flyer/index.html?${q.toString()}`;
+}
+
+// DRAFT preset ideas for a quiet room (open item 4), one tap on the control phone.
+export const FLYER_PRESETS: Array<{ label: string; inputs: FlyerInputs }> = [
+  { label: "Family Day", inputs: { name: "P&C Family Day", date: "Sat 6 Dec, 10:00 AM", venue: "NRPL Bengaluru office", highlights: ["Cricket: HR vs Finance", "Kids zone and magic show", "Lunch with live music"] } },
+  { label: "AI Lunch & Learn", inputs: { name: "AI Lunch & Learn", date: "Fri 12 Dec, 1:00 PM", venue: "Training room", highlights: ["Write a JD in 5 minutes", "Excel Copilot tricks", "Build your own policy hub"] } },
+];
 export const DEFAULT_HUB: HubState = { phase: "lobby" };
 
 export const PHONE_TAKEAWAYS = [
