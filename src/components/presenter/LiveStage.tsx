@@ -62,8 +62,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     micOn: true,
     speaking: false,
     busy: false,
-    intentionalClose: false,
-    layout: "standby" as Layout,
+        layout: "standby" as Layout,
     lastHeard: "",
     lastSaid: "",
     speakTimer: 0 as unknown as ReturnType<typeof setTimeout>,
@@ -317,58 +316,181 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   }, [layout]);
 
   /* ------------------------------ Anam ------------------------------ */
-  const connectTwin = useCallback(async () => {
-    if (anamRef.current) return;
-    setNote("Connecting the twin…");
-    try {
+  // Explorer plan caps a conversation at 10 minutes, so we run a relay: at ~8 min
+  // a second session warms up silently in a hidden video, and we swap at the end
+  // of a sentence. Memory lives in the Director, so the swap is invisible.
+  const retiring = useRef<WeakSet<AnamClient>>(new WeakSet());
+  const slotRef = useRef(0);
+  const [activeSlot, setActiveSlot] = useState(0);
+  const relay = useRef<{ standby: AnamClient | null; standbySlot: number; standbyReady: boolean; readyAt: number; standbyReadyAt: number; reconnecting: boolean }>({
+    standby: null,
+    standbySlot: 1,
+    standbyReady: false,
+    readyAt: 0,
+    standbyReadyAt: 0,
+    reconnecting: false,
+  });
+  const videoEl = (slot: number) => document.getElementById(`twin-video-${slot}`) as HTMLVideoElement | null;
+
+  const openClient = useCallback(
+    async (slot: number, asStandby: boolean) => {
       const { sessionToken } = await api<{ sessionToken: string }>("/api/presenter/anam-token", { method: "POST" });
       const client = createAnamClient(sessionToken);
+      const isActive = () => anamRef.current === client;
       client.addListener(AnamEvent.CONNECTION_ESTABLISHED, () => {
+        if (!isActive()) return;
         setConnected(true);
         pushStatus({ connected: true });
       });
       client.addListener(AnamEvent.SESSION_READY, () => {
+        if (relay.current.standby === client) {
+          client.muteInputAudio();
+          relay.current.standbyReady = true;
+          relay.current.standbyReadyAt = Date.now();
+          return;
+        }
+        relay.current.readyAt = Date.now();
         setNote("");
         if (!s.current.micOn) client.muteInputAudio();
       });
       client.addListener(AnamEvent.MESSAGE_STREAM_EVENT_RECEIVED, (ev) => {
-        if (ev.role === "persona" && ev.endOfSpeech) markSpeechDone();
+        if (isActive() && ev.role === "persona" && ev.endOfSpeech) markSpeechDone();
       });
-      client.addListener(AnamEvent.TALK_STREAM_INTERRUPTED, () => markSpeechDone());
+      client.addListener(AnamEvent.TALK_STREAM_INTERRUPTED, () => {
+        if (isActive()) markSpeechDone();
+      });
       client.addListener(AnamEvent.MESSAGE_HISTORY_UPDATED, (messages) => {
+        if (!isActive()) return;
         const last = [...messages].reverse().find((m) => m.role === "user");
         if (!last || seenMsgIds.current.has(last.id)) return;
         seenMsgIds.current.add(last.id);
         onRoomSpeech(last.content);
       });
       client.addListener(AnamEvent.CONNECTION_CLOSED, (reason) => {
+        if (retiring.current.has(client)) return;
+        if (relay.current.standby === client) {
+          relay.current.standby = null;
+          relay.current.standbyReady = false;
+          return;
+        }
+        if (!isActive()) return;
         anamRef.current = null;
         setConnected(false);
         markSpeechDone();
         pushStatus({ connected: false });
-        if (!s.current.intentionalClose) {
+        // Unplanned drop: promote a warm standby if we have one, else reconnect.
+        const r = relay.current;
+        if (r.standby && r.standbyReady) {
+          promoteStandby();
+        } else {
           setNote(`Reconnecting (${String(reason)})…`);
-          setTimeout(() => connectTwin(), 800);
+          setTimeout(() => connectTwinRef.current(), 800);
         }
-        s.current.intentionalClose = false;
       });
-      anamRef.current = client;
-      await client.streamToVideoElement("twin-video");
+      if (asStandby) {
+        relay.current.standby = client;
+        relay.current.standbySlot = slot;
+        relay.current.standbyReady = false;
+      } else {
+        anamRef.current = client;
+      }
+      const v = videoEl(slot);
+      if (v) v.muted = asStandby;
+      await client.streamToVideoElement(`twin-video-${slot}`);
+      return client;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [markSpeechDone, onRoomSpeech, pushStatus]
+  );
+
+  const promoteStandby = useCallback(() => {
+    const r = relay.current;
+    const next = r.standby;
+    if (!next || !r.standbyReady) return false;
+    const old = anamRef.current;
+    if (old) retiring.current.add(old);
+    anamRef.current = next;
+    slotRef.current = r.standbySlot;
+    setActiveSlot(r.standbySlot);
+    const v = videoEl(r.standbySlot);
+    if (v) v.muted = false;
+    if (s.current.micOn) next.unmuteInputAudio();
+    r.readyAt = r.standbyReadyAt || Date.now();
+    r.standby = null;
+    r.standbyReady = false;
+    setConnected(true);
+    pushStatus({ connected: true });
+    if (old) setTimeout(() => old.stopStreaming().catch(() => {}), 400);
+    return true;
+  }, [pushStatus]);
+
+  const connectTwin = useCallback(async () => {
+    if (anamRef.current || relay.current.reconnecting) return;
+    relay.current.reconnecting = true;
+    setNote("Connecting the twin…");
+    try {
+      await openClient(slotRef.current, false);
+      setActiveSlot(slotRef.current);
     } catch (err) {
       anamRef.current = null;
       setNote(err instanceof Error ? `Twin error: ${err.message}` : "Twin error");
+    } finally {
+      relay.current.reconnecting = false;
     }
-  }, [markSpeechDone, onRoomSpeech, pushStatus]);
+  }, [openClient]);
+  const connectTwinRef = useRef(connectTwin);
+  connectTwinRef.current = connectTwin;
 
   const disconnectTwin = useCallback(async () => {
     const c = anamRef.current;
+    const sb = relay.current.standby;
+    relay.current.standby = null;
+    relay.current.standbyReady = false;
+    if (sb) {
+      retiring.current.add(sb);
+      sb.stopStreaming().catch(() => {});
+    }
     if (!c) return;
-    s.current.intentionalClose = true;
+    retiring.current.add(c);
     anamRef.current = null;
     await c.stopStreaming().catch(() => {});
     setConnected(false);
     pushStatus({ connected: false });
   }, [pushStatus]);
+
+  // Relay watchdog: pre-warm at 8 min, swap between sentences after 9 min, force at 9 min 40 s.
+  useEffect(() => {
+    const PREWARM = 8 * 60_000;
+    const SWAP = 9 * 60_000;
+    const FORCE = 9 * 60_000 + 40_000;
+    const iv = setInterval(async () => {
+      const r = relay.current;
+      if (!anamRef.current || !r.readyAt) return;
+      const age = Date.now() - r.readyAt;
+      if (age > PREWARM && !r.standby) {
+        try {
+          await openClient(1 - slotRef.current, true);
+        } catch {
+          r.standby = null;
+        }
+        return;
+      }
+      if (r.standby && r.standbyReady) {
+        if (age > SWAP && !s.current.speaking && !s.current.busy) promoteStandby();
+        else if (age > FORCE) {
+          // Out of time: finish on the fresh session.
+          anamRef.current?.interruptPersona();
+          const said = s.current.lastSaid;
+          promoteStandby();
+          if (s.current.speaking && said) {
+            s.current.speaking = false;
+            setTimeout(() => anamRef.current?.talk("Where was I? Right.").catch(() => {}), 300);
+          }
+        }
+      }
+    }, 3000);
+    return () => clearInterval(iv);
+  }, [openClient, promoteStandby]);
 
   /* ------------------------------ commands ------------------------------ */
   const handle = useCallback(
@@ -414,6 +536,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         case "resume":
           st.paused = false;
           pushStatus();
+          if (st.layout === "handover") setLayoutBoth("twin");
+          if (!anamRef.current) await connectTwin();
           if (st.layout === "slides") presentSlide(st.slide);
           break;
         case "stop":
@@ -446,6 +570,10 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           if (cmd.layout === "handover") {
             anamRef.current?.interruptPersona();
             st.paused = true;
+            // Act 7: disconnect after a moment to save Anam minutes; "Resume" reconnects.
+            setTimeout(() => {
+              if (s.current.layout === "handover") disconnectTwin();
+            }, 4000);
           }
           setLayoutBoth(cmd.layout);
           if (cmd.layout === "slides") drawSlide(st.slide);
@@ -585,7 +713,16 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
               : { left: "40%", top: "40%", width: "20%", height: "20%", opacity: 0 }
         }
       >
-        <video id="twin-video" autoPlay playsInline className="h-full w-full object-cover" />
+        {[0, 1].map((slot) => (
+          <video
+            key={slot}
+            id={`twin-video-${slot}`}
+            autoPlay
+            playsInline
+            className="absolute inset-0 h-full w-full object-cover transition-opacity duration-300"
+            style={{ opacity: activeSlot === slot ? 1 : 0 }}
+          />
+        ))}
         {showTwin && (
           <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-lg bg-black/60 px-3 py-1.5 text-sm">
             <span className={`h-2.5 w-2.5 rounded-full ${speaking ? "bg-green-400 animate-pulse" : connected ? "bg-white/50" : "bg-red-500"}`} />
