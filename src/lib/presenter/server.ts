@@ -55,19 +55,32 @@ async function anamFetch(path: string, init?: RequestInit) {
   return data;
 }
 
-/** Finds the "Shree" persona (or ANAM_PERSONA_NAME) and returns its avatar + voice. */
+/** Finds the "Shree" persona (ANAM_PERSONA_ID or ANAM_PERSONA_NAME) and returns its avatar + voice. */
 export async function getTwinPersona() {
   if (personaCache && Date.now() - personaCache.at < 10 * 60_000) return personaCache;
-  const wanted = (process.env.ANAM_PERSONA_NAME || "Shree").toLowerCase();
-  const data = await anamFetch(`/personas?perPage=100`);
-  const list: Array<{ id: string; name: string; avatar?: { id: string } | null; voice?: { id: string } | null }> =
-    data?.data || [];
-  const p =
-    list.find((x) => x.name?.toLowerCase() === wanted) ||
-    list.find((x) => x.name?.toLowerCase().includes(wanted)) ||
-    list[0];
-  if (!p?.avatar?.id || !p?.voice?.id) throw new Error("Could not find the Shree persona in Anam.");
-  personaCache = { avatarId: p.avatar.id, voiceId: p.voice.id, name: p.name, at: Date.now() };
+  type P = { id: string; name: string; avatar?: { id: string } | null; voice?: { id: string } | null; avatarId?: string; voiceId?: string };
+  const pick = (p: P | null | undefined) => {
+    const avatarId = p?.avatar?.id || p?.avatarId;
+    const voiceId = p?.voice?.id || p?.voiceId;
+    return avatarId && voiceId ? { avatarId, voiceId, name: p!.name } : null;
+  };
+  let chosen: P | undefined;
+  if (process.env.ANAM_PERSONA_ID) {
+    chosen = await anamFetch(`/personas/${process.env.ANAM_PERSONA_ID}`);
+  } else {
+    const wanted = (process.env.ANAM_PERSONA_NAME || "Shree").toLowerCase();
+    const data = await anamFetch(`/personas?perPage=100`);
+    const list: P[] = data?.data || (Array.isArray(data) ? data : []);
+    chosen =
+      list.find((x) => x.name?.toLowerCase() === wanted) ||
+      list.find((x) => x.name?.toLowerCase().includes(wanted)) ||
+      (list.length === 1 ? list[0] : undefined);
+    if (!chosen) throw new Error(`Shree persona not found in Anam (found: ${list.map((x) => x.name).join(", ") || "none"}).`);
+  }
+  let got = pick(chosen);
+  if (!got && chosen?.id) got = pick(await anamFetch(`/personas/${chosen.id}`));
+  if (!got) throw new Error("The Shree persona has no avatar/voice yet.");
+  personaCache = { ...got, at: Date.now() };
   return personaCache;
 }
 
@@ -163,7 +176,12 @@ export async function runDirector(input: DirectorInput): Promise<{ say: string; 
 
   if (process.env.ANTHROPIC_API_KEY) {
     try {
-      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 20_000, maxRetries: 1 });
+      const client = new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY,
+        timeout: 20_000,
+        maxRetries: 1,
+        defaultHeaders: process.env.ANTHROPIC_WORKSPACE_ID ? { "anthropic-workspace-id": process.env.ANTHROPIC_WORKSPACE_ID } : undefined,
+      });
       const msg = await client.messages.create({
         model: process.env.PRESENTER_MODEL || "claude-sonnet-4-5",
         max_tokens: maxTokens,
