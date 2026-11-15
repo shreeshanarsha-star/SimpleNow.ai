@@ -42,6 +42,12 @@ Goal: let an NRPL employee create a professional internal event flyer by enterin
 - No login, backend, database, payments or external APIs (Google Fonts is the only allowed external request). Nothing stored.
 - Validate required fields with clear error messages.
 
+QUALITY BAR (this is shown live to an audience):
+- The flyer must look professionally designed and FILL the 1080 x 1350 canvas: event name at 80 to 110 px bold, details at 40 to 50 px, highlights at 36 to 44 px, coloured bands or shapes in the brand colours, generous margins (80 px). Never leave the lower half empty.
+- Each of the 3 layouts must look clearly different.
+- Wait for the Roboto font to load (document.fonts.load) before drawing; redraw on every input.
+- Style the form too: rounded inputs at least 44 px tall, 16 px text, brand-blue primary buttons, layout chosen with 3 large toggle buttons, three separate highlight inputs.
+
 OUTPUT FORMAT: reply with ONE complete, self-contained HTML document (inline CSS and JS), starting with <!doctype html> and ending with </html>. No explanation, no markdown fences. Prioritise working buttons over decoration.`;
 }
 

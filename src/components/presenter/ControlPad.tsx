@@ -293,10 +293,10 @@ function HubControls({ sessionId, send }: { sessionId: string; send: (c: Present
           await act({ action: "phase", phase: "build" });
           send({ type: "flyer-build", inputs: fi });
         }}
-        onReveal={async () => {
+        onReveal={async (forceBackup: boolean) => {
           const fb = hub?.flyerBuild;
           // Silent switch: live build if it's ready, otherwise the pre-built backup with the same inputs.
-          const path = fb?.status === "ready" ? `/api/presenter/flyer/app?code=${code}` : backupFlyerUrl(fb?.inputs || (fi.name ? fi : FLYER_PRESETS[0].inputs));
+          const path = fb?.status === "ready" && !forceBackup ? `/api/presenter/flyer/app?code=${code}` : backupFlyerUrl(fb?.inputs || (fi.name ? fi : FLYER_PRESETS[0].inputs));
           await act({ action: "flyer-url", url: `${window.location.origin}${path}` });
           await act({ action: "phase", phase: "flyer" });
         }}
@@ -342,7 +342,7 @@ function FlyerControls({
   build: HubState["flyerBuild"] | null;
   now: number;
   onBuild: () => void;
-  onReveal: () => void;
+  onReveal: (forceBackup: boolean) => void;
 }) {
   const inp = "w-full rounded-lg bg-neutral-800 px-3 py-2 text-sm outline-none";
   const secs = build ? Math.round(((build.finishedAt || now) - build.startedAt) / 1000) : 0;
@@ -371,8 +371,9 @@ function FlyerControls({
       ))}
       <div className="grid grid-cols-2 gap-2">
         <button className="rounded-xl bg-green-700 py-3 text-sm font-semibold" onClick={onBuild}>Start build ▶</button>
-        <button className="rounded-xl bg-orange-700 py-3 text-sm font-semibold" onClick={onReveal}>Reveal app</button>
+        <button className="rounded-xl bg-orange-700 py-3 text-sm font-semibold" onClick={() => onReveal(false)}>Reveal app</button>
       </div>
+      <button className="w-full rounded-lg bg-neutral-800 py-2 text-xs" onClick={() => onReveal(true)}>Reveal the backup app instead</button>
       <div className="text-[11px] text-white/40">Reveal uses the live build if it&apos;s ready, otherwise the tested backup app with the same details. Nobody sees the switch.</div>
     </div>
   );

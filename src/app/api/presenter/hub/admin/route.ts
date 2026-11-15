@@ -72,7 +72,7 @@ export async function POST(req: Request) {
     await sb.from("presenter_questions").delete().eq("session_id", id);
     await sb.from("presenter_responses").delete().eq("session_id", id);
     await sb.from("presenter_attendees").delete().eq("session_id", id);
-    return json({ hub: await patchHub(id, { phase: "lobby", quiz: null, poll: null, finaleStep: 0, flyerUrl: null }) });
+    return json({ hub: await patchHub(id, { phase: "lobby", quiz: null, poll: null, finaleStep: 0, flyerUrl: null, flyerBuild: null }) });
   }
 
   if (action === "slides") {
