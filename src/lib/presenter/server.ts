@@ -65,9 +65,14 @@ export async function getTwinPersona() {
     return avatarId && voiceId ? { avatarId, voiceId, name: p!.name } : null;
   };
   let chosen: P | undefined;
-  if (process.env.ANAM_PERSONA_ID) {
-    chosen = await anamFetch(`/personas/${process.env.ANAM_PERSONA_ID}`);
-  } else {
+  // Shreesha's "Shree" Digital Clone persona in Anam Lab (not a secret).
+  const personaId = process.env.ANAM_PERSONA_ID || "41f8a8e5-65f8-4485-b2cf-735affc15477";
+  try {
+    chosen = await anamFetch(`/personas/${personaId}`);
+  } catch (err) {
+    console.error("[presenter] persona by id failed:", err instanceof Error ? err.message : err);
+  }
+  if (!pick(chosen)) {
     const wanted = (process.env.ANAM_PERSONA_NAME || "Shree").toLowerCase();
     const data = await anamFetch(`/personas?perPage=100`);
     const list: P[] = data?.data || (Array.isArray(data) ? data : []);
