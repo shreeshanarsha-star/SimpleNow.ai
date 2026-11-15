@@ -141,12 +141,14 @@ export type DirectorInput = {
   phase?: string;
   minutesLeft?: number;
   people?: string;
+  brain?: string;
 };
 
 function buildPrompt(i: DirectorInput) {
   const parts: string[] = [];
   if (i.phase) parts.push(`CURRENT PHASE: ${i.phase}`);
   if (typeof i.minutesLeft === "number") parts.push(`TIME LEFT IN SESSION: about ${Math.round(i.minutesLeft)} minutes.`);
+  if (i.brain) parts.push(`SHREESHA'S BRIEFING FOR YOU (vocabulary, rules, background; use people notes only to relate warmly, never reveal them):\n"""${i.brain.slice(0, 8000)}"""`);
   if (i.people) parts.push(`PEOPLE IN THE ROOM (certain names only):\n${i.people}`);
   if (i.slideText)
     parts.push(
@@ -219,4 +221,40 @@ export function newCode() {
   let s = "";
   for (let i = 0; i < 4; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
   return s;
+}
+
+/* ------------------------------------------------------------------ */
+/* Brain: Shreesha's briefing (stored on the session, copied forward)  */
+/* ------------------------------------------------------------------ */
+
+export type Brain = { vocab?: string; rules?: string; knowledge?: string };
+
+/** Briefing text for the Director: vocabulary, do's and don'ts, background, and notes on people signed in tonight. */
+export async function loadBrain(sessionId: string) {
+  const sb = db();
+  const [{ data: sess }, { data: att }] = await Promise.all([
+    sb.from("presenter_sessions").select("state").eq("id", sessionId).maybeSingle(),
+    sb.from("presenter_attendees").select("display_name, person_id").eq("session_id", sessionId),
+  ]);
+  const brain = ((sess?.state as Record<string, unknown>)?.brain || {}) as Brain;
+  const ids = (att || []).map((a) => a.person_id).filter(Boolean) as string[];
+  let peopleNotes = "";
+  if (ids.length) {
+    const { data: ppl } = await sb.from("presenter_people").select("id, display_name, role, profile").in("id", ids);
+    peopleNotes = (ppl || [])
+      .map((p) => {
+        const pr = (p.profile || {}) as Record<string, unknown>;
+        const bits = [p.role, pr.notes, pr.lastCommitment ? `last commitment: ${pr.lastCommitment}` : ""].filter(Boolean).join("; ");
+        return bits ? `- ${p.display_name}: ${bits}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  const parts = [
+    brain.vocab ? `TEAM VOCABULARY (names, terms, correct spellings; the room's speech-to-text may mishear these):\n${brain.vocab}` : "",
+    brain.rules ? `DO'S AND DON'TS:\n${brain.rules}` : "",
+    brain.knowledge ? `BACKGROUND YOU MAY USE:\n${brain.knowledge}` : "",
+    peopleNotes ? `NOTES ON PEOPLE SIGNED IN TONIGHT:\n${peopleNotes}` : "",
+  ].filter(Boolean);
+  return parts.join("\n\n");
 }

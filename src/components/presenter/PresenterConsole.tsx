@@ -3,6 +3,7 @@
 // the TV laptop and on the control phone.
 import { useEffect, useState } from "react";
 import { api } from "@/lib/presenter/client";
+import BrainPanel from "@/components/presenter/BrainPanel";
 
 type Session = {
   id: string;
@@ -78,7 +79,23 @@ export default function PresenterConsole() {
             <div className="text-lg font-semibold">{session.title}</div>
             <div className="text-sm text-ink-muted">Code {session.code} · created {new Date(session.created_at).toLocaleString()}</div>
           </div>
-          <button onClick={newSession} className="rounded-lg border border-border px-3 py-2 text-sm">New session</button>
+          <div className="flex gap-2">
+            <button
+              onClick={async () => {
+                if (!confirm(`Clear all sign-ups, answers and questions in session ${session.code}? People memory is kept.`)) return;
+                try {
+                  await api("/api/presenter/hub/admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: session.id, action: "clear" }) });
+                  setMsg("Session cleared.");
+                } catch (e) {
+                  setMsg(e instanceof Error ? e.message : "Clear failed");
+                }
+              }}
+              className="rounded-lg border border-border px-3 py-2 text-sm"
+            >
+              Clear test data
+            </button>
+            <button onClick={newSession} className="rounded-lg border border-border px-3 py-2 text-sm">New session</button>
+          </div>
         </div>
       </div>
 
@@ -119,6 +136,8 @@ export default function PresenterConsole() {
         })}
         {msg && <div className="text-xs text-ink-muted">{msg}</div>}
       </div>
+
+      <BrainPanel key={session.id} sessionId={session.id} />
     </div>
   );
 }

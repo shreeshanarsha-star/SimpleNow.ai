@@ -66,6 +66,15 @@ export async function POST(req: Request) {
     return json({ ok: true });
   }
 
+  if (action === "clear") {
+    // Wipes tonight's sign-ups, answers and questions for THIS session only (people memory is kept).
+    const sb = db();
+    await sb.from("presenter_questions").delete().eq("session_id", id);
+    await sb.from("presenter_responses").delete().eq("session_id", id);
+    await sb.from("presenter_attendees").delete().eq("session_id", id);
+    return json({ hub: await patchHub(id, { phase: "lobby", quiz: null, poll: null, finaleStep: 0, flyerUrl: null }) });
+  }
+
   if (action === "slides") {
     // The TV page extracts slide + notes text from the PDFs and stores it so the phone agent can use it.
     const slides = Array.isArray(body.slides) ? (body.slides as Array<{ body?: string; notes?: string }>).slice(0, 80) : [];

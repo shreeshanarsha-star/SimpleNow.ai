@@ -41,10 +41,13 @@ export async function POST(req: Request) {
 
 async function create(ownerId: string, title?: string) {
   const sb = db();
+  // Carry Shreesha's briefing (vocabulary, rules, background) into the new session.
+  const { data: prev } = await sb.from("presenter_sessions").select("state").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const brain = (prev?.state as Record<string, unknown> | undefined)?.brain;
   for (let i = 0; i < 5; i++) {
     const { data, error } = await sb
       .from("presenter_sessions")
-      .insert({ code: newCode(), owner_id: ownerId, title: title || "The Rise of AI Agents" })
+      .insert({ code: newCode(), owner_id: ownerId, title: title || "The Rise of AI Agents", state: brain ? { brain } : {} })
       .select("*")
       .single();
     if (!error) return json({ session: data });
