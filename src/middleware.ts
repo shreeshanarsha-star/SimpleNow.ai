@@ -39,7 +39,8 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/admin") ||
     request.nextUrl.pathname.startsWith("/tools") ||
     request.nextUrl.pathname.startsWith("/org") ||
-    request.nextUrl.pathname.startsWith("/chat");
+    request.nextUrl.pathname.startsWith("/chat") ||
+    request.nextUrl.pathname.startsWith("/presenter");
   const isLoginRoute = request.nextUrl.pathname === "/login";
 
   // A short, explicit allowlist of tools that offer a no-signup guest
@@ -109,6 +110,7 @@ export const config = {
     "/tools/:path*",
     "/org/:path*",
     "/chat/:path*",
+    "/presenter/:path*",
     "/login",
     "/nr-synergy-admin",
     "/nr-synergy-admin/:path*",
