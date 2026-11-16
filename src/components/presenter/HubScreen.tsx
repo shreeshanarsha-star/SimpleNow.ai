@@ -126,7 +126,7 @@ export default function HubScreen({
         <Center>
           <div className="text-[1.4vw] uppercase tracking-[0.3em] text-orange-400">Act 3 · The Challenge</div>
           <div className="text-[5vw] font-black">AI Quickfire</div>
-          <div className="text-[1.8vw] text-white/60">30 questions · 7 seconds each · no going back</div>
+          <div className="text-[1.8vw] text-white/60">30 questions · about 12 seconds each · no going back</div>
           {joinBox(true)}
         </Center>
       );
@@ -155,7 +155,7 @@ export default function HubScreen({
           <span>{pq?.answered || 0} of {people} answered</span>
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
-          <div className="h-full bg-orange-500 transition-[width] duration-200" style={{ width: reveal ? "0%" : `${(clock.msLeft / 7000) * 100}%` }} />
+          <div className="h-full bg-orange-500 transition-[width] duration-200" style={{ width: reveal ? "0%" : `${clock.answerMs ? (clock.msLeft / clock.answerMs) * 100 : 0}%` }} />
         </div>
         <div className="mt-[2.5vw] text-[3.6vw] font-bold leading-tight">{q.q}</div>
         <div className="mt-[2.5vw] grid flex-1 grid-cols-2 gap-[1.5vw]">
@@ -484,7 +484,7 @@ function buildMilestones(code: string, status?: string) {
 const TEASERS = [
   "Scan the code. Your phone is the remote.",
   "Meet Shree: Shreesha's digital twin.",
-  "30 questions. 7 seconds each. One champion.",
+  "30 quickfire questions. One champion.",
   "We'll build a real app, live, from your ideas.",
   "Find out your AI level (privately).",
 ];

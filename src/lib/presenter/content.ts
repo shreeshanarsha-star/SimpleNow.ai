@@ -39,21 +39,30 @@ export const QUIZ: QuizQ[] = [
 ];
 
 /** Quiz clock: every device derives the current question from the start time, so nothing has to "advance" it. */
-export const QUIZ_TIMING = { leadInMs: 5000, answerMs: 7000, revealMs: 2000 };
+export const QUIZ_TIMING = { leadInMs: 6000, revealMs: 3000 };
+/** Answer time per question, from how much there is to read: 10–16 s (no force-fitting). */
+export const QUIZ_ANSWER_MS = QUIZ.map((q) => {
+  const words = `${q.q} ${q.options.join(" ")}`.split(/\s+/).length;
+  return Math.max(10_000, Math.min(16_000, Math.round((6000 + words * 330) / 500) * 500));
+});
+const QUIZ_STARTS = QUIZ_ANSWER_MS.reduce<number[]>((acc, ms, i) => [...acc, i === 0 ? 0 : acc[i - 1] + QUIZ_ANSWER_MS[i - 1] + QUIZ_TIMING.revealMs], []);
+export const QUIZ_TOTAL_MS = QUIZ_TIMING.leadInMs + QUIZ_ANSWER_MS.reduce((a, b) => a + b + QUIZ_TIMING.revealMs, 0);
+/** When question idx opens, relative to the quiz start. */
+export const quizQuestionOffset = (idx: number) => QUIZ_STARTS[idx] ?? 0;
 export type QuizState = { start: number; stoppedAt?: number | null };
 export function quizClock(quiz: QuizState | null | undefined, now: number) {
-  if (!quiz?.start) return { status: "off" as const, idx: -1, msLeft: 0 };
-  if (quiz.stoppedAt && now >= quiz.stoppedAt) return { status: "done" as const, idx: QUIZ.length, msLeft: 0 };
-  const { answerMs, revealMs } = QUIZ_TIMING;
+  if (!quiz?.start) return { status: "off" as const, idx: -1, msLeft: 0, answerMs: 0 };
+  if (quiz.stoppedAt && now >= quiz.stoppedAt) return { status: "done" as const, idx: QUIZ.length, msLeft: 0, answerMs: 0 };
   const t = now - quiz.start;
-  if (t < 0) return { status: "leadin" as const, idx: -1, msLeft: -t };
-  const slot = answerMs + revealMs;
-  const idx = Math.floor(t / slot);
-  if (idx >= QUIZ.length) return { status: "done" as const, idx: QUIZ.length, msLeft: 0 };
-  const inSlot = t - idx * slot;
+  if (t < 0) return { status: "leadin" as const, idx: -1, msLeft: -t, answerMs: 0 };
+  let idx = QUIZ_STARTS.length - 1;
+  while (idx > 0 && QUIZ_STARTS[idx] > t) idx--;
+  const answerMs = QUIZ_ANSWER_MS[idx];
+  const inSlot = t - QUIZ_STARTS[idx];
+  if (idx === QUIZ.length - 1 && inSlot >= answerMs + QUIZ_TIMING.revealMs) return { status: "done" as const, idx: QUIZ.length, msLeft: 0, answerMs: 0 };
   return inSlot < answerMs
-    ? { status: "answer" as const, idx, msLeft: answerMs - inSlot }
-    : { status: "reveal" as const, idx, msLeft: slot - inSlot };
+    ? { status: "answer" as const, idx, msLeft: answerMs - inSlot, answerMs }
+    : { status: "reveal" as const, idx, msLeft: answerMs + QUIZ_TIMING.revealMs - inSlot, answerMs };
 }
 
 /* ------------------------- Self-assessment (DRAFT) ------------------------- */
@@ -245,19 +254,19 @@ export const HR_PROMPTS = [
 // done or its budget runs out. Shreesha can pause, skip or go back at any time.
 export const SHOW_STEPS: Array<{ id: string; label: string; budget: number }> = [
   { id: "before", label: "Act 1 · Before poll", budget: 60 },
-  { id: "intros", label: "Act 2 · Meet the cast", budget: 330 },
+  { id: "intros", label: "Act 2 · Meet the cast", budget: 300 },
   { id: "wishwall", label: "Act 2 · HR Wish Wall", budget: 60 },
-  { id: "quiz", label: "Act 3 · Quiz", budget: 300 },
-  { id: "mirror", label: "Act 4 · The Mirror", budget: 360 },
-  { id: "story", label: "Act 5 · The Story", budget: 720 },
-  { id: "game", label: "Act 5 · AI, HI or Notepad?", budget: 150 },
+  { id: "quiz", label: "Act 3 · Quiz", budget: 480 },
+  { id: "mirror", label: "Act 4 · The Mirror", budget: 330 },
+  { id: "story", label: "Act 5 · The Story", budget: 600 },
+  { id: "game", label: "Act 5 · AI, HI or Notepad?", budget: 180 },
   { id: "debate", label: "Act 5 · Debate", budget: 180 },
   { id: "build", label: "Act 6 · The Build", budget: 300 },
   { id: "predict", label: "Act 7 · Prediction poll", budget: 45 },
   { id: "handover", label: "Act 7 · Shreesha's demo", budget: 690 },
   { id: "back", label: "Act 6½ · Welcome back + result", budget: 90 },
   { id: "reveal", label: "Act 6½ · App reveal + scoring", budget: 210 },
-  { id: "qa", label: "Act 8 · Ask anything", budget: 480 },
-  { id: "finale", label: "Act 9 · Finale", budget: 360 },
+  { id: "qa", label: "Act 8 · Ask anything", budget: 420 },
+  { id: "finale", label: "Act 9 · Finale", budget: 330 },
   { id: "close", label: "Act 9 · Commitments + close", budget: 150 },
 ];

@@ -1177,7 +1177,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
 
       const STEP: Record<string, (budget: number) => Promise<void>> = {
         before: async (b) => {
-          await pollRun("before", Math.min(b - 15_000, 40_000), undefined, `Read the result of "${pollByKey("before")?.q}" in one light sentence and say we'll ask again at the end.`);
+          await pollRun("before", Math.min(b - 10_000, 50_000), undefined, `Read the result of "${pollByKey("before")?.q}" in one light sentence and say we'll ask again at the end.`);
         },
         intros: async (b) => {
           setLayoutBoth("twin");
@@ -1210,7 +1210,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         quiz: async (b) => {
           await adminAct({ action: "phase", phase: "quiz" });
           hubView();
-          await line("Introduce the quickfire quiz in two short, high-energy sentences: 30 questions, 7 seconds each, phones ready, the winner is revealed at the end.");
+          await line("Introduce the quickfire quiz in two short, high-energy sentences: 30 questions, about 12 seconds each, phones ready, the winner is revealed at the end.");
           if (!alive()) return;
           await adminAct({ action: "quiz-start" });
           await wait(b, () => quizClock(H().hub.quiz, Date.now() + H().offset).status === "done");
@@ -1251,18 +1251,18 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             presentSlide(i);
             await wait(150_000, () => s.current.slide === i && s.current.slideNarrated && quiet());
             const txt = await slideText(i);
-            if (/POLL\s*1/i.test(txt)) await pollRun("poll1", 35_000, true, "Read the result in one sentence and connect it to the 3-check test.");
-            if (/POLL\s*2/i.test(txt)) await pollRun("poll2", 35_000, true, "Read the result in one sentence: the most popular first task.");
+            if (/POLL\s*1/i.test(txt)) await pollRun("poll1", 45_000, true, "Read the result in one sentence and connect it to the 3-check test.");
+            if (/POLL\s*2/i.test(txt)) await pollRun("poll2", 45_000, true, "Read the result in one sentence: the most popular first task.");
           }
         },
         game: async () => {
           await line("Introduce a quick game in one sentence: AI, HI or notepad? Three quick questions on your phones.");
-          for (const k of ["game-1", "game-2", "game-3"]) if (alive()) await pollRun(k, 30_000, true);
+          for (const k of ["game-1", "game-2", "game-3"]) if (alive()) await pollRun(k, 40_000, true);
         },
         debate: async (b) => {
           await pollRun(
             "debate",
-            Math.min(45_000, b / 3),
+            60_000,
             "Present the debate in 2 or 3 sentences: a 300-employee company, will AI agents replace jobs or redesign them? Side A: jobs will shrink. Side B: jobs will be redesigned. Everyone votes on their phones now."
           );
           if (!alive()) return;
@@ -1322,7 +1322,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           } else await line("One sentence: Claude is still finishing the app; we'll check on it right after Shreesha's demo.");
         },
         predict: async () => {
-          await pollRun("predict", 30_000, "One or two sentences: before Shreesha shows you a real AI agent, predict on your phones: will it finish the task on its own, need a human, or get blocked?");
+          await pollRun("predict", 40_000, "One or two sentences: before Shreesha shows you a real AI agent, predict on your phones: will it finish the task on its own, need a human, or get blocked?");
           const c = H().board?.polls["predict"] || [];
           await line(`One sentence on the predictions (${(pollByKey("predict")?.options || []).map((o, i) => `${o} = ${c[i] || 0}`).join("; ")}), then hand over: "Shreesha, over to you."`);
         },
@@ -1384,7 +1384,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           const secs = live && fb?.finishedAt ? Math.round((fb.finishedAt - fb.startedAt) / 1000) : null;
           await line(`The app is ready${secs ? ` (it was built in ${Math.floor(secs / 60)} minutes ${secs % 60} seconds, quote that)` : ""}. In 2 or 3 sentences: everyone scans the QR code, makes a flyer for the event, and shares it. You have 90 seconds.`);
           await wait(90_000);
-          for (const k of ["check-fact", "check-value", "check-roi"]) if (alive()) await pollRun(k, 25_000, true, "Read the result in one short sentence.");
+          for (const k of ["check-fact", "check-value", "check-roi"]) if (alive()) await pollRun(k, 30_000, true, "Read the result in one short sentence.");
         },
         qa: async (b) => {
           await adminAct({ action: "phase", phase: "questions" });
@@ -1431,7 +1431,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             await wait(30_000, () => H().lastFinale === step && quiet());
             await wait(1500);
           }
-          await pollRun("after", 30_000, "One sentence: last vote, the same question as the start. How confident are you using AI in your daily work now?");
+          await pollRun("after", 40_000, "One sentence: last vote, the same question as the start. How confident are you using AI in your daily work now?");
           await adminAct({ action: "phase", phase: "finale" });
           await adminAct({ action: "finale-step", step: 5 });
           hubView();

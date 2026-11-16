@@ -257,7 +257,7 @@ function Quiz({ hub, me, serverNow, post, pending }: { hub: HubView; me: Me; ser
   const key = `q${clock.idx}`;
   const answered = me.quiz.includes(key) || pending[key] !== undefined;
   const picked = pending[key];
-  const pct = clock.status === "answer" ? (clock.msLeft / 7000) * 100 : 0;
+  const pct = clock.status === "answer" && clock.answerMs ? (clock.msLeft / clock.answerMs) * 100 : 0;
   return (
     <div>
       <div className="mb-2 flex items-center justify-between text-xs text-white/50">

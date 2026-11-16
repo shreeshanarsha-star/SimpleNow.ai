@@ -2,7 +2,7 @@
 // random device token kept on the phone). Never returns quiz answers or
 // anyone else's scores.
 import { db, json } from "@/lib/presenter/server";
-import { ASSESSMENT, QUIZ, QUIZ_TIMING, levelFor, pollByKey, quizClock } from "@/lib/presenter/content";
+import { ASSESSMENT, QUIZ, QUIZ_ANSWER_MS, levelFor, pollByKey, quizClock, quizQuestionOffset } from "@/lib/presenter/content";
 import { bestMatch } from "@/lib/presenter/people";
 import { QUIZ_KEY, attendeeByToken, cleanText, hubOf, nameKey, phoneAnswer, sessionByCode } from "@/lib/presenter/hub";
 
@@ -134,7 +134,7 @@ export async function POST(req: Request) {
     // Accept the answer if the question is open now, or was open within the grace window.
     const open = (clockNow.status === "answer" && clockNow.idx === idx) || (clock.status === "answer" && clock.idx === idx);
     if (hub.phase !== "quiz" || !open || !(choice >= 0 && choice < 4) || !(idx >= 0 && idx < QUIZ.length)) return json({ error: "Too late for that one" }, 409);
-    const ms = Math.max(0, Math.min(QUIZ_TIMING.answerMs, now - (hub.quiz!.start + idx * (QUIZ_TIMING.answerMs + QUIZ_TIMING.revealMs))));
+    const ms = Math.max(0, Math.min(QUIZ_ANSWER_MS[idx], now - (hub.quiz!.start + quizQuestionOffset(idx))));
     const { error } = await sb
       .from("presenter_responses")
       .insert({ session_id: session.id, attendee_id: me.id, kind: "quiz", item_key: `q${idx}`, value: { choice, correct: choice === QUIZ_KEY[idx] }, ms });
