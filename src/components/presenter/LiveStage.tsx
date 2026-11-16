@@ -88,6 +88,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     pendingAfterSpeech: null as null | (() => void),
     // Echo guard: strict = room mic muted while Shree talks (+0.7 s); open = always on; off = never.
     echo: "strict" as "strict" | "open" | "off",
+    micOk: undefined as boolean | undefined,
     lastSpeechEnd: 0,
     speakStart: 0,
     speakText: "",
@@ -133,6 +134,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       intros: s.current.intros,
       introSaved: s.current.introSaved,
       echo: s.current.echo,
+      micOk: s.current.micOk,
       ap: {
         on: s.current.ap.on,
         running: s.current.ap.running,
@@ -250,9 +252,22 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       pushStatus();
       clearTimeout(s.current.speakTimer);
       if (!client) {
-        // No twin: show the caption for a natural reading time, never race ahead.
-        setNote("Twin not connected — showing text only");
-        s.current.speakTimer = setTimeout(markSpeechDone, (words / 2.6) * 1000 + 1500);
+        // No twin (Anam down or not connected): Shree still speaks, in the browser's voice.
+        setNote("Twin offline — backup voice");
+        s.current.speakTimer = setTimeout(markSpeechDone, (words / 2.3) * 1000 + 4000);
+        try {
+          const synth = window.speechSynthesis;
+          if (synth) {
+            synth.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            const voices = synth.getVoices();
+            u.voice = voices.find((v) => /en-IN/i.test(v.lang) && /male|ravi|prabhat/i.test(v.name)) || voices.find((v) => /en-IN/i.test(v.lang)) || voices.find((v) => /^en/i.test(v.lang)) || null;
+            u.rate = 1.02;
+            u.onend = () => markSpeechDone();
+            u.onerror = () => markSpeechDone();
+            synth.speak(u);
+          }
+        } catch {}
         return;
       }
       // Safety net in case the end-of-speech event never arrives.
@@ -791,6 +806,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       if (!["mic", "auto", "reconnect", "sound", "cue", "echo", "ap", "entrance-test", "entrance-sens", "hub"].includes(cmd.type)) {
         st.gen++;
         st.manualInterrupt = Date.now();
+        try {
+          window.speechSynthesis?.cancel();
+        } catch {}
       }
       switch (cmd.type) {
         case "wake":
@@ -1660,7 +1678,21 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             initSound();
             setNote("");
             // Ask for the microphone now (one click), so the snap listener is ready later.
-            navigator.mediaDevices?.getUserMedia({ audio: true }).then((m) => m.getTracks().forEach((t) => t.stop())).catch(() => {});
+            if (!navigator.mediaDevices?.getUserMedia) {
+              s.current.micOk = false;
+              pushStatus();
+            } else
+              navigator.mediaDevices
+                .getUserMedia({ audio: true })
+                .then((m) => {
+                  m.getTracks().forEach((t) => t.stop());
+                  s.current.micOk = true;
+                  pushStatus();
+                })
+                .catch(() => {
+                  s.current.micOk = false;
+                  pushStatus();
+                });
             // Pre-show: the lobby (title + QR) is on screen until Shreesha starts.
             refreshHub();
             setLayoutBoth("hub");

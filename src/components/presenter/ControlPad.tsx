@@ -96,6 +96,29 @@ export default function ControlPad({ sessionId }: { sessionId?: string }) {
         <span className={`text-xs rounded-full px-2 py-1 ${live ? "bg-green-600" : "bg-neutral-700"}`}>{live ? "TV online" : "TV offline"}</span>
       </div>
 
+      {err && <div className="text-red-400 text-sm">{err}</div>}
+      {status && status.micOk === false && (
+        <div className="rounded-xl bg-red-700/80 p-3 text-sm">
+          The TV browser can&apos;t hear the room (no microphone on that device). Snap, “Hey Shree” and room conversation won&apos;t work. Use the laptop in Chrome, HDMI to the TV, with the Jabra plugged in.
+        </div>
+      )}
+      <Autopilot status={status} send={send} />
+
+      <button
+        onPointerDown={startPtt}
+        onPointerUp={stopPtt}
+        onPointerLeave={() => listening && stopPtt()}
+        className={`w-full ${btn} py-6 text-lg ${listening ? "bg-red-600" : "bg-orange-600"}`}
+      >
+        {listening ? "Listening… release to send" : "🎙 Hold & speak to direct Shree (only he hears)"}
+      </button>
+      {heardPtt && <div className="text-xs text-white/50">Last direction: “{heardPtt}”</div>}
+      {status?.lastSaid && <div className="rounded-xl bg-neutral-900 p-3 text-xs text-white/60 line-clamp-3">Shree said: “{status.lastSaid}”</div>}
+      {status?.lastHeard && <div className="rounded-xl bg-neutral-900 p-3 text-xs text-white/60">Shree heard: “{status.lastHeard}”</div>}
+
+      <details className="rounded-xl bg-neutral-900 p-3">
+        <summary className="cursor-pointer text-sm font-semibold">More controls</summary>
+        <div className="mt-3 space-y-4">
       {status && (
         <div className="rounded-xl bg-neutral-900 p-3 text-sm space-y-1">
           <div>
@@ -107,18 +130,7 @@ export default function ControlPad({ sessionId }: { sessionId?: string }) {
           {status.lastSaid && <div className="text-white/60 line-clamp-3">Said: “{status.lastSaid}”</div>}
         </div>
       )}
-      {err && <div className="text-red-400 text-sm">{err}</div>}
       {session && <HubControls sessionId={session.id} send={send} status={status} />}
-
-      <button
-        onPointerDown={startPtt}
-        onPointerUp={stopPtt}
-        onPointerLeave={() => listening && stopPtt()}
-        className={`w-full ${btn} py-8 text-xl ${listening ? "bg-red-600" : "bg-orange-600"}`}
-      >
-        {listening ? "Listening… release to send" : "Hold to direct Shree (private)"}
-      </button>
-      {heardPtt && <div className="text-xs text-white/50">Last direction: “{heardPtt}”</div>}
 
       <div className="grid grid-cols-3 gap-2">
         <button className={`${btn} bg-neutral-800`} onClick={() => send({ type: "wake" })}>Wake</button>
@@ -177,6 +189,8 @@ export default function ControlPad({ sessionId }: { sessionId?: string }) {
           ))}
         </div>
       </div>
+        </div>
+      </details>
     </div>
   );
 }
@@ -336,7 +350,6 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
 
   return (
     <div className="rounded-xl bg-neutral-900 p-3 space-y-3">
-      <Autopilot status={status} send={send} />
       <details className="rounded-xl bg-neutral-800 p-3">
         <summary className="cursor-pointer text-xs text-white/60">Manual control (backup if autopilot is off)</summary>
       <div className="mt-2">
@@ -604,7 +617,19 @@ function Autopilot({ status, send }: { status: PresenterStatus | null; send: (c:
           {ap?.on === false ? "OFF" : "ON"}
         </button>
       </div>
-      <div className="text-lg font-bold leading-tight">{ap?.label || "Starts after Shree's opening (snap / Hey Shree / button)"}</div>
+      <div className="text-lg font-bold leading-tight">{ap?.label || "Ready. Runs by itself after Shree's opening."}</div>
+      {!ap?.running && status?.layout !== "montage" && (
+        <div className="grid grid-cols-2 gap-2">
+          <button className={`${btn} ${status?.layout === "standby" ? "bg-neutral-600" : "bg-neutral-700"}`} onClick={() => send({ type: "standby" })}>
+            1 · Dark screen
+            <div className="text-[10px] font-normal text-white/60">then you open + snap</div>
+          </button>
+          <button className={`${btn} bg-orange-600`} onClick={() => send({ type: "start" })}>
+            2 · Bring Shree in
+            <div className="text-[10px] font-normal text-white/80">if snap/voice didn&apos;t work</div>
+          </button>
+        </div>
+      )}
       {ap?.running && (
         <div className="flex items-center justify-between text-xs">
           <span className={stepLeft < 0 ? "text-red-400" : "text-white/70"}>Step {mmss(ap.stepElapsed)} / {mmss(ap.budget)}</span>
@@ -633,6 +658,11 @@ function Autopilot({ status, send }: { status: PresenterStatus | null; send: (c:
         </button>
         <button className={`${btn} bg-neutral-700`} onClick={() => send({ type: "ap", action: "skip" })}>Skip ▶</button>
       </div>
+      {ap?.running && status?.layout !== "handover" && (
+        <button className={`${btn} w-full bg-neutral-700`} onClick={() => send({ type: "layout", layout: "handover" })}>
+          ✋ Take over now (Shree pauses)
+        </button>
+      )}
       {status?.layout === "handover" && (
         <button className={`${btn} w-full bg-orange-600`} onClick={() => send({ type: "resume" })}>
           I&apos;m done: bring Shree back

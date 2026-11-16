@@ -53,6 +53,8 @@ export type PresenterStatus = {
   introSaved?: string;
   sound?: { volume: number; muted: boolean };
   echo?: "strict" | "open" | "off";
+  /** False when the TV browser can't use a microphone (e.g. Fire TV). */
+  micOk?: boolean;
   ap?: { on: boolean; running: boolean; idx: number; total: number; label: string; stepElapsed: number; budget: number; showElapsed: number; planned: number; waiting: string };
   at: number;
 };

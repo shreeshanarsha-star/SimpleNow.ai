@@ -67,9 +67,9 @@ export default function HubScreen({
       <div className="flex h-full items-center gap-[4vw] px-[3vw]">
         <div className="flex-1">
           <img src="/flyer/nrpl-logo.png" alt="Natural Remedies" className="mb-[2vw] w-[9vw] rounded-xl bg-white p-[0.6vw]" />
-          <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Tonight</div>
+          <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">A live AI experience</div>
           <div className="mt-2 text-[5vw] font-black leading-none">{title}</div>
-          <div className="mt-4 text-[1.8vw] text-white/60">Scan to join. Quiz, polls and questions happen on your phone.</div>
+          <Teaser />
           <div className="mt-[3vw] flex flex-wrap gap-2">
             {board?.attendees.map((a) => (
               <span key={a.name} className="rounded-full bg-white/10 px-4 py-2 text-[1.2vw]">{a.name}</span>
@@ -479,4 +479,25 @@ function buildMilestones(code: string, status?: string) {
     { label: "Download & share", done: (c.includes("toblob") || c.includes("todataurl")) && c.includes("share") },
     { label: "Built & saved", done: status === "ready" },
   ];
+}
+
+const TEASERS = [
+  "Scan the code. Your phone is the remote.",
+  "Meet Shree: Shreesha's digital twin.",
+  "30 questions. 7 seconds each. One champion.",
+  "We'll build a real app, live, from your ideas.",
+  "Find out your AI level (privately).",
+];
+function Teaser() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => setI((x) => (x + 1) % TEASERS.length), 4500);
+    return () => clearInterval(iv);
+  }, []);
+  return (
+    <div key={i} className="mt-4 text-[2vw] text-white/75 animate-[teaser_4.5s_ease-in-out]">
+      {TEASERS[i]}
+      <style>{`@keyframes teaser{0%{opacity:0;transform:translateY(8px)}12%{opacity:1;transform:none}88%{opacity:1}100%{opacity:0}}`}</style>
+    </div>
+  );
 }
