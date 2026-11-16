@@ -15,8 +15,14 @@ export async function GET(req: Request) {
   const id = new URL(req.url).searchParams.get("id") || "";
   const session = await sessionById(id);
   if (!session) return json({ error: "Session not found" }, 404);
-  const board = await buildBoard(id);
-  return json({ hub: hubOf(session), code: session.code, title: session.title, board, quizKey: QUIZ_KEY });
+  const [board, { data: sl }] = await Promise.all([buildBoard(id), db().from("presenter_slides").select("idx, body").eq("session_id", id).order("idx")]);
+  // Short slide titles for the remote's "jump to slide" list.
+  const slides = (sl || []).map((r) => {
+    const lines = String(r.body || "").split("\n").map((x) => x.trim()).filter(Boolean);
+    const t = lines.find((x) => /[a-z]/.test(x) && x.length > 6 && !x.includes("·")) || lines[0] || "";
+    return { idx: r.idx, title: t.slice(0, 60) };
+  });
+  return json({ hub: hubOf(session), code: session.code, title: session.title, board, quizKey: QUIZ_KEY, slides });
 }
 
 export async function POST(req: Request) {

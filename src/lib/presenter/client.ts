@@ -24,7 +24,7 @@ export type PresenterCommand =
   | { type: "intros"; on: boolean }
   | { type: "skip-montage" }
   | { type: "echo"; mode: "strict" | "open" | "off" }
-  | { type: "ap"; action: "start" | "skip" | "back" | "on" | "off" | "stop"; idx?: number }
+  | { type: "ap"; action: "start" | "skip" | "back" | "on" | "off" | "stop"; idx?: number; slide?: number }
   | { type: "sound"; volume?: number; muted?: boolean }
   | { type: "cue"; cue: "snap" | "reveal" | "tick" | "correct" | "drumroll" | "win" | "whoosh" | "pop" }
   | { type: "entrance-test"; on: boolean }

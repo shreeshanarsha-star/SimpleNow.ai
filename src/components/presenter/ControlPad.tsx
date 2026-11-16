@@ -102,7 +102,7 @@ export default function ControlPad({ sessionId }: { sessionId?: string }) {
           The TV browser can&apos;t hear the room (no microphone on that device). Snap, “Hey Shree” and room conversation won&apos;t work. Use the laptop in Chrome, HDMI to the TV, with the Jabra plugged in.
         </div>
       )}
-      <Autopilot status={status} send={send} />
+      <Autopilot status={status} send={send} sessionId={session?.id} />
 
       <button
         onPointerDown={startPtt}
@@ -598,9 +598,17 @@ function EntranceTest({ status, send }: { status: PresenterStatus | null; send: 
 /* ------------------------------ autopilot dashboard ------------------------------ */
 const mmss = (sec: number) => `${sec < 0 ? "-" : ""}${Math.floor(Math.abs(sec) / 60)}:${String(Math.abs(sec) % 60).padStart(2, "0")}`;
 
-function Autopilot({ status, send }: { status: PresenterStatus | null; send: (c: PresenterCommand) => void }) {
+function Autopilot({ status, send, sessionId }: { status: PresenterStatus | null; send: (c: PresenterCommand) => void; sessionId?: string }) {
   const ap = status?.ap;
-  const [pick, setPick] = useState(0);
+  const [jump, setJump] = useState<"" | "steps" | "slides">("");
+  const [slides, setSlides] = useState<Array<{ idx: number; title: string }>>([]);
+  useEffect(() => {
+    if (!sessionId || jump !== "slides" || slides.length) return;
+    api<{ slides: Array<{ idx: number; title: string }> }>(`/api/presenter/hub/admin?id=${sessionId}`)
+      .then((d) => setSlides(d.slides || []))
+      .catch(() => {});
+  }, [sessionId, jump, slides.length]);
+  const storyIdx = SHOW_STEPS.findIndex((x) => x.id === "story");
   const late = ap ? ap.showElapsed - (ap.planned + Math.min(ap.stepElapsed, ap.budget)) : 0;
   const stepLeft = ap ? ap.budget - ap.stepElapsed : 0;
   const btn = "rounded-xl py-3 text-sm font-semibold active:scale-95 transition";
@@ -668,18 +676,58 @@ function Autopilot({ status, send }: { status: PresenterStatus | null; send: (c:
           I&apos;m done: bring Shree back
         </button>
       )}
-      <div className="flex gap-2">
-        <select value={pick} onChange={(e) => setPick(Number(e.target.value))} className="flex-1 rounded-lg bg-neutral-800 px-2 text-xs">
-          {SHOW_STEPS.map((st, i) => (
-            <option key={st.id} value={i}>
-              {i + 1}. {st.label}
-            </option>
-          ))}
-        </select>
-        <button className="rounded-lg bg-neutral-700 px-3 py-2 text-xs" onClick={() => confirm(`Run the show from "${SHOW_STEPS[pick].label}"?`) && send({ type: "ap", action: "start", idx: pick })}>
-          Run from here
+      <div className="grid grid-cols-2 gap-2">
+        <button className={`rounded-lg py-2 text-xs ${jump === "steps" ? "bg-orange-600" : "bg-neutral-700"}`} onClick={() => setJump(jump === "steps" ? "" : "steps")}>
+          Jump to screen (1–{SHOW_STEPS.length})
+        </button>
+        <button className={`rounded-lg py-2 text-xs ${jump === "slides" ? "bg-orange-600" : "bg-neutral-700"}`} onClick={() => setJump(jump === "slides" ? "" : "slides")}>
+          Jump to slide (1–{status?.slideCount || 26})
         </button>
       </div>
+      {jump === "steps" && (
+        <div className="max-h-72 space-y-1 overflow-y-auto">
+          {SHOW_STEPS.map((st, i) => (
+            <button
+              key={st.id}
+              className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs ${ap?.idx === i && ap?.running ? "bg-orange-600" : "bg-neutral-800"}`}
+              onClick={() => {
+                if (confirm(`Jump to screen ${i + 1}: ${st.label}? The show continues from there.`)) {
+                  send({ type: "ap", action: "start", idx: i });
+                  setJump("");
+                }
+              }}
+            >
+              <span className="w-6 text-center font-bold">{i + 1}</span>
+              <span className="flex-1">{st.label}</span>
+              <span className="text-white/40">{Math.round(st.budget / 60)} min</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {jump === "slides" && (
+        <div className="max-h-72 space-y-1 overflow-y-auto">
+          {Array.from({ length: status?.slideCount || 26 }).map((_, i) => {
+            const t = slides.find((x) => x.idx === i)?.title || "";
+            return (
+              <button
+                key={i}
+                className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs ${status?.slide === i && status?.layout === "slides" ? "bg-orange-600" : "bg-neutral-800"}`}
+                onClick={() => {
+                  if (!confirm(`Go to slide ${i + 1}${t ? `: ${t}` : ""}?`)) return;
+                  // Inside the Story, the autopilot carries on from that slide; otherwise just show it.
+                  if (ap?.on !== false && i < 16) send({ type: "ap", action: "start", idx: storyIdx, slide: i });
+                  else send({ type: "goto", idx: i });
+                  setJump("");
+                }}
+              >
+                <span className="w-6 text-center font-bold">{i + 1}</span>
+                <span className="flex-1 truncate">{t || "…"}</span>
+              </button>
+            );
+          })}
+          <div className="px-1 text-[10px] text-white/40">Slides 1–16 are the Story: the autopilot continues from the one you pick. Others are just shown.</div>
+        </div>
+      )}
       <div className="flex items-center gap-1 text-xs">
         <span className="mr-1 text-white/50">Echo guard</span>
         {(["strict", "open", "off"] as const).map((m) => (

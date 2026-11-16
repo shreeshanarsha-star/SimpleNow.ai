@@ -112,6 +112,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       pausedAt: 0,
       waiting: "",
       waitResume: null as null | (() => void),
+      storyFrom: 0,
     },
   });
 
@@ -918,6 +919,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             st.ap.label = "Autopilot stopped";
           } else if (cmd.action === "back" || cmd.action === "start") {
             const target = cmd.action === "back" ? Math.max(0, st.ap.idx - 1) : cmd.idx ?? Math.max(0, st.ap.idx);
+            st.ap.storyFrom = typeof cmd.slide === "number" ? cmd.slide : 0;
             st.ap.gen++;
             anamRef.current?.interruptPersona();
             st.ap.waitResume?.();
@@ -1233,15 +1235,18 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         },
         story: async (b) => {
           // Present every Story slide up to the live-build slide; open Polls 1 and 2 where the deck says so.
+          // (Slide 1's agenda mentions the build, so search from slide 2 for the build slide.)
           let end = Math.min(16, s.current.slideCount || 16);
-          for (let i = 0; i < (s.current.slideCount || 0); i++) {
-            if (/FLYER CHALLENGE|WE BUILD AN APP/i.test(await slideText(i))) {
+          for (let i = 1; i < (s.current.slideCount || 0); i++) {
+            if (/FLYER CHALLENGE/i.test(await slideText(i))) {
               end = i;
               break;
             }
           }
           const t0 = Date.now();
-          for (let i = 0; i < end && alive(); i++) {
+          const from = Math.max(0, Math.min(end - 1, ap.storyFrom || 0));
+          ap.storyFrom = 0;
+          for (let i = from; i < end && alive(); i++) {
             if (Date.now() - t0 > b) {
               await line("We're short on time: wrap up the story in one sentence and move on.");
               break;
