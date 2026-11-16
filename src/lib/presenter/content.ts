@@ -239,3 +239,25 @@ export const HR_PROMPTS = [
   { title: "Make an email clearer", prompt: "Rewrite this email to be shorter, clearer and kind. Keep every fact. Then list what you changed." },
   { title: "Onboarding plan", prompt: "Create a 4-week onboarding plan for a new [role]: week by week, with owners, checkpoints and the one thing they should be able to do by the end of each week." },
 ];
+
+/* ------------------------------ autopilot run of show ------------------------------ */
+// Budgets in seconds; they add up to the 75-minute plan. Each step ends when it's
+// done or its budget runs out. Shreesha can pause, skip or go back at any time.
+export const SHOW_STEPS: Array<{ id: string; label: string; budget: number }> = [
+  { id: "before", label: "Act 1 · Before poll", budget: 60 },
+  { id: "intros", label: "Act 2 · Meet the cast", budget: 330 },
+  { id: "wishwall", label: "Act 2 · HR Wish Wall", budget: 60 },
+  { id: "quiz", label: "Act 3 · Quiz", budget: 300 },
+  { id: "mirror", label: "Act 4 · The Mirror", budget: 360 },
+  { id: "story", label: "Act 5 · The Story", budget: 720 },
+  { id: "game", label: "Act 5 · AI, HI or Notepad?", budget: 150 },
+  { id: "debate", label: "Act 5 · Debate", budget: 180 },
+  { id: "build", label: "Act 6 · The Build", budget: 300 },
+  { id: "predict", label: "Act 7 · Prediction poll", budget: 45 },
+  { id: "handover", label: "Act 7 · Shreesha's demo", budget: 690 },
+  { id: "back", label: "Act 6½ · Welcome back + result", budget: 90 },
+  { id: "reveal", label: "Act 6½ · App reveal + scoring", budget: 210 },
+  { id: "qa", label: "Act 8 · Ask anything", budget: 480 },
+  { id: "finale", label: "Act 9 · Finale", budget: 360 },
+  { id: "close", label: "Act 9 · Commitments + close", budget: 150 },
+];

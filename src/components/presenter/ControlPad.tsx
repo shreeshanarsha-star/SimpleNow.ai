@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, presenterChannel, type PresenterCommand, type PresenterStatus } from "@/lib/presenter/client";
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { FLYER_PRESETS, POLLS, backupFlyerUrl, pollByKey, quizClock, type FlyerInputs, type HubState } from "@/lib/presenter/content";
+import { FLYER_PRESETS, POLLS, SHOW_STEPS, backupFlyerUrl, pollByKey, quizClock, type FlyerInputs, type HubState } from "@/lib/presenter/content";
 
 type Session = { id: string; code: string; title: string };
 
@@ -336,7 +336,10 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
 
   return (
     <div className="rounded-xl bg-neutral-900 p-3 space-y-3">
-      <div className="rounded-xl bg-neutral-800 p-3">
+      <Autopilot status={status} send={send} />
+      <details className="rounded-xl bg-neutral-800 p-3">
+        <summary className="cursor-pointer text-xs text-white/60">Manual control (backup if autopilot is off)</summary>
+      <div className="mt-2">
         <div className="text-[11px] uppercase tracking-wider text-white/50">Run of show · step {actIdx + 1}/{ACTS.length}</div>
         <div className="mt-1 text-base font-bold">{ACTS[actIdx]?.label}</div>
         <div className="text-xs text-white/60">{ACTS[actIdx]?.hint}</div>
@@ -369,6 +372,7 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
           <button className={`${b} bg-orange-600 text-base`} onClick={() => goAct(actIdx + 1)}>Next act ▶</button>
         </div>
       </div>
+      </details>
       <EntranceTest status={status} send={send} />
 
       <div className="flex items-center justify-between text-sm">
@@ -556,6 +560,95 @@ function EntranceTest({ status, send }: { status: PresenterStatus | null; send: 
       </div>
       <div className="min-h-[1.5em] text-sm text-green-400">{status?.testHit || (test ? "Waiting for a snap or “Hey Shree”…" : "")}</div>
       <div className="text-white/40">Sensitivity: high catches soft snaps but may react to claps or bangs; low needs a sharp snap close to the laptop.</div>
+    </div>
+  );
+}
+
+/* ------------------------------ autopilot dashboard ------------------------------ */
+const mmss = (sec: number) => `${sec < 0 ? "-" : ""}${Math.floor(Math.abs(sec) / 60)}:${String(Math.abs(sec) % 60).padStart(2, "0")}`;
+
+function Autopilot({ status, send }: { status: PresenterStatus | null; send: (c: PresenterCommand) => void }) {
+  const ap = status?.ap;
+  const [pick, setPick] = useState(0);
+  const late = ap ? ap.showElapsed - (ap.planned + Math.min(ap.stepElapsed, ap.budget)) : 0;
+  const stepLeft = ap ? ap.budget - ap.stepElapsed : 0;
+  const btn = "rounded-xl py-3 text-sm font-semibold active:scale-95 transition";
+  return (
+    <div className="rounded-xl bg-gradient-to-br from-neutral-800 to-neutral-900 p-3 space-y-2 ring-1 ring-orange-600/40">
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] uppercase tracking-wider text-white/50">
+          Autopilot {ap?.running ? (status?.paused ? "· PAUSED" : "· running") : ap?.on === false ? "· off" : "· ready"}
+        </div>
+        <button
+          className={`rounded-full px-3 py-1 text-xs ${ap?.on === false ? "bg-neutral-700" : "bg-green-700"}`}
+          onClick={() => send({ type: "ap", action: ap?.on === false ? "on" : "off" })}
+        >
+          {ap?.on === false ? "OFF" : "ON"}
+        </button>
+      </div>
+      <div className="text-lg font-bold leading-tight">{ap?.label || "Starts after Shree's opening (snap / Hey Shree / button)"}</div>
+      {ap?.running && (
+        <div className="flex items-center justify-between text-xs">
+          <span className={stepLeft < 0 ? "text-red-400" : "text-white/70"}>Step {mmss(ap.stepElapsed)} / {mmss(ap.budget)}</span>
+          <span className={late > 60 ? "text-red-400" : late > 0 ? "text-yellow-300" : "text-green-400"}>
+            Show {mmss(ap.showElapsed)} · {late > 0 ? `${mmss(late)} late` : `${mmss(-late)} ahead`}
+          </span>
+        </div>
+      )}
+      {ap?.waiting && <div className="rounded-lg bg-yellow-500/20 px-2 py-1.5 text-xs text-yellow-200">{ap.waiting}</div>}
+      {status?.listening && (
+        <div className="rounded-lg bg-black/40 px-2 py-1.5 text-xs">
+          👂 Listening for {status.listening.snap ? "snap ✓" : "snap ✗"} · {status.listening.voice ? "voice ✓" : "voice ✗"}
+          {status.listening.test && <span className="text-yellow-300"> · TEST MODE</span>}
+        </div>
+      )}
+      {status?.layout === "montage" && (
+        <button className="w-full rounded-lg bg-neutral-700 py-2 text-xs" onClick={() => send({ type: "skip-montage" })}>
+          Montage playing… Skip to Shree
+        </button>
+      )}
+      {status?.intros && <div className="text-xs text-sky-300">Intros: saving each spoken intro{status.introSaved ? ` · last: ${status.introSaved}` : ""}</div>}
+      <div className="grid grid-cols-3 gap-2">
+        <button className={`${btn} bg-neutral-700`} onClick={() => send({ type: "ap", action: "back" })}>◀ Back</button>
+        <button className={`${btn} ${status?.paused ? "bg-green-700" : "bg-red-700"}`} onClick={() => send({ type: status?.paused ? "resume" : "pause" })}>
+          {status?.paused ? "▶ Resume" : "❚❚ Pause"}
+        </button>
+        <button className={`${btn} bg-neutral-700`} onClick={() => send({ type: "ap", action: "skip" })}>Skip ▶</button>
+      </div>
+      {status?.layout === "handover" && (
+        <button className={`${btn} w-full bg-orange-600`} onClick={() => send({ type: "resume" })}>
+          I&apos;m done: bring Shree back
+        </button>
+      )}
+      <div className="flex gap-2">
+        <select value={pick} onChange={(e) => setPick(Number(e.target.value))} className="flex-1 rounded-lg bg-neutral-800 px-2 text-xs">
+          {SHOW_STEPS.map((st, i) => (
+            <option key={st.id} value={i}>
+              {i + 1}. {st.label}
+            </option>
+          ))}
+        </select>
+        <button className="rounded-lg bg-neutral-700 px-3 py-2 text-xs" onClick={() => confirm(`Run the show from "${SHOW_STEPS[pick].label}"?`) && send({ type: "ap", action: "start", idx: pick })}>
+          Run from here
+        </button>
+      </div>
+      <div className="flex items-center gap-1 text-xs">
+        <span className="mr-1 text-white/50">Echo guard</span>
+        {(["strict", "open", "off"] as const).map((m) => (
+          <button key={m} className={`flex-1 rounded-lg py-1.5 ${(status?.echo || "strict") === m ? "bg-orange-600" : "bg-neutral-700"}`} onClick={() => send({ type: "echo", mode: m })}>
+            {m === "strict" ? "Strict" : m === "open" ? "Open" : "Mic off"}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 text-xs">
+        <span className="text-white/50">TV sound</span>
+        <button className="rounded-lg bg-neutral-700 px-3 py-1.5" onClick={() => send({ type: "sound", volume: Math.max(0, (status?.sound?.volume ?? 0.8) - 0.15) })}>−</button>
+        <span className="w-8 text-center">{Math.round((status?.sound?.volume ?? 0.8) * 100)}</span>
+        <button className="rounded-lg bg-neutral-700 px-3 py-1.5" onClick={() => send({ type: "sound", volume: Math.min(1, (status?.sound?.volume ?? 0.8) + 0.15) })}>+</button>
+        <button className={`rounded-lg px-3 py-1.5 ${status?.sound?.muted ? "bg-red-700" : "bg-neutral-700"}`} onClick={() => send({ type: "sound", muted: !status?.sound?.muted })}>
+          {status?.sound?.muted ? "Muted" : "Mute"}
+        </button>
+      </div>
     </div>
   );
 }

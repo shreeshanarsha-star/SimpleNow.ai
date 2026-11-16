@@ -167,7 +167,13 @@ function buildPrompt(i: DirectorInput) {
   if (i.mode === "slide")
     task = `TASK: Present this slide now, in your own words, as a co-host. Land the INTENT. Use the EXAMPLE if it helps. If there is an ENGAGE question, end by asking it. Keep it tight: 30 to 45 seconds of speech (about 70 to 110 words); a little longer only if the slide has a POLL or debate, in which case end by inviting everyone to vote on their phones. Don't read the slide. Don't say "slide". Flow naturally from what was said before.`;
   else if (i.mode === "room")
-    task = `TASK: Someone in the room just said: "${i.heard}". Respond naturally and briefly (1 to 3 sentences) following the interruption rules. If it's small talk or a reaction, respond with warmth or wit. If it's not addressed to you or is unclear, reply with exactly: [SILENT]`;
+    task = `TASK: Someone in the room just said: "${i.heard}". Respond naturally and briefly (1 to 3 sentences), like a human co-host:
+- A quick question you can answer from the material: answer it now.
+- Covered by a later slide: say you're covering it shortly.
+- A bigger question better for Q&A: say you've noted it for Q&A, and END your reply with the tag [QA: the question in under 15 words].
+- About building or tool setup: say Shreesha will take it in Q&A, and end with the [QA: ...] tag too.
+- Small talk or a reaction: respond with warmth or wit.
+- Not addressed to you, unclear, or just noise: reply with exactly [SILENT].`;
   else if (i.mode === "direct")
     task = `TASK: Shreesha privately directs you: "${i.instruction}". Follow it now. Respond with what you will SAY out loud to the room (or exactly [SILENT] if the direction needs no speech).`;
   else task = `TASK: ${i.instruction || "Say something brief and natural."}`;

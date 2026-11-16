@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/presenter/client";
 import BrainPanel from "@/components/presenter/BrainPanel";
+import Simulator from "@/components/presenter/Simulator";
 
 type Session = {
   id: string;
@@ -136,6 +137,8 @@ export default function PresenterConsole() {
         })}
         {msg && <div className="text-xs text-ink-muted">{msg}</div>}
       </div>
+
+      <Simulator key={`sim-${session.id}`} code={session.code} />
 
       <BrainPanel key={session.id} sessionId={session.id} />
     </div>

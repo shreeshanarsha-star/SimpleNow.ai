@@ -23,6 +23,8 @@ export type PresenterCommand =
   | { type: "hub" }
   | { type: "intros"; on: boolean }
   | { type: "skip-montage" }
+  | { type: "echo"; mode: "strict" | "open" | "off" }
+  | { type: "ap"; action: "start" | "skip" | "back" | "on" | "off" | "stop"; idx?: number }
   | { type: "sound"; volume?: number; muted?: boolean }
   | { type: "cue"; cue: "snap" | "reveal" | "tick" | "correct" | "drumroll" | "win" | "whoosh" | "pop" }
   | { type: "entrance-test"; on: boolean }
@@ -50,6 +52,8 @@ export type PresenterStatus = {
   intros?: boolean;
   introSaved?: string;
   sound?: { volume: number; muted: boolean };
+  echo?: "strict" | "open" | "off";
+  ap?: { on: boolean; running: boolean; idx: number; total: number; label: string; stepElapsed: number; budget: number; showElapsed: number; planned: number; waiting: string };
   at: number;
 };
 

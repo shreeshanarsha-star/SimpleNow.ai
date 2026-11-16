@@ -19,7 +19,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import HubScreen, { type Board } from "@/components/presenter/HubScreen";
 import Montage from "@/components/presenter/Montage";
 import { cue, duck, getSoundState, initSound, setBed, setMuted, setVolume } from "@/lib/presenter/sound";
-import { DEFAULT_HUB, QUIZ, pollByKey, quizClock, type HubState } from "@/lib/presenter/content";
+import { DEFAULT_HUB, FLYER_PRESETS, QUIZ, SHOW_STEPS, backupFlyerUrl, pollByKey, quizClock, type HubState } from "@/lib/presenter/content";
 
 type Session = { id: string; code: string; title: string; state: Record<string, unknown> };
 type Line = { role: "room" | "shree" | "shreesha"; text: string };
@@ -44,7 +44,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   const montageDone = useRef<(() => void) | null>(null);
   const [buildText, setBuildText] = useState("");
   const building = useRef(false);
-  const hubRef = useRef<{ hub: HubState; board: Board | null; offset: number; lastQuizNote: number; lastFinale: number; lastReveal: string; lastWish: string }>({
+  const hubRef = useRef<{ hub: HubState; board: Board | null; offset: number; lastQuizNote: number; lastFinale: number; lastReveal: string; lastWish: string; busy: boolean }>({
     hub: DEFAULT_HUB,
     board: null,
     offset: 0,
@@ -52,6 +52,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     lastFinale: 0,
     lastReveal: "",
     lastWish: "",
+    busy: false,
   });
 
   const anamRef = useRef<AnamClient | null>(null);
@@ -85,6 +86,32 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     testHit: "",
     introSaved: "",
     pendingAfterSpeech: null as null | (() => void),
+    // Echo guard: strict = room mic muted while Shree talks (+0.7 s); open = always on; off = never.
+    echo: "strict" as "strict" | "open" | "off",
+    lastSpeechEnd: 0,
+    speakStart: 0,
+    speakText: "",
+    resume: null as null | { text: string; after: (() => void) | null },
+    manualInterrupt: 0,
+    roomBusy: false,
+    quietListen: false,
+    lastRoomAt: 0,
+    expect: null as null | ((heard: string) => Promise<boolean>),
+    ap: {
+      on: true,
+      running: false,
+      gen: 0,
+      idx: -1,
+      label: "",
+      stepStart: 0,
+      budget: 0,
+      showStart: 0,
+      skip: false,
+      pausedMs: 0,
+      pausedAt: 0,
+      waiting: "",
+      waitResume: null as null | (() => void),
+    },
   });
 
   /* ------------------------------ status ------------------------------ */
@@ -105,6 +132,19 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       testHit: s.current.testHit,
       intros: s.current.intros,
       introSaved: s.current.introSaved,
+      echo: s.current.echo,
+      ap: {
+        on: s.current.ap.on,
+        running: s.current.ap.running,
+        idx: s.current.ap.idx,
+        total: SHOW_STEPS.length,
+        label: s.current.ap.label,
+        stepElapsed: s.current.ap.stepStart ? Math.round((Date.now() - s.current.ap.stepStart) / 1000) : 0,
+        budget: s.current.ap.budget,
+        showElapsed: s.current.ap.showStart ? Math.round((Date.now() - s.current.ap.showStart - s.current.ap.pausedMs) / 1000) : 0,
+        planned: SHOW_STEPS.slice(0, Math.max(0, s.current.ap.idx)).reduce((a, b) => a + b.budget, 0),
+        waiting: s.current.ap.waiting,
+      },
       sound: (() => {
         const ss = getSoundState();
         return { volume: ss.volume, muted: ss.muted };
@@ -143,11 +183,44 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     await renderPage(doc, idx + 1, c, r.width, r.height).catch(() => {});
   }, []);
 
+  /* ------------------------------ echo guard ------------------------------ */
+  // Shree must never hear himself or the music: the room mic is open only when
+  // someone is expected to talk, and (strict) never while he speaks.
+  const micWanted = useCallback(() => {
+    const st = s.current;
+    if (!st.micOn || st.echo === "off") return false;
+    if (st.echo === "strict" && (st.speaking || Date.now() - st.lastSpeechEnd < 700)) return false;
+    const L = st.layout;
+    if (L === "twin" || L === "slides") return true;
+    if (L === "hub") return ["questions", "wishwall", "poll"].includes(hubRef.current.hub.phase);
+    return false;
+  }, []);
+  const micState = useRef<boolean | null>(null);
+  const applyMic = useCallback(() => {
+    const c = anamRef.current;
+    if (!c) {
+      micState.current = null;
+      return;
+    }
+    const want = micWanted();
+    if (micState.current === want) return;
+    micState.current = want;
+    try {
+      if (want) c.unmuteInputAudio();
+      else c.muteInputAudio();
+    } catch {}
+  }, [micWanted]);
+  useEffect(() => {
+    const iv = setInterval(applyMic, 250);
+    return () => clearInterval(iv);
+  }, [applyMic]);
+
   /* ------------------------------ speech ------------------------------ */
   const markSpeechDone = useCallback(() => {
     clearTimeout(s.current.speakTimer);
     if (!s.current.speaking) return;
     s.current.speaking = false;
+    s.current.lastSpeechEnd = Date.now();
     setSpeaking(false);
     pushStatus();
     const next = s.current.pendingAfterSpeech;
@@ -163,11 +236,16 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         return;
       }
       s.current.lastSaid = text;
+      s.current.speakText = text;
+      s.current.speakStart = Date.now();
+      s.current.resume = null;
       transcript.current.push({ role: "shree", text });
       setCaption(text);
       const words = text.split(/\s+/).length;
       s.current.speaking = true;
       setSpeaking(true);
+      micState.current = null;
+      applyMic();
       s.current.pendingAfterSpeech = after || null;
       pushStatus();
       clearTimeout(s.current.speakTimer);
@@ -186,8 +264,38 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         markSpeechDone();
       }
     },
-    [markSpeechDone, pushStatus]
+    [markSpeechDone, pushStatus, applyMic]
   );
+
+  /** Speak and resolve when finished (or superseded). */
+  const say = useCallback(
+    (text: string) =>
+      new Promise<void>((resolve) => {
+        if (!text || text.includes("[SILENT]")) return resolve();
+        const timer = setTimeout(resolve, (text.split(/\s+/).length / 2.2) * 1000 + 8000);
+        speak(text, () => {
+          clearTimeout(timer);
+          resolve();
+        });
+      }),
+    [speak]
+  );
+
+  /** Someone talked over Shree (open mode): remember the rest to pick up after. */
+  const onTalkInterrupted = useCallback(() => {
+    const st = s.current;
+    if (st.speaking && Date.now() - st.manualInterrupt > 1500 && st.speakText) {
+      const words = st.speakText.split(/\s+/);
+      const spoken = Math.floor(((Date.now() - st.speakStart) / 1000) * 2.5);
+      const rest = words.slice(spoken).join(" ");
+      if (rest.split(/\s+/).length > 8) st.resume = { text: rest, after: st.pendingAfterSpeech };
+      st.pendingAfterSpeech = null;
+    }
+    markSpeechDone();
+  }, [markSpeechDone]);
+
+  const onTalkInterruptedRef = useRef(onTalkInterrupted);
+  onTalkInterruptedRef.current = onTalkInterrupted;
 
   const director = useCallback(
     async (body: Record<string, unknown>) => {
@@ -255,11 +363,23 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
 
   const onRoomSpeech = useCallback(
     async (heard: string) => {
-      if (!heard.trim() || s.current.paused) return;
-      s.current.lastHeard = heard;
+      const st = s.current;
+      if (!heard.trim() || st.paused) return;
+      // Echo filter: ignore anything that sounds like Shree's own last lines.
+      const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 2);
+      const hw = norm(heard);
+      const mine = new Set(norm(transcript.current.filter((l) => l.role === "shree").slice(-2).map((l) => l.text).join(" ")));
+      if (hw.length >= 3 && hw.filter((w) => mine.has(w)).length / hw.length >= 0.6) return;
+      st.lastRoomAt = Date.now();
+      st.lastHeard = heard;
       transcript.current.push({ role: "room", text: heard });
       pushStatus();
-      if (s.current.intros && session?.id) {
+      if (st.quietListen) return; // Shreesha (or a guest) has the floor: listen only
+      if (st.expect) {
+        const handled = await st.expect(heard).catch(() => false);
+        if (handled) return;
+      }
+      if (st.intros && session?.id) {
         // Save the spoken intro to that person's memory (background, never blocks Shree).
         api<{ matched: string | null }>("/api/presenter/intro", {
           method: "POST",
@@ -268,34 +388,47 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         })
           .then((r) => {
             if (r.matched) {
-              s.current.introSaved = r.matched;
+              st.introSaved = r.matched;
               pushStatus();
             }
           })
           .catch(() => {});
       }
-      const wasSlide = s.current.slide;
-      let bridged = false;
+      const wasSlide = st.slide;
+      st.roomBusy = true;
+      const resume = st.resume;
+      st.resume = null;
       const t = setTimeout(() => {
-        bridged = true;
         anamRef.current?.talk(bridgePhrase()).catch(() => {});
       }, 1500);
       try {
-        const say = await director({ mode: "room", heard, slideIdx: wasSlide, slideText: await slideText(wasSlide), nextSlidesText: await slideText(wasSlide + 1) });
+        let reply = await director({ mode: "room", heard, slideIdx: wasSlide, slideText: await slideText(wasSlide), nextSlidesText: await slideText(wasSlide + 1) });
         clearTimeout(t);
-        if (say.includes("[SILENT]")) return;
-        await speak(bridged ? say : say, () => {
-          // Move on only if this slide had already been fully presented; otherwise
-          // stay put (Shreesha taps Next), so a stray remark never skips content.
-          if (s.current.slideNarrated && s.current.slide === wasSlide && s.current.layout === "slides" && s.current.auto && !s.current.paused && wasSlide + 1 < s.current.slideCount) {
-            presentSlide(wasSlide + 1);
-          }
-        });
+        // Parked for Q&A: add it to the question list.
+        const qa = reply.match(/\[QA:\s*([^\]]+)\]/i);
+        if (qa && session?.id) {
+          reply = reply.replace(qa[0], "").trim();
+          api("/api/presenter/hub/admin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: session.id, action: "room-question", text: qa[1] }),
+          }).catch(() => {});
+        }
+        if (!reply.includes("[SILENT]")) await say(reply);
+        // Pick up exactly where he was cut off, like a human would.
+        if (resume) {
+          await new Promise((r) => setTimeout(r, 400));
+          speak(`Where was I? Right. ${resume.text}`, resume.after || undefined);
+        } else if (!st.ap.running && st.slideNarrated && st.slide === wasSlide && st.layout === "slides" && st.auto && !st.paused && wasSlide + 1 < st.slideCount) {
+          presentSlide(wasSlide + 1);
+        }
       } catch {
         clearTimeout(t);
+      } finally {
+        st.roomBusy = false;
       }
     },
-    [director, presentSlide, pushStatus, slideText, speak, session?.id]
+    [director, presentSlide, pushStatus, slideText, speak, say, session?.id]
   );
 
   /* ------------------------------ audience hub ------------------------------ */
@@ -318,7 +451,16 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   // Shree's own lines during the hub: a quick quiz comment every 5 questions, and the finale reveals.
   const hubLines = useCallback(async () => {
     const h = hubRef.current;
-    if (s.current.layout !== "hub" || s.current.paused || s.current.speaking) return;
+    if (s.current.layout !== "hub" || s.current.paused || s.current.speaking || h.busy) return;
+    // Generate + speak a line; "busy" lets the autopilot wait for it to finish.
+    const line = async (p: Promise<string>) => {
+      h.busy = true;
+      try {
+        await say(await p);
+      } finally {
+        h.busy = false;
+      }
+    };
     if (h.hub.phase === "quiz") {
       const c = quizClock(h.hub.quiz, Date.now() + h.offset);
       if (c.status === "leadin" || c.status === "off") h.lastQuizNote = -1;
@@ -335,7 +477,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           checkpoint === QUIZ.length
             ? `The quiz just ended. Room got about ${pct}% right overall. One or two short sentences: scores are locked, the winner is revealed at the finale. Name nobody.`
             : `Quiz checkpoint after question ${checkpoint + 1} of 30. The room got about ${pct}% of the last five right. Make ONE short, witty sentence (under 15 words) to keep energy up. Don't read questions or answers. Name nobody. The next question starts in 2 seconds.`;
-        speak(await director({ mode: "free", instruction }).catch(() => "[SILENT]"));
+        line(director({ mode: "free", instruction }).catch(() => "[SILENT]"));
       }
     }
     // Game / prediction reveal.
@@ -350,7 +492,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           ? `Reveal the prediction result. The room predicted: ${votes}. What actually happened in Shreesha's demo: "${p.options[h.hub.pollReveal]}". In 2 or 3 sentences, react to how the room guessed, then land the lesson: an agent can only act within the information, tools, access and permissions it has; intelligence doesn't grant access. Name nobody.`
           : `Reveal the answer to "${p.q}". Votes: ${votes}. Best answer: "${p.options[h.hub.pollReveal]}". Why: ${p.explain}. In 2 short sentences, react to the vote with light humour and explain why, ending with the idea that AI, HI or notepad: what matters is ROI. Name nobody.`;
         cue("correct");
-        speak(await director({ mode: "free", instruction }).catch(() => "[SILENT]"));
+        await line(director({ mode: "free", instruction }).catch(() => "[SILENT]"));
         return;
       }
     }
@@ -359,8 +501,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       if (key !== h.lastWish) {
         h.lastWish = key;
         const themes = h.hub.wishGroups.map((g) => `${g.label} (${g.items.length})`).join(", ");
-        speak(
-          await director({
+        await line(
+          director({
             mode: "free",
             instruction: `The HR Wish Wall is on screen, grouped into themes: ${themes}. In 2 or 3 short sentences: note that different roles share very similar frustrations, with light humour, then say: maybe our first AI opportunity isn't replacing anyone, it's removing some of this repetitive work. Name nobody.`,
           }).catch(() => "[SILENT]")
@@ -377,18 +519,19 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       if (step !== h.lastFinale && step > 0) {
         h.lastFinale = step;
         const lb = h.board?.quiz.leaderboard || [];
-        const say = (i: number, place: string) =>
+        const ann = (i: number, place: string) =>
           lb[i] ? `Announce ${place} place in the quiz: ${lb[i].name}, with ${lb[i].correct} out of 30. Build a little drama, one or two sentences, then congratulate them.` : `There's no ${place} place (not enough players). Say so lightly in one sentence.`;
         const instruction =
           step === 1
-            ? say(2, "third")
+            ? ann(2, "third")
             : step === 2
-              ? say(1, "second")
+              ? ann(1, "second")
               : step === 3
-                ? say(0, "first. They are tonight's quiz champion")
+                ? ann(0, "first. They are tonight's quiz champion")
                 : step === 4
                   ? `Reveal the team AI-level chart (counts only): ${(h.board?.assessment.levelCounts || []).map((l) => `${l.name} ${l.count}`).join(", ")}. Two or three sentences: celebrate honestly, then the goal of one level up in 90 days. Everyone's badge is on their phone, private. Name nobody.`
                   : `Compare the before and after poll ("${pollByKey("before")?.q}"): before ${JSON.stringify(h.board?.polls["before"] || [])}, after ${JSON.stringify(h.board?.polls["after"] || [])} for options ${JSON.stringify(pollByKey("before")?.options || [])}. Two sentences, honest.`;
+        h.busy = true;
         const lineP = director({ mode: "free", instruction }).catch(() => "[SILENT]");
         if (step <= 3) {
           // Drumroll first, then the name appears and Shree announces it.
@@ -398,10 +541,14 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           setFinaleShown(step);
           if (step === 3) cue("win");
         } else setFinaleShown(step);
-        speak(await lineP);
+        try {
+          await say(await lineP);
+        } finally {
+          h.busy = false;
+        }
       }
     }
-  }, [director, speak]);
+  }, [director, say]);
 
   useEffect(() => {
     if (!session?.id) return;
@@ -501,7 +648,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         if (isActive() && ev.role === "persona" && ev.endOfSpeech) markSpeechDone();
       });
       client.addListener(AnamEvent.TALK_STREAM_INTERRUPTED, () => {
-        if (isActive()) markSpeechDone();
+        if (isActive()) onTalkInterruptedRef.current();
       });
       client.addListener(AnamEvent.MESSAGE_HISTORY_UPDATED, (messages) => {
         if (!isActive()) return;
@@ -641,7 +788,10 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     async (cmd: PresenterCommand) => {
       const st = s.current;
       // Any new instruction cancels a slide narration still being prepared.
-      if (!["mic", "auto", "reconnect"].includes(cmd.type)) st.gen++;
+      if (!["mic", "auto", "reconnect", "sound", "cue", "echo", "ap", "entrance-test", "entrance-sens", "hub"].includes(cmd.type)) {
+        st.gen++;
+        st.manualInterrupt = Date.now();
+      }
       switch (cmd.type) {
         case "wake":
           setLayoutBoth("twin");
@@ -672,7 +822,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           cue("reveal");
           setLayoutBoth("twin");
           await new Promise((r) => setTimeout(r, 900));
-          speak(await linePromise);
+          await say(await linePromise);
+          // Autopilot: the rest of the show runs by itself from here.
+          if (st.ap.on && !st.ap.running) runShowRef.current(0);
           break;
         }
         case "skip-montage":
@@ -704,17 +856,57 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           break;
         }
         case "pause":
+          if (!st.paused) st.ap.pausedAt = Date.now();
           st.paused = true;
           st.pendingAfterSpeech = null;
           anamRef.current?.interruptPersona();
           pushStatus();
           break;
-        case "resume":
+        case "resume": {
+          if (st.paused && st.ap.pausedAt) st.ap.pausedMs += Date.now() - st.ap.pausedAt;
+          st.ap.pausedAt = 0;
           st.paused = false;
           pushStatus();
-          if (st.layout === "handover") setLayoutBoth("twin");
+          const back = st.layout === "handover";
+          if (back) setLayoutBoth("twin");
           if (!anamRef.current) await connectTwin();
-          if (st.layout === "slides") presentSlide(st.slide);
+          if (back && st.ap.waitResume) st.ap.waitResume();
+          else if (st.layout === "slides" && !st.slideNarrated) presentSlide(st.slide);
+          break;
+        }
+        case "echo":
+          st.echo = cmd.mode;
+          micState.current = null;
+          applyMic();
+          pushStatus();
+          break;
+        case "ap":
+          if (cmd.action === "on" || cmd.action === "off") {
+            st.ap.on = cmd.action === "on";
+            if (!st.ap.on) {
+              st.ap.gen++;
+              st.ap.running = false;
+              st.auto = true;
+            }
+          }
+          else if (cmd.action === "skip") {
+            st.ap.skip = true;
+            anamRef.current?.interruptPersona();
+            st.ap.waitResume?.();
+          } else if (cmd.action === "stop") {
+            st.ap.gen++;
+            st.ap.running = false;
+            st.auto = true;
+            st.ap.label = "Autopilot stopped";
+          } else if (cmd.action === "back" || cmd.action === "start") {
+            const target = cmd.action === "back" ? Math.max(0, st.ap.idx - 1) : cmd.idx ?? Math.max(0, st.ap.idx);
+            st.ap.gen++;
+            anamRef.current?.interruptPersona();
+            st.ap.waitResume?.();
+            st.ap.on = true;
+            setTimeout(() => runShowRef.current(target), 300);
+          }
+          pushStatus();
           break;
         case "stop":
           st.pendingAfterSpeech = null;
@@ -812,7 +1004,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           speak(
             await director({
               mode: "free",
-              instruction: `The room gave the flyer details: "${cmd.inputs.name}", ${cmd.inputs.date}, at ${cmd.inputs.venue}, highlights: ${cmd.inputs.highlights.join("; ")}. Say you've just handed the instruction to an AI and the build has started on screen. In 3 or 4 short sentences explain vibe coding: describe the app in plain English, the AI writes the code, a human checks it. Then hand over: "Shreesha, over to you."`,
+              instruction: `The room gave the flyer details: "${cmd.inputs.name}", ${cmd.inputs.date}, at ${cmd.inputs.venue}, highlights: ${cmd.inputs.highlights.join("; ")}. Say you've just handed the instruction to an AI and the build has started on screen. In 3 or 4 short sentences explain vibe coding: describe the app in plain English, the AI writes the code, a human checks it. Then say that before Shreesha shows you a real AI agent, there's one quick prediction to make.`,
             }).catch(() => "[SILENT]")
           );
           break;
@@ -890,6 +1082,384 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     return () => window.removeEventListener("resize", onResize);
   }, [drawSlide]);
 
+  /* ------------------------------ autopilot ------------------------------ */
+  // Runs the whole show in order after the opening. Each step ends when it's done
+  // or its time budget runs out. Interruptions are handled by onRoomSpeech; the
+  // autopilot simply waits until the room and Shree are quiet before moving on.
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const adminAct = useCallback(
+    async (body: Record<string, unknown>) => {
+      if (!session?.id) return null;
+      const d = await api<{ hub?: HubState }>("/api/presenter/hub/admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: session.id, ...body }),
+      }).catch(() => null);
+      await refreshHub();
+      return d;
+    },
+    [session?.id, refreshHub]
+  );
+
+  const runShow = useCallback(
+    async (from: number) => {
+      const ap = s.current.ap;
+      const gen = ++ap.gen;
+      ap.running = true;
+      if (!ap.showStart) ap.showStart = Date.now();
+      s.current.auto = false; // the autopilot advances slides itself
+      const H = () => hubRef.current;
+      const alive = () => ap.gen === gen && !ap.skip;
+      const people = () => H().board?.attendees.length || 0;
+      const votes = (k: string) => (H().board?.polls[k] || []).reduce((a, b) => a + b, 0);
+      // Wait up to ms (paused time doesn't count) or until cond() is true.
+      const wait = async (ms: number, cond?: () => boolean) => {
+        const t0 = Date.now();
+        let paused = 0;
+        while (alive()) {
+          if (s.current.paused) {
+            await sleep(300);
+            paused += 300;
+            continue;
+          }
+          if (cond && cond()) return true;
+          if (Date.now() - t0 - paused >= ms) return false;
+          await sleep(300);
+        }
+        return false;
+      };
+      const quiet = () => !s.current.speaking && !s.current.roomBusy && !s.current.busy && !H().busy && !s.current.resume;
+      const settle = (ms = 90_000) => wait(ms, quiet);
+      const line = async (instruction: string) => {
+        await settle();
+        if (!alive()) return;
+        const text = await director({ mode: "free", instruction }).catch(() => "");
+        if (alive() && text) await say(text);
+      };
+      const hubView = () => {
+        if (s.current.layout !== "hub") setLayoutBoth("hub");
+      };
+      const pollRun = async (key: string, ms: number, intro?: string | true, read?: string) => {
+        const p = pollByKey(key);
+        if (!p) return;
+        await adminAct({ action: "phase", phase: "poll", poll: key });
+        hubView();
+        if (intro) await line(typeof intro === "string" ? intro : `Open the vote "${p.q}" in one short, lively sentence: everyone votes on their phones now.`);
+        await wait(ms, () => people() > 0 && votes(key) >= people());
+        if (!alive()) return;
+        if (typeof p.best === "number") {
+          H().lastReveal = "";
+          await adminAct({ action: "poll-reveal", best: p.best });
+          await wait(25_000, () => H().lastReveal === `${key}:${p.best}` && quiet());
+        } else if (read) {
+          const c = H().board?.polls[key] || [];
+          await line(`${read} The votes: ${p.options.map((o, i) => `${o} = ${c[i] || 0}`).join("; ")}.`);
+        }
+      };
+
+      const STEP: Record<string, (budget: number) => Promise<void>> = {
+        before: async (b) => {
+          await pollRun("before", Math.min(b - 15_000, 40_000), undefined, `Read the result of "${pollByKey("before")?.q}" in one light sentence and say we'll ask again at the end.`);
+        },
+        intros: async (b) => {
+          setLayoutBoth("twin");
+          s.current.intros = true;
+          await line("Start the introductions now: invite each person, one at a time, to say their name and one task they wish they never had to do again, in about 20 seconds. Ask for the first volunteer.");
+          const t0 = Date.now();
+          let lastNudge = Date.now();
+          const all = () => {
+            const a = H().board?.attendees || [];
+            return a.length > 0 && a.filter((x) => x.spoken).length >= a.length;
+          };
+          while (alive() && Date.now() - t0 < b - 25_000 && !all()) {
+            await wait(1000);
+            const silentFor = Date.now() - Math.max(s.current.lastRoomAt, s.current.lastSpeechEnd);
+            if (quiet() && silentFor > 18_000 && Date.now() - lastNudge > 18_000) {
+              lastNudge = Date.now();
+              await line("The room has gone quiet during introductions. In one warm sentence, invite the next person who hasn't introduced themselves yet (no names unless certain).");
+            }
+          }
+          s.current.intros = false;
+          await line("Wrap up the introductions in one sentence and say: let's see what we have in common.");
+        },
+        wishwall: async () => {
+          H().lastWish = "";
+          await adminAct({ action: "wishwall" });
+          hubView();
+          await wait(45_000, () => H().lastWish !== "" && quiet());
+          await wait(4000);
+        },
+        quiz: async (b) => {
+          await adminAct({ action: "phase", phase: "quiz" });
+          hubView();
+          await line("Introduce the quickfire quiz in two short, high-energy sentences: 30 questions, 7 seconds each, phones ready, the winner is revealed at the end.");
+          if (!alive()) return;
+          await adminAct({ action: "quiz-start" });
+          await wait(b, () => quizClock(H().hub.quiz, Date.now() + H().offset).status === "done");
+          if (!alive() && !ap.skip) return;
+          if (ap.skip) await adminAct({ action: "quiz-stop" });
+          await settle(20_000);
+          await wait(2500);
+        },
+        mirror: async (b) => {
+          await adminAct({ action: "phase", phase: "assessment" });
+          hubView();
+          await line("Introduce the Mirror in 2 or 3 sentences: 20 questions on their phones, about 5 minutes, pick the highest statement that's true today, honest beats impressive, it's private and the level is revealed at the end.");
+          const done = () => people() > 0 && (H().board?.assessment.completed || 0) >= people();
+          await wait(b - 60_000, done);
+          if (alive() && !done()) {
+            await line("One short, friendly sentence: one more minute for the self-assessment.");
+            await wait(50_000, done);
+          }
+          await line("Thank everyone in one sentence; levels are revealed at the finale. Then say: now, the story.");
+        },
+        story: async (b) => {
+          // Present every Story slide up to the live-build slide; open Polls 1 and 2 where the deck says so.
+          let end = Math.min(16, s.current.slideCount || 16);
+          for (let i = 0; i < (s.current.slideCount || 0); i++) {
+            if (/FLYER CHALLENGE|WE BUILD AN APP/i.test(await slideText(i))) {
+              end = i;
+              break;
+            }
+          }
+          const t0 = Date.now();
+          for (let i = 0; i < end && alive(); i++) {
+            if (Date.now() - t0 > b) {
+              await line("We're short on time: wrap up the story in one sentence and move on.");
+              break;
+            }
+            setLayoutBoth("slides");
+            await settle();
+            presentSlide(i);
+            await wait(150_000, () => s.current.slide === i && s.current.slideNarrated && quiet());
+            const txt = await slideText(i);
+            if (/POLL\s*1/i.test(txt)) await pollRun("poll1", 35_000, true, "Read the result in one sentence and connect it to the 3-check test.");
+            if (/POLL\s*2/i.test(txt)) await pollRun("poll2", 35_000, true, "Read the result in one sentence: the most popular first task.");
+          }
+        },
+        game: async () => {
+          await line("Introduce a quick game in one sentence: AI, HI or notepad? Three quick questions on your phones.");
+          for (const k of ["game-1", "game-2", "game-3"]) if (alive()) await pollRun(k, 30_000, true);
+        },
+        debate: async (b) => {
+          await pollRun(
+            "debate",
+            Math.min(45_000, b / 3),
+            "Present the debate in 2 or 3 sentences: a 300-employee company, will AI agents replace jobs or redesign them? Side A: jobs will shrink. Side B: jobs will be redesigned. Everyone votes on their phones now."
+          );
+          if (!alive()) return;
+          const c = H().board?.polls["debate"] || [];
+          await line(`Read the debate vote (replace = ${c[0] || 0}, redesign = ${c[1] || 0}) in one sentence, then invite one person from each side to say why, in a sentence each. Moderate warmly.`);
+          const t0 = Date.now();
+          await wait(70_000, () => s.current.lastRoomAt > t0 && Date.now() - s.current.lastRoomAt > 14_000 && quiet());
+          await line("Close the debate in 2 or 3 balanced sentences: neither outcome is guaranteed; what decides it is process redesign, skills, governance and human judgement. At 300 people the real risk isn't replacement, it's competitors with AI-skilled teams doing more with the same headcount.");
+        },
+        build: async () => {
+          let end = -1;
+          for (let i = 0; i < (s.current.slideCount || 0); i++) if (/FLYER CHALLENGE/i.test(await slideText(i))) end = i;
+          if (end >= 0) {
+            setLayoutBoth("slides");
+            s.current.slide = end;
+            setSlide(end);
+            drawSlide(end);
+          } else setLayoutBoth("twin");
+          await line("Introduce the live build in 2 or 3 sentences: we'll build a real app from the room's ideas, nobody writes code. Ask the room to call out four things: an event name, a date and time, a venue, and three highlights.");
+          let inputs: { name: string | null; date: string | null; venue: string | null; highlights: string[] } = { name: null, date: null, venue: null, highlights: [] };
+          const missing = () => [!inputs.name && "the event name", !inputs.date && "a date and time", !inputs.venue && "a venue", inputs.highlights.length < 3 && `${3 - inputs.highlights.length} more highlight${inputs.highlights.length === 2 ? "" : "s"}`].filter(Boolean) as string[];
+          s.current.expect = async (heard) => {
+            const r = await api<{ inputs?: typeof inputs }>("/api/presenter/extract", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ kind: "flyer", heard, current: inputs }),
+            }).catch(() => null);
+            if (!r?.inputs) return false;
+            inputs = r.inputs;
+            const m = missing();
+            if (m.length) await say(`Love it. Now ${m.join(", ")}?`);
+            return true;
+          };
+          await wait(75_000, () => missing().length === 0);
+          s.current.expect = null;
+          if (!alive()) return;
+          if (missing().length) {
+            const p = FLYER_PRESETS[0].inputs;
+            inputs = { name: inputs.name || p.name, date: inputs.date || p.date, venue: inputs.venue || p.venue, highlights: [...inputs.highlights, ...p.highlights].slice(0, 3) };
+            await say("Let me fill in the gaps with one of my own ideas.");
+          }
+          await adminAct({ action: "phase", phase: "build" });
+          await handleRef.current({ type: "flyer-build", inputs: { name: inputs.name!, date: inputs.date!, venue: inputs.venue!, highlights: inputs.highlights } });
+          await settle();
+        },
+        predict: async () => {
+          await pollRun("predict", 30_000, "One or two sentences: before Shreesha shows you a real AI agent, predict on your phones: will it finish the task on its own, need a human, or get blocked?");
+          const c = H().board?.polls["predict"] || [];
+          await line(`One sentence on the predictions (${(pollByKey("predict")?.options || []).map((o, i) => `${o} = ${c[i] || 0}`).join("; ")}), then hand over: "Shreesha, over to you."`);
+        },
+        handover: async () => {
+          handleRef.current({ type: "layout", layout: "handover" });
+          ap.waiting = "Say “Hey Shree, we're back” or tap Resume";
+          pushStatus();
+          await new Promise<void>((resolve) => {
+            ap.waitResume = resolve;
+            const iv = setInterval(() => {
+              if (!alive()) {
+                clearInterval(iv);
+                resolve();
+              }
+            }, 500);
+          });
+          ap.waitResume = null;
+          ap.waiting = "";
+          pushStatus();
+        },
+        back: async () => {
+          setLayoutBoth("twin");
+          if (!anamRef.current) connectTwin();
+          await wait(20_000, () => !!anamRef.current);
+          await line("Welcome everyone back warmly in one or two sentences, then ask Shreesha: so, how did the agent do? Did it finish on its own, need a human, or get blocked?");
+          const options = pollByKey("predict")?.options || [];
+          let result: number | null = null;
+          s.current.expect = async (heard) => {
+            const r = await api<{ index: number | null }>("/api/presenter/extract", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ kind: "choice", heard, options }),
+            }).catch(() => null);
+            if (r && typeof r.index === "number") {
+              result = r.index;
+              return true;
+            }
+            return false;
+          };
+          await wait(45_000, () => result !== null || typeof H().hub.pollReveal === "number");
+          s.current.expect = null;
+          if (!alive()) return;
+          const chosen = result !== null ? result : typeof H().hub.pollReveal === "number" ? H().hub.pollReveal : null;
+          if (chosen === null) return;
+          await adminAct({ action: "phase", phase: "poll", poll: "predict" });
+          H().lastReveal = "";
+          await adminAct({ action: "poll-reveal", best: chosen });
+          hubView();
+          await wait(30_000, () => H().lastReveal === `predict:${chosen}` && quiet());
+        },
+        reveal: async () => {
+          const fb = H().hub.flyerBuild;
+          // Live build only if it's ready and built by Claude; otherwise the tested backup (no build-time claim).
+          const live = fb?.status === "ready" && fb.provider === "claude";
+          const path = live ? `/api/presenter/flyer/app?code=${session?.code}` : backupFlyerUrl(fb?.inputs || FLYER_PRESETS[0].inputs);
+          await adminAct({ action: "flyer-url", url: `${window.location.origin}${path}` });
+          await adminAct({ action: "phase", phase: "flyer" });
+          hubView();
+          const secs = live && fb?.finishedAt ? Math.round((fb.finishedAt - fb.startedAt) / 1000) : null;
+          await line(`The app is ready${secs ? ` (it was built in ${Math.floor(secs / 60)} minutes ${secs % 60} seconds, quote that)` : ""}. In 2 or 3 sentences: everyone scans the QR code, makes a flyer for the event, and shares it. You have 90 seconds.`);
+          await wait(90_000);
+          for (const k of ["check-fact", "check-value", "check-roi"]) if (alive()) await pollRun(k, 25_000, true, "Read the result in one short sentence.");
+        },
+        qa: async (b) => {
+          await adminAct({ action: "phase", phase: "questions" });
+          hubView();
+          await line("Open Q&A in one or two sentences: ask out loud or on your phones, no question is too basic.");
+          const t0 = Date.now();
+          let quietRounds = 0;
+          while (alive() && Date.now() - t0 < b - 25_000) {
+            await settle();
+            const q = (H().board?.questions || []).find((x) => x.status === "open");
+            if (q) {
+              quietRounds = 0;
+              await adminAct({ action: "question-status", qid: q.id, status: "answered" });
+              let ans = await director({
+                mode: "free",
+                instruction: `Answer this audience question in about 30 seconds, plain spoken English: "${q.text}". If it's about building apps, tool setup or Shreesha's agent demo, don't answer it: say warmly that this one is for Shreesha, and end with the tag [SHREESHA].`,
+              }).catch(() => "");
+              const toShreesha = /\[SHREESHA\]/i.test(ans);
+              ans = ans.replace(/\[SHREESHA\]/gi, "").trim();
+              await say(ans);
+              if (toShreesha) {
+                s.current.quietListen = true;
+                const t1 = Date.now();
+                await wait(75_000, () => s.current.lastRoomAt > t1 && Date.now() - s.current.lastRoomAt > 8000);
+                s.current.quietListen = false;
+                await line("One short sentence thanking Shreesha and inviting the next question.");
+              }
+            } else {
+              quietRounds++;
+              await wait(15_000, () => (H().board?.questions || []).some((x) => x.status === "open"));
+              if (quietRounds === 2) await line("The room is quiet. Ask: what would stop you from trying one thing tomorrow? One sentence.");
+              if (quietRounds >= 4) break;
+            }
+          }
+          await line("Wrap up Q&A in one sentence: any question we didn't get to, Shreesha will follow up in the team's WhatsApp group.");
+        },
+        finale: async () => {
+          await adminAct({ action: "phase", phase: "finale" });
+          hubView();
+          await line("One high-energy sentence: it's finale time, starting with tonight's quiz champions.");
+          for (const step of [1, 2, 3, 4]) {
+            if (!alive()) return;
+            await adminAct({ action: "finale-step", step });
+            await wait(30_000, () => H().lastFinale === step && quiet());
+            await wait(1500);
+          }
+          await pollRun("after", 30_000, "One sentence: last vote, the same question as the start. How confident are you using AI in your daily work now?");
+          await adminAct({ action: "phase", phase: "finale" });
+          await adminAct({ action: "finale-step", step: 5 });
+          hubView();
+          await wait(30_000, () => H().lastFinale === 5 && quiet());
+        },
+        close: async () => {
+          await adminAct({ action: "phase", phase: "commit" });
+          hubView();
+          await line("In 2 or 3 sentences: invite everyone to read the pledge on screen together, out loud, then type their one 30-day commitment on their phones.");
+          await wait(75_000, () => people() > 0 && (H().board?.commitments.length || 0) >= people());
+          await line("Invite one or two volunteers to share their commitment out loud. One sentence.");
+          const t0 = Date.now();
+          await wait(45_000, () => s.current.lastRoomAt > t0 && Date.now() - s.current.lastRoomAt > 10_000 && quiet());
+          setLayoutBoth("twin");
+          await line(
+            "Shreesha now asks you: after 75 minutes with our P&C team, what is the one thing you want them to remember? Answer in your own words in 3 to 5 warm, memorable sentences (you don't need to be a tech expert; spot the problem, ask better questions, check the answer; use AI where it creates value, human judgement where it matters, a notepad when that's enough), ending with: AI, HI or notepad: what matters is ROI. Then say the last word belongs to Shreesha."
+          );
+          await adminAct({ action: "phase", phase: "closed" });
+          hubView();
+        },
+      };
+
+      for (let i = Math.max(0, from); i < SHOW_STEPS.length; i++) {
+        if (ap.gen !== gen) return;
+        ap.skip = false;
+        ap.idx = i;
+        ap.label = SHOW_STEPS[i].label;
+        ap.budget = SHOW_STEPS[i].budget;
+        ap.stepStart = Date.now();
+        ap.waiting = "";
+        pushStatus();
+        try {
+          await STEP[SHOW_STEPS[i].id](SHOW_STEPS[i].budget * 1000);
+        } catch (err) {
+          console.error("[autopilot]", SHOW_STEPS[i].id, err);
+        }
+        s.current.expect = null;
+        s.current.quietListen = false;
+        s.current.intros = false;
+      }
+      if (ap.gen === gen) {
+        ap.running = false;
+        s.current.auto = true;
+        ap.label = "Show complete";
+        ap.idx = SHOW_STEPS.length;
+        pushStatus();
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [adminAct, connectTwin, director, drawSlide, presentSlide, pushStatus, say, setLayoutBoth, slideText, session?.code]
+  );
+  const runShowRef = useRef(runShow);
+  runShowRef.current = runShow;
+  // Keep Shreesha's dashboard clock fresh while the autopilot runs.
+  useEffect(() => {
+    const iv = setInterval(() => s.current.ap.running && pushStatus(), 2000);
+    return () => clearInterval(iv);
+  }, [pushStatus]);
+
   /* ------------------------------ dark-screen entrance ------------------------------ */
   // While the TV is dark, the laptop mic listens for (1) a finger snap and
   // (2) "Hey Shree" / "Hey bro, come in front". Whichever fires first brings
@@ -929,6 +1499,12 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         pushStatus();
         return;
       }
+      if (st.layout === "handover") {
+        // Back from Shreesha's demo: "Hey Shree, we're back".
+        stopEntrance();
+        handleRef.current({ type: "resume" });
+        return;
+      }
       if (st.layout !== "standby" || anamRef.current) return;
       st.entrance = how;
       stopEntrance();
@@ -944,7 +1520,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     let snap = false;
     let voice = false;
     // (1) Snap: short, sharp, high-frequency burst that dies away fast.
-    try {
+    // Not after the demo: applause would trigger it. Voice or button only there.
+    if (s.current.layout !== "handover") try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
       if (!e.active) {
         stream.getTracks().forEach((t) => t.stop());
@@ -995,7 +1572,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     const W = window as unknown as { SpeechRecognition?: any; webkitSpeechRecognition?: any };
     const Rec = W.SpeechRecognition || W.webkitSpeechRecognition;
     if (Rec) {
-      const WAKE = /\b(hey|hi|hello|ok|okay|come on|yo)[ ,]+(shree|shri|sree|sri|shre|bro|brother)\b|\bcome (in )?(to )?(the )?front\b|\b(shree|shri|sree|sri)\b.{0,25}\bcome\b/i;
+      const WAKE = /\b(hey|hi|hello|ok|okay|come on|yo)[ ,]+(shree|shri|sree|sri|shre|bro|brother)\b|\bcome (in )?(to )?(the )?front\b|\b(shree|shri|sree|sri)\b.{0,25}\bcome\b|\bwe('| a)?re back\b|\bback to you\b/i;
       const begin = () => {
         if (!e.active) return;
         const rec = new Rec();
@@ -1046,6 +1623,10 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     if (layout === "standby" && !connected) {
       s.current.entrance = "";
       startEntrance();
+    } else if (layout === "handover" && s.current.ap.running) {
+      // Wait ~6 s so the twin has released the mic, then listen for "we're back".
+      const t = setTimeout(() => startEntranceRef.current(), 6000);
+      return () => clearTimeout(t);
     } else if (!s.current.entranceTest) stopEntrance();
   }, [armed, layout, connected, startEntrance, stopEntrance]);
 
@@ -1186,3 +1767,4 @@ function hubContext(hub: HubState, board: Board | null) {
     parts.push(`Open phone questions (most recent first): ${board.questions.filter((q) => q.status === "open").slice(0, 6).map((q) => `"${q.text}"`).join(" | ")}`);
   return parts.join(" ");
 }
+

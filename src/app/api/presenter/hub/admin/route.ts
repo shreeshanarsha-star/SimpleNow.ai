@@ -117,6 +117,14 @@ Return ONLY JSON: {"groups":[{"label":"...","items":["..."]}]}`,
     return json({ hub: await patchHub(id, { flyerUrl: String(body.url || "").slice(0, 300) || null }) });
   }
 
+  if (action === "room-question") {
+    // A question asked out loud that Shree parked for Q&A.
+    const text = String(body.text || "").replace(/\s+/g, " ").trim().slice(0, 300);
+    if (text.length < 5) return json({ error: "Empty" }, 400);
+    await db().from("presenter_questions").insert({ session_id: id, source: "room", text, votes: 1 });
+    return json({ ok: true });
+  }
+
   if (action === "question-status") {
     await db().from("presenter_questions").update({ status: String(body.status || "answered") }).eq("id", String(body.qid || "")).eq("session_id", id);
     return json({ ok: true });
