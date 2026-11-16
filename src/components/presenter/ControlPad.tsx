@@ -108,6 +108,7 @@ export default function ControlPad({ sessionId }: { sessionId?: string }) {
         </div>
       )}
       {err && <div className="text-red-400 text-sm">{err}</div>}
+      {session && <HubControls sessionId={session.id} send={send} status={status} />}
 
       <button
         onPointerDown={startPtt}
@@ -147,7 +148,6 @@ export default function ControlPad({ sessionId }: { sessionId?: string }) {
         <button className={`${btn} py-3 bg-neutral-900`} onClick={() => send({ type: "layout", layout: "handover" })}>Take over</button>
       </div>
 
-      {session && <HubControls sessionId={session.id} send={send} status={status} />}
 
       <div className="space-y-2">
         <textarea

@@ -1645,6 +1645,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             setArmed(true);
             document.documentElement.requestFullscreen?.().catch(() => {});
             initSound();
+            setNote("");
             // Ask for the microphone now (one click), so the snap listener is ready later.
             navigator.mediaDevices?.getUserMedia({ audio: true }).then((m) => m.getTracks().forEach((t) => t.stop())).catch(() => {});
             // Pre-show: the lobby (title + QR) is on screen until Shreesha starts.

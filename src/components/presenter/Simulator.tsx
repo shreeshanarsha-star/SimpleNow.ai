@@ -75,7 +75,7 @@ export default function Simulator({ code }: { code: string }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">Rehearsal simulator</div>
-          <div className="text-xs text-ink-muted">12 fake phones join and play along with every step, so you can rehearse alone. Keep this tab open. Use “Clear test data” afterwards.</div>
+          <div className="text-xs text-ink-muted">12 fake phones join and play along with every step, so you can rehearse alone. Keep this console visible in its own window (Chrome slows background tabs) and use “Clear test data” afterwards.</div>
         </div>
         <button onClick={() => (on ? ((run.current += 1), setOn(false), setLog("Stopped.")) : start())} className={`rounded-lg px-3 py-2 text-sm ${on ? "bg-red-600 text-white" : "bg-ink text-surface"}`}>
           {on ? "Stop simulator" : "Start 12 fake phones"}
