@@ -261,7 +261,7 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
       run: () => {
         send({ type: "layout", layout: "twin" });
         send({ type: "intros", on: true });
-        send({ type: "direct", text: "Start the introductions: invite each person, one at a time, to say their name and one task they wish they never had to do again. Keep each to about 30 seconds and react briefly and warmly by name. Begin now by inviting the first volunteer." });
+        send({ type: "direct", text: "Start the introductions: invite each person, one at a time, to say their name and one task they wish they never had to do again, in about 20 seconds. React in ONE short, warm, witty sentence (light office humour is welcome, like 'ah, the 49-tab Excel of doom'), by name. Begin now by inviting the first volunteer." });
       },
     },
     {
@@ -326,6 +326,20 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
           </div>
         )}
         {status?.entrance && status.layout !== "standby" && <div className="mt-2 text-xs text-green-400">Shree in via {status.entrance} ✓</div>}
+        {status?.layout === "montage" && (
+          <button className="mt-2 w-full rounded-lg bg-neutral-700 py-2 text-xs" onClick={() => send({ type: "skip-montage" })}>
+            Montage playing… Skip to Shree
+          </button>
+        )}
+        <div className="mt-2 flex items-center gap-2 text-xs">
+          <span className="text-white/50">TV sound</span>
+          <button className="rounded-lg bg-neutral-700 px-3 py-1.5" onClick={() => send({ type: "sound", volume: Math.max(0, (status?.sound?.volume ?? 0.8) - 0.15) })}>−</button>
+          <span className="w-8 text-center">{Math.round((status?.sound?.volume ?? 0.8) * 100)}</span>
+          <button className="rounded-lg bg-neutral-700 px-3 py-1.5" onClick={() => send({ type: "sound", volume: Math.min(1, (status?.sound?.volume ?? 0.8) + 0.15) })}>+</button>
+          <button className={`rounded-lg px-3 py-1.5 ${status?.sound?.muted ? "bg-red-700" : "bg-neutral-700"}`} onClick={() => send({ type: "sound", muted: !status?.sound?.muted })}>
+            {status?.sound?.muted ? "Muted" : "Mute"}
+          </button>
+        </div>
         {status?.intros && <div className="mt-2 text-xs text-sky-300">Intros on: saving each spoken intro{status.introSaved ? ` · last saved: ${status.introSaved}` : ""}</div>}
         <div className="mt-3 grid grid-cols-3 gap-2">
           <button className={`${b} bg-neutral-700`} onClick={() => goAct(actIdx - 1)}>◀ Back</button>

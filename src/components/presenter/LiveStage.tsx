@@ -17,6 +17,8 @@ import {
 } from "@/lib/presenter/client";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import HubScreen, { type Board } from "@/components/presenter/HubScreen";
+import Montage from "@/components/presenter/Montage";
+import { cue, duck, getSoundState, initSound, setBed, setMuted, setVolume } from "@/lib/presenter/sound";
 import { DEFAULT_HUB, QUIZ, pollByKey, quizClock, type HubState } from "@/lib/presenter/content";
 
 type Session = { id: string; code: string; title: string; state: Record<string, unknown> };
@@ -37,6 +39,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   const [board, setBoard] = useState<Board | null>(null);
   const [quizKey, setQuizKey] = useState<number[]>([]);
   const [tick, setTick] = useState(Date.now());
+  const [finaleShown, setFinaleShown] = useState(0);
+  const [montage, setMontage] = useState(false);
+  const montageDone = useRef<(() => void) | null>(null);
   const [buildText, setBuildText] = useState("");
   const building = useRef(false);
   const hubRef = useRef<{ hub: HubState; board: Board | null; offset: number; lastQuizNote: number; lastFinale: number }>({
@@ -98,6 +103,10 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       testHit: s.current.testHit,
       intros: s.current.intros,
       introSaved: s.current.introSaved,
+      sound: (() => {
+        const ss = getSoundState();
+        return { volume: ss.volume, muted: ss.muted };
+      })(),
       at: Date.now(),
       ...extra,
     };
@@ -320,7 +329,10 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         speak(await director({ mode: "free", instruction }).catch(() => "[SILENT]"));
       }
     }
-    if (h.hub.phase !== "finale") h.lastFinale = 0;
+    if (h.hub.phase !== "finale") {
+      h.lastFinale = 0;
+      setFinaleShown(0);
+    }
     if (h.hub.phase === "finale") {
       const step = h.hub.finaleStep || 0;
       if (step !== h.lastFinale && step > 0) {
@@ -338,7 +350,16 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
                 : step === 4
                   ? `Reveal the team AI-level chart (counts only): ${(h.board?.assessment.levelCounts || []).map((l) => `${l.name} ${l.count}`).join(", ")}. Two or three sentences: celebrate honestly, then the goal of one level up in 90 days. Everyone's badge is on their phone, private. Name nobody.`
                   : `Compare the before and after poll ("${pollByKey("before")?.q}"): before ${JSON.stringify(h.board?.polls["before"] || [])}, after ${JSON.stringify(h.board?.polls["after"] || [])} for options ${JSON.stringify(pollByKey("before")?.options || [])}. Two sentences, honest.`;
-        speak(await director({ mode: "free", instruction }).catch(() => "[SILENT]"));
+        const lineP = director({ mode: "free", instruction }).catch(() => "[SILENT]");
+        if (step <= 3) {
+          // Drumroll first, then the name appears and Shree announces it.
+          const len = step === 1 ? 1.6 : step === 2 ? 2.2 : 3.2;
+          cue("drumroll", { length: len });
+          await new Promise((r) => setTimeout(r, len * 1000 + 150));
+          setFinaleShown(step);
+          if (step === 3) cue("win");
+        } else setFinaleShown(step);
+        speak(await lineP);
       }
     }
   }, [director, speak]);
@@ -357,6 +378,47 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     const iv = setInterval(() => setTick(Date.now()), 200);
     return () => clearInterval(iv);
   }, [layout]);
+
+  /* ------------------------------ sound design ------------------------------ */
+  // Music never plays under intros, slides or the debate; it dips under Shree's voice.
+  useEffect(() => {
+    duck(speaking);
+  }, [speaking]);
+
+  const sfx = useRef({ tickSec: -1, tickIdx: -1, correctIdx: -1, phase: "" });
+  useEffect(() => {
+    if (!armed || layout === "montage") return;
+    const clock = hub.phase === "quiz" ? quizClock(hub.quiz, tick + hubRef.current.offset) : null;
+    let next: Parameters<typeof setBed>[0] = "off";
+    if (layout === "hub") {
+      if (hub.phase === "lobby") next = "lobby";
+      else if (hub.phase === "quiz") next = clock && clock.status !== "off" && clock.status !== "done" ? "quiz" : "off";
+      else if (hub.phase === "assessment") next = "lobby";
+      else if (hub.phase === "build") next = "build";
+      else if (hub.phase === "commit" || hub.phase === "closed") next = "closing";
+    }
+    setBed(next);
+    // Quiz: ticks in the last 3 seconds, a chime on each answer reveal.
+    if (clock && layout === "hub") {
+      if (clock.status === "answer" && clock.msLeft <= 3000) {
+        const sec = Math.ceil(clock.msLeft / 1000);
+        if (sec !== sfx.current.tickSec || clock.idx !== sfx.current.tickIdx) {
+          sfx.current.tickSec = sec;
+          sfx.current.tickIdx = clock.idx;
+          cue("tick");
+        }
+      }
+      if (clock.status === "reveal" && clock.idx !== sfx.current.correctIdx) {
+        sfx.current.correctIdx = clock.idx;
+        cue("correct");
+      }
+    }
+    // App reveal moment.
+    if (hub.phase !== sfx.current.phase) {
+      if (hub.phase === "flyer" && layout === "hub") cue("reveal");
+      sfx.current.phase = hub.phase;
+    }
+  }, [armed, layout, hub.phase, hub.quiz, tick]);
 
   /* ------------------------------ Anam ------------------------------ */
   // Explorer plan caps a conversation at 10 minutes, so we run a relay: at ~8 min
@@ -550,12 +612,40 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           anamRef.current?.interruptPersona();
           setLayoutBoth("standby");
           break;
-        case "start":
+        case "start": {
           stopEntranceRef.current();
           if (!st.entrance) st.entrance = "button";
+          // Snap hit → 30 s montage (twin connects behind it) → Shree appears and opens.
+          cue("snap");
+          setBed("montage");
+          setLayoutBoth("montage");
+          setMontage(true);
+          const linePromise = director({
+            mode: "free",
+            instruction:
+              "You have just appeared on screen after a cinematic montage; Shreesha introduced you and snapped his fingers to bring you in. Open with high energy in 4 to 6 short sentences: a light, friendly comeback to Shreesha (for example, that unlike him you didn't need three cups of filter coffee to get here), greet everyone (good evening), introduce yourself as Shree, Shreesha's digital twin, and say tonight is not a lecture, it's interactive: their phones are their remote (they have already joined). Give a one-line movie-trailer agenda: a quiz, a mirror, a story, a live app build, and a winner. End by saying the first vote is on their phones now. Under 40 seconds.",
+          }).catch(() => "Good evening everyone! I'm Shree, Shreesha's digital twin. Tonight isn't a lecture, it's interactive, and your phone is your remote. The first vote is on your phones now.");
+          const connecting = connectTwin();
+          await new Promise<void>((r) => (montageDone.current = r));
+          setMontage(false);
+          setBed("off");
+          await connecting;
+          cue("reveal");
           setLayoutBoth("twin");
-          await connectTwin();
-          speak(await director({ mode: "free", instruction: "You have just appeared on screen after Shreesha's snap. Open with high energy in 4 to 6 short sentences: greet everyone (good evening), introduce yourself as Shree, Shreesha Narsha's digital twin, and say tonight is not a lecture, it's interactive: their phones are their remote (they have already joined). Give a one-line movie-trailer agenda: a quiz, a mirror, a story, a live app build, and a winner. End by saying the first vote is on their phones now. Under 40 seconds." }));
+          await new Promise((r) => setTimeout(r, 900));
+          speak(await linePromise);
+          break;
+        }
+        case "skip-montage":
+          montageDone.current?.();
+          break;
+        case "sound":
+          if (typeof cmd.volume === "number") setVolume(cmd.volume);
+          if (typeof cmd.muted === "boolean") setMuted(cmd.muted);
+          pushStatus();
+          break;
+        case "cue":
+          cue(cmd.cue);
           break;
         case "present":
           setLayoutBoth("slides");
@@ -934,6 +1024,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           onClick={() => {
             setArmed(true);
             document.documentElement.requestFullscreen?.().catch(() => {});
+            initSound();
             // Ask for the microphone now (one click), so the snap listener is ready later.
             navigator.mediaDevices?.getUserMedia({ audio: true }).then((m) => m.getTracks().forEach((t) => t.stop())).catch(() => {});
             // Pre-show: the lobby (title + QR) is on screen until Shreesha starts.
@@ -962,10 +1053,17 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         <canvas ref={canvasRef} className="rounded-xl shadow-2xl bg-white" />
       </div>
 
+      {/* Opening montage */}
+      {montage && (
+        <div className="absolute inset-0 z-40">
+          <Montage onDone={() => montageDone.current?.()} />
+        </div>
+      )}
+
       {/* Audience hub */}
       {layout === "hub" && session && (
         <div className="absolute" style={{ left: "2%", top: "3%", width: "70%", height: "94%" }}>
-          <HubScreen hub={hub} board={board} quizKey={quizKey} code={session.code} title={session.title} serverNow={tick + hubRef.current.offset} buildText={buildText} />
+          <HubScreen hub={{ ...hub, finaleStep: hub.phase === "finale" ? Math.min(hub.finaleStep || 0, finaleShown) : hub.finaleStep }} board={board} quizKey={quizKey} code={session.code} title={session.title} serverNow={tick + hubRef.current.offset} buildText={buildText} />
         </div>
       )}
 

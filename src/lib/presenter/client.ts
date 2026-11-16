@@ -22,6 +22,9 @@ export type PresenterCommand =
   | { type: "reconnect" }
   | { type: "hub" }
   | { type: "intros"; on: boolean }
+  | { type: "skip-montage" }
+  | { type: "sound"; volume?: number; muted?: boolean }
+  | { type: "cue"; cue: "snap" | "reveal" | "tick" | "correct" | "drumroll" | "win" | "whoosh" | "pop" }
   | { type: "entrance-test"; on: boolean }
   | { type: "entrance-sens"; level: "low" | "med" | "high" }
   | { type: "flyer-build"; inputs: { name: string; date: string; venue: string; highlights: string[] } };
@@ -32,7 +35,7 @@ export type PresenterStatus = {
   paused: boolean;
   auto: boolean;
   micOn: boolean;
-  layout: "standby" | "slides" | "twin" | "handover" | "hub";
+  layout: "standby" | "slides" | "twin" | "handover" | "hub" | "montage";
   slide: number;
   slideCount: number;
   lastHeard?: string;
@@ -46,6 +49,7 @@ export type PresenterStatus = {
   testHit?: string;
   intros?: boolean;
   introSaved?: string;
+  sound?: { volume: number; muted: boolean };
   at: number;
 };
 
