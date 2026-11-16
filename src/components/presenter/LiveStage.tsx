@@ -41,6 +41,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   const [tick, setTick] = useState(Date.now());
   const [finaleShown, setFinaleShown] = useState(0);
   const [montage, setMontage] = useState(false);
+  // Pre-show: lobby up, Shree's existence is a surprise until the snap.
+  const [preShow, setPreShow] = useState(true);
   const montageDone = useRef<(() => void) | null>(null);
   const [buildText, setBuildText] = useState("");
   const building = useRef(false);
@@ -98,6 +100,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     quietListen: false,
     lastRoomAt: 0,
     expect: null as null | ((heard: string) => Promise<boolean>),
+    preShow: true,
+    autoDark: true,
+    ears: { on: false, lines: 0, last: "" },
     ap: {
       on: true,
       running: false,
@@ -136,6 +141,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       introSaved: s.current.introSaved,
       echo: s.current.echo,
       micOk: s.current.micOk,
+      preShow: s.current.preShow,
+      autoDark: s.current.autoDark,
+      ears: s.current.ears,
       ap: {
         on: s.current.ap.on,
         running: s.current.ap.running,
@@ -336,6 +344,48 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     [session?.id]
   );
 
+  /* ------------------------------ room ears ------------------------------ */
+  // Everything the room says (text only) is kept for tonight so Shree can join the banter later.
+  const roomBuf = useRef<string[]>([]);
+  const logRoom = useCallback(
+    (text: string) => {
+      const t = text.replace(/\s+/g, " ").trim();
+      if (t.length < 2 || s.current.entranceTest) return;
+      roomBuf.current.push(t);
+      s.current.ears = { ...s.current.ears, lines: s.current.ears.lines + 1, last: t.slice(0, 80) };
+      pushStatus();
+    },
+    [pushStatus]
+  );
+  const flushRoom = useCallback(async () => {
+    if (!session?.id || !roomBuf.current.length) return;
+    const lines = roomBuf.current.splice(0, 30);
+    await api("/api/presenter/hub/admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: session.id, action: "room-log", lines }),
+    }).catch(() => {
+      roomBuf.current.unshift(...lines); // retry next round
+    });
+  }, [session?.id]);
+  const flushRoomRef = useRef(flushRoom);
+  flushRoomRef.current = flushRoom;
+  useEffect(() => {
+    if (!armed || !session?.id) return;
+    const f = setInterval(() => flushRoomRef.current(), 10_000);
+    const d = setInterval(() => {
+      api("/api/presenter/hub/admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: session.id, action: "room-digest" }),
+      }).catch(() => {});
+    }, 120_000);
+    return () => {
+      clearInterval(f);
+      clearInterval(d);
+    };
+  }, [armed, session?.id]);
+
   /* ------------------------------ presenting ------------------------------ */
   const presentSlide = useCallback(
     async (idx: number) => {
@@ -388,6 +438,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       if (hw.length >= 3 && hw.filter((w) => mine.has(w)).length / hw.length >= 0.6) return;
       st.lastRoomAt = Date.now();
       st.lastHeard = heard;
+      logRoom(heard);
       transcript.current.push({ role: "room", text: heard });
       pushStatus();
       if (st.quietListen) return; // Shreesha (or a guest) has the floor: listen only
@@ -444,7 +495,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         st.roomBusy = false;
       }
     },
-    [director, presentSlide, pushStatus, slideText, speak, say, session?.id]
+    [director, presentSlide, pushStatus, slideText, speak, say, session?.id, logRoom]
   );
 
   /* ------------------------------ audience hub ------------------------------ */
@@ -822,17 +873,20 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           break;
         case "start": {
           stopEntranceRef.current();
+          stopEarsRef.current();
+          st.preShow = false;
+          setPreShow(false);
           if (!st.entrance) st.entrance = "button";
           // Snap hit → 30 s montage (twin connects behind it) → Shree appears and opens.
           cue("snap");
           setBed("montage");
           setLayoutBoth("montage");
           setMontage(true);
-          const linePromise = director({
+          const linePromise = flushRoomRef.current().then(() => director({
             mode: "free",
             instruction:
-              "You have just appeared on screen after a cinematic montage; Shreesha introduced you and snapped his fingers to bring you in. Open with high energy in 4 to 6 short sentences: a light, friendly comeback to Shreesha (for example, that unlike him you didn't need three cups of filter coffee to get here), greet everyone (good evening), introduce yourself as Shree, Shreesha's digital twin, and say tonight is not a lecture, it's interactive: their phones are their remote (they have already joined). Give a one-line movie-trailer agenda: a quiz, a mirror, a story, a live app build, and a winner. End by saying the first vote is on their phones now. Under 40 seconds.",
-          }).catch(() => "Good evening everyone! I'm Shree, Shreesha's digital twin. Tonight isn't a lecture, it's interactive, and your phone is your remote. The first vote is on your phones now.");
+              "You have just appeared on screen after a cinematic montage; Shreesha introduced you and snapped his fingers to bring you in. Open with high energy in 4 to 6 short sentences: a light, friendly comeback to Shreesha (for example, that unlike him you didn't need three cups of filter coffee to get here), greet everyone (good evening), introduce yourself as Shree, Shreesha's digital twin, and say tonight is not a lecture, it's interactive: their phones are their remote (they have already joined). Give a one-line movie-trailer agenda: a quiz, a mirror, a story, a live app build, and a winner. End by saying the first vote is on their phones now. Under 40 seconds. If something funny or notable was said in the room before you appeared (see WHAT THE ROOM HAS SAID TONIGHT), especially by Shreesha about you, work ONE light callback to it into your comeback, so they realise you were listening all along.",
+          })).catch(() => "Good evening everyone! I'm Shree, Shreesha's digital twin. Tonight isn't a lecture, it's interactive, and your phone is your remote. The first vote is on your phones now.");
           const connecting = connectTwin();
           await new Promise<void>((r) => (montageDone.current = r));
           setMontage(false);
@@ -957,6 +1011,31 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           if (!cmd.on && st.layout !== "standby") stopEntranceRef.current();
           pushStatus();
           break;
+        case "autodark":
+          st.autoDark = cmd.on;
+          pushStatus();
+          break;
+        case "lobby":
+          // Back to the very first screen; Shreesha has full control (autopilot stopped).
+          st.ap.gen++;
+          st.ap.running = false;
+          st.ap.label = "";
+          st.ap.idx = -1;
+          st.pendingAfterSpeech = null;
+          anamRef.current?.interruptPersona();
+          if (!anamRef.current) {
+            st.preShow = true;
+            setPreShow(true);
+          }
+          if (session?.id)
+            await api("/api/presenter/hub/admin", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: session.id, action: "phase", phase: "lobby" }),
+            }).catch(() => {});
+          await refreshHub();
+          setLayoutBoth("hub");
+          break;
         case "entrance-sens":
           st.sens = cmd.level;
           if (st.listening) st.listening = { ...st.listening, sens: cmd.level };
@@ -1038,7 +1117,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           break;
       }
     },
-    [connectTwin, director, disconnectTwin, drawSlide, markSpeechDone, presentSlide, pushStatus, refreshHub, setLayoutBoth, slideText, speak]
+    [connectTwin, director, disconnectTwin, drawSlide, markSpeechDone, presentSlide, pushStatus, refreshHub, setLayoutBoth, slideText, speak, session?.id]
   );
 
   const handleRef = useRef(handle);
@@ -1618,6 +1697,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         rec.onresult = (ev: any) => {
           for (let i = ev.resultIndex; i < ev.results.length; i++) {
             const text = String(ev.results[i][0].transcript || "");
+            if (ev.results[i].isFinal && !WAKE.test(text)) logRoom(text);
             if (WAKE.test(text)) {
               fireEntrance("voice", `("${text.trim().slice(0, 60)}")`);
               try {
@@ -1646,7 +1726,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     }
     s.current.listening = { snap, voice, test: s.current.entranceTest, sens: s.current.sens };
     pushStatus();
-  }, [fireEntrance, pushStatus]);
+  }, [fireEntrance, pushStatus, logRoom]);
 
   const startEntranceRef = useRef(startEntrance);
   startEntranceRef.current = startEntrance;
@@ -1668,9 +1748,79 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
 
   useEffect(() => () => stopEntranceRef.current(), []);
 
+  // Lobby ears: from "Click to start" until the screen goes dark, Shree quietly listens and keeps
+  // what's said. When Shreesha opens ("good evening everyone…") and keeps talking ~10 s, fade to dark.
+  const earsRef = useRef<{ rec: any; iv: ReturnType<typeof setInterval> | null; active: boolean }>({ rec: null, iv: null, active: false });
+  const stopEars = useCallback(() => {
+    const e = earsRef.current;
+    e.active = false;
+    if (e.iv) clearInterval(e.iv);
+    e.iv = null;
+    try {
+      e.rec?.stop();
+    } catch {}
+    e.rec = null;
+    if (s.current.ears.on) {
+      s.current.ears = { ...s.current.ears, on: false };
+      pushStatus();
+    }
+  }, [pushStatus]);
+  const stopEarsRef = useRef(stopEars);
+  stopEarsRef.current = stopEars;
+  useEffect(() => {
+    const inLobby = armed && preShow && !connected && layout === "hub" && hub.phase === "lobby";
+    if (!inLobby) {
+      stopEars();
+      return;
+    }
+    const W = window as unknown as { SpeechRecognition?: any; webkitSpeechRecognition?: any };
+    const Rec = W.SpeechRecognition || W.webkitSpeechRecognition;
+    if (!Rec) return;
+    const e = earsRef.current;
+    e.active = true;
+    const OPENING = /\b(good (evening|afternoon|morning)[ ,]+(everyone|everybody|all|team|folks|guys|friends)|welcome (everyone|everybody|all|to)|let'?s (start|begin|get started|kick off)|shall we (start|begin|get started)|(hello|hi) (everyone|everybody|all)|can i (have|get) your attention|namaskara|thank you (all |everyone )?for (coming|joining))\b/i;
+    let openedAt = 0;
+    let lastVoice = 0;
+    const begin = () => {
+      if (!e.active) return;
+      const rec = new Rec();
+      rec.lang = "en-IN";
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.onresult = (ev: any) => {
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          const text = String(ev.results[i][0].transcript || "");
+          lastVoice = Date.now();
+          if (!openedAt && OPENING.test(text)) openedAt = Date.now();
+          if (ev.results[i].isFinal) logRoom(text);
+        }
+      };
+      rec.onend = () => {
+        if (e.active && e.rec === rec) setTimeout(begin, 250);
+      };
+      e.rec = rec;
+      try {
+        rec.start();
+      } catch {}
+    };
+    begin();
+    s.current.ears = { ...s.current.ears, on: true };
+    pushStatus();
+    e.iv = setInterval(() => {
+      const now = Date.now();
+      if (!openedAt) return;
+      if (now - lastVoice > 8000) openedAt = 0; // he stopped: false start
+      else if (s.current.autoDark && now - openedAt >= 10_000 && now - lastVoice < 4000) {
+        openedAt = 0;
+        handleRef.current({ type: "standby" });
+      }
+    }, 1000);
+    return () => stopEars();
+  }, [armed, preShow, connected, layout, hub.phase, stopEars, logRoom, pushStatus]);
+
   /* ------------------------------ render ------------------------------ */
   const twinBig = layout === "twin";
-  const showTwin = layout === "twin" || layout === "slides" || layout === "hub";
+  const showTwin = (layout === "twin" || layout === "slides" || layout === "hub") && !(preShow && !connected);
   const twinSide = layout === "slides" || layout === "hub";
 
   return (
@@ -1742,7 +1892,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       <div
         className="absolute transition-all duration-500 overflow-hidden rounded-2xl bg-black"
         style={
-          twinBig
+          preShow && !connected
+            ? { left: "40%", top: "40%", width: "20%", height: "20%", opacity: 0 }
+            : twinBig
             ? { left: "10%", top: "6%", width: "80%", height: "80%", opacity: 1 }
             : twinSide
               ? { left: "74%", top: "3%", width: "24%", height: "40%", opacity: 1 }

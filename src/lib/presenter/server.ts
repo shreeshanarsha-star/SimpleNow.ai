@@ -142,6 +142,8 @@ export type DirectorInput = {
   minutesLeft?: number;
   people?: string;
   brain?: string;
+  /** What the room has said tonight (speech-to-text digest + latest lines). */
+  room?: string;
 };
 
 function buildPrompt(i: DirectorInput) {
@@ -149,6 +151,10 @@ function buildPrompt(i: DirectorInput) {
   if (i.phase) parts.push(`CURRENT PHASE: ${i.phase}`);
   if (typeof i.minutesLeft === "number") parts.push(`TIME LEFT IN SESSION: about ${Math.round(i.minutesLeft)} minutes.`);
   if (i.brain) parts.push(`SHREESHA'S BRIEFING FOR YOU (vocabulary, rules, background; use people notes only to relate warmly, never reveal them):\n"""${i.brain.slice(0, 8000)}"""`);
+  if (i.room)
+    parts.push(
+      `WHAT THE ROOM HAS SAID TONIGHT (overheard by speech-to-text since people walked in, including before you appeared; words may be misheard; the speaker is unknown unless a name is said with it):\n"""${i.room.slice(0, 4000)}"""\nUse it like a co-host who was in the room all along: natural callbacks to running jokes, nicknames and teasing, warmly and sparingly (at most one callback every few minutes, only when it fits the moment). Never mock or embarrass anyone, never pin a line on a named person unless the name was said with it, never repeat anything private, personal or sensitive, and skip it when the moment is serious.`
+    );
   if (i.people) parts.push(`PEOPLE IN THE ROOM (certain names only):\n${i.people}`);
   if (i.slideText)
     parts.push(
@@ -276,4 +282,27 @@ export async function loadBrain(sessionId: string) {
     peopleNotes ? `PEOPLE SIGNED IN TONIGHT (names are certain; use notes only to relate warmly, never read them out):\n${peopleNotes}` : "",
   ].filter(Boolean);
   return parts.join("\n\n");
+}
+
+/** Room ears: tonight's digest + the lines heard since it (never sent to phones). */
+export async function loadRoom(sessionId: string) {
+  const sb = db();
+  const { data: mem } = await sb
+    .from("presenter_events")
+    .select("payload, created_at")
+    .eq("session_id", sessionId)
+    .eq("kind", "room.memory")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  let q = sb.from("presenter_events").select("payload, created_at").eq("session_id", sessionId).eq("kind", "room.heard");
+  if (mem?.created_at) q = q.gt("created_at", mem.created_at);
+  const { data: lines } = await q.order("created_at", { ascending: false }).limit(40);
+  const recent = (lines || [])
+    .reverse()
+    .map((l) => String((l.payload as { text?: string })?.text || ""))
+    .filter(Boolean);
+  const memory = String((mem?.payload as { text?: string } | undefined)?.text || "");
+  if (!memory && !recent.length) return "";
+  return [memory ? `SO FAR: ${memory}` : "", recent.length ? `JUST HEARD:\n${recent.map((t) => `- ${t}`).join("\n")}` : ""].filter(Boolean).join("\n");
 }

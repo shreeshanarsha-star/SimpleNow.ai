@@ -630,12 +630,25 @@ function Autopilot({ status, send, sessionId }: { status: PresenterStatus | null
         <div className="grid grid-cols-2 gap-2">
           <button className={`${btn} ${status?.layout === "standby" ? "bg-neutral-600" : "bg-neutral-700"}`} onClick={() => send({ type: "standby" })}>
             1 · Dark screen
-            <div className="text-[10px] font-normal text-white/60">then you open + snap</div>
+            <div className="text-[10px] font-normal text-white/60">{status?.autoDark === false ? "tap when you start" : "auto after you talk ~10 s"}</div>
           </button>
           <button className={`${btn} bg-orange-600`} onClick={() => send({ type: "start" })}>
             2 · Bring Shree in
             <div className="text-[10px] font-normal text-white/80">if snap/voice didn&apos;t work</div>
           </button>
+        </div>
+      )}
+      {status?.preShow && status?.layout === "hub" && (
+        <button
+          className={`w-full rounded-lg py-2 text-xs ${status?.autoDark === false ? "bg-neutral-700" : "bg-green-800"}`}
+          onClick={() => send({ type: "autodark", on: status?.autoDark === false })}
+        >
+          Auto-dark when I open (“good evening everyone…” + ~10 s): {status?.autoDark === false ? "OFF" : "ON"}
+        </button>
+      )}
+      {status?.ears && (status.ears.on || status.ears.lines > 0) && (
+        <div className="rounded-lg bg-black/40 px-2 py-1.5 text-xs text-white/70">
+          👂 Room ears {status.ears.on ? "✓" : "·"} {status.ears.lines} lines saved{status.ears.last ? ` · last: “${status.ears.last}”` : ""}
         </div>
       )}
       {ap?.running && (
@@ -678,7 +691,7 @@ function Autopilot({ status, send, sessionId }: { status: PresenterStatus | null
       )}
       <div className="grid grid-cols-2 gap-2">
         <button className={`rounded-lg py-2 text-xs ${jump === "steps" ? "bg-orange-600" : "bg-neutral-700"}`} onClick={() => setJump(jump === "steps" ? "" : "steps")}>
-          Jump to screen (1–{SHOW_STEPS.length})
+          Jump to screen (0–{SHOW_STEPS.length})
         </button>
         <button className={`rounded-lg py-2 text-xs ${jump === "slides" ? "bg-orange-600" : "bg-neutral-700"}`} onClick={() => setJump(jump === "slides" ? "" : "slides")}>
           Jump to slide (1–{status?.slideCount || 26})
@@ -686,6 +699,18 @@ function Autopilot({ status, send, sessionId }: { status: PresenterStatus | null
       </div>
       {jump === "steps" && (
         <div className="max-h-72 space-y-1 overflow-y-auto">
+          <button
+            className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs ${status?.preShow && status?.layout === "hub" ? "bg-orange-600" : "bg-neutral-800"}`}
+            onClick={() => {
+              if (confirm("Go to screen 0: the lobby (title + QR)? The autopilot stops and you're in control.")) {
+                send({ type: "lobby" });
+                setJump("");
+              }
+            }}
+          >
+            <span className="w-6 text-center font-bold">0</span>
+            <span className="flex-1">Lobby: title + QR (you take control)</span>
+          </button>
           {SHOW_STEPS.map((st, i) => (
             <button
               key={st.id}

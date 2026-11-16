@@ -483,7 +483,6 @@ function buildMilestones(code: string, status?: string) {
 
 const TEASERS = [
   "Scan the code. Your phone is the remote.",
-  "Meet Shree: Shreesha's digital twin.",
   "30 quickfire questions. One champion.",
   "We'll build a real app, live, from your ideas.",
   "Find out your AI level (privately).",

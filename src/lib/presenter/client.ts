@@ -28,6 +28,8 @@ export type PresenterCommand =
   | { type: "sound"; volume?: number; muted?: boolean }
   | { type: "cue"; cue: "snap" | "reveal" | "tick" | "correct" | "drumroll" | "win" | "whoosh" | "pop" }
   | { type: "entrance-test"; on: boolean }
+  | { type: "autodark"; on: boolean }
+  | { type: "lobby" }
   | { type: "entrance-sens"; level: "low" | "med" | "high" }
   | { type: "flyer-build"; inputs: { name: string; date: string; venue: string; highlights: string[] } };
 
@@ -55,6 +57,12 @@ export type PresenterStatus = {
   echo?: "strict" | "open" | "off";
   /** False when the TV browser can't use a microphone (e.g. Fire TV). */
   micOk?: boolean;
+  /** Pre-show: lobby up, Shree not yet revealed. */
+  preShow?: boolean;
+  /** Lobby fades to dark by itself once Shreesha opens and keeps talking ~10 s. */
+  autoDark?: boolean;
+  /** Room ears: lines of room talk saved tonight (text only). */
+  ears?: { on: boolean; lines: number; last: string };
   ap?: { on: boolean; running: boolean; idx: number; total: number; label: string; stepElapsed: number; budget: number; showElapsed: number; planned: number; waiting: string };
   at: number;
 };

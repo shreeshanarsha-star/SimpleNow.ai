@@ -1,4 +1,4 @@
-import { db, json, loadBrain, ownerGuard, runDirector, type DirectorInput } from "@/lib/presenter/server";
+import { db, json, loadBrain, loadRoom, ownerGuard, runDirector, type DirectorInput } from "@/lib/presenter/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -10,7 +10,11 @@ export async function POST(req: Request) {
   if (!body?.mode) return json({ error: "Missing mode" }, 400);
   const started = Date.now();
   try {
-    if (body.sessionId) body.brain = await loadBrain(body.sessionId).catch(() => "");
+    if (body.sessionId) {
+      const [brain, room] = await Promise.all([loadBrain(body.sessionId).catch(() => ""), loadRoom(body.sessionId).catch(() => "")]);
+      body.brain = brain;
+      body.room = room || undefined;
+    }
     const out = await runDirector(body);
     if (body.sessionId) {
       await db()

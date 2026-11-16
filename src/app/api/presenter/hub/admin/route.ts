@@ -148,12 +148,48 @@ Return ONLY JSON: {"groups":[{"label":"...","items":["..."]}]}`,
     return json({ ok: true });
   }
 
+  if (action === "room-log") {
+    // Room ears: lines the TV laptop overheard (text only, never audio; not visible to phones).
+    const lines = (Array.isArray(body.lines) ? body.lines : []).map((t) => String(t || "").replace(/\s+/g, " ").trim().slice(0, 300)).filter((t) => t.length > 1).slice(0, 30);
+    if (lines.length) await db().from("presenter_events").insert(lines.map((text) => ({ session_id: id, kind: "room.heard", payload: { text } })));
+    return json({ ok: true, count: lines.length });
+  }
+
+  if (action === "room-digest") {
+    // Fold the new lines into a short running memory of the room (jokes, nicknames, mood).
+    const sb = db();
+    const { data: mem } = await sb.from("presenter_events").select("payload, created_at").eq("session_id", id).eq("kind", "room.memory").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    let q = sb.from("presenter_events").select("payload").eq("session_id", id).eq("kind", "room.heard");
+    if (mem?.created_at) q = q.gt("created_at", mem.created_at);
+    const { data: lines } = await q.order("created_at").limit(200);
+    const heard = (lines || []).map((l) => String((l.payload as { text?: string })?.text || "")).filter(Boolean);
+    if (heard.length < 3) return json({ ok: true, skipped: true });
+    const prev = String((mem?.payload as { text?: string } | undefined)?.text || "");
+    try {
+      const out = await callTextModel(
+        `You keep a short running memory of what an HR team said out loud tonight, so an AI co-host can join their banter naturally later. Speech-to-text, so words may be misheard; speakers are unknown unless a name is said.
+Previous memory: ${prev || "(none yet)"}
+New lines heard: ${JSON.stringify(heard)}
+Write the updated memory in at most 150 words: running jokes and funny moments, nicknames, who teased whom (only when names were said), what was said about Shreesha or about AI, the room's mood. Leave out anything private, personal, health-related or hurtful. Plain text, no preamble.`,
+        400,
+        20_000,
+        process.env.PRESENTER_FALLBACK_MODEL || "gpt-4o"
+      );
+      const text = out.trim().slice(0, 1500);
+      if (text) await sb.from("presenter_events").insert({ session_id: id, kind: "room.memory", payload: { text } });
+      return json({ ok: true });
+    } catch {
+      return json({ ok: false });
+    }
+  }
+
   if (action === "clear") {
     // Wipes tonight's sign-ups, answers and questions for THIS session only (people memory is kept).
     const sb = db();
     await sb.from("presenter_questions").delete().eq("session_id", id);
     await sb.from("presenter_responses").delete().eq("session_id", id);
     await sb.from("presenter_attendees").delete().eq("session_id", id);
+    await sb.from("presenter_events").delete().eq("session_id", id).in("kind", ["room.heard", "room.memory"]);
     return json({ hub: await patchHub(id, { phase: "lobby", quiz: null, poll: null, finaleStep: 0, flyerUrl: null, flyerBuild: null }) });
   }
 

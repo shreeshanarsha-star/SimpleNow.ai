@@ -164,7 +164,7 @@ function Join({ title, onJoin }: { title: string; onJoin: (b: { name: string; in
           <input value={intro} onChange={(e) => setIntro(e.target.value)} maxLength={160} className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500" placeholder="e.g. chasing interview feedback" />
         </label>
         <div className="rounded-xl bg-white/5 p-3 text-xs leading-relaxed text-white/60">
-          Shree remembers your name, your intro and your commitment for future sessions. Quiz and assessment scores are never shown to anyone else; only the top 3 quiz names appear on screen.
+          We&apos;ll remember your name, your intro and your commitment for future sessions. Quiz and assessment scores are never shown to anyone else; only the top 3 quiz names appear on screen.
           <label className="mt-2 flex items-center gap-2 text-white/80">
             <input type="checkbox" checked={!remember} onChange={(e) => setRemember(!e.target.checked)} className="h-4 w-4" /> Don&apos;t remember me after tonight
           </label>
