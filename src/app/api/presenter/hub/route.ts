@@ -3,6 +3,7 @@
 // anyone else's scores.
 import { db, json } from "@/lib/presenter/server";
 import { ASSESSMENT, QUIZ, QUIZ_TIMING, levelFor, pollByKey, quizClock } from "@/lib/presenter/content";
+import { bestMatch } from "@/lib/presenter/people";
 import { QUIZ_KEY, attendeeByToken, cleanText, hubOf, nameKey, phoneAnswer, sessionByCode } from "@/lib/presenter/hub";
 
 export const dynamic = "force-dynamic";
@@ -75,17 +76,20 @@ export async function POST(req: Request) {
     if (name.length < 2) return json({ error: "Please enter your name" }, 400);
     const intro = cleanText(body.intro, 160) || null;
     const remember = body.remember !== false;
-    let personId: string | null = null;
+    // Link to someone Shreesha already described, tolerating small spelling
+    // differences ("Priya S" / "Priya Sharma" / "Preeya"). A unique match only.
+    const key = nameKey(name);
+    const { data: everyone } = await sb.from("presenter_people").select("id, display_name, name_key, profile");
+    const people = (everyone || []) as Array<{ id: string; display_name: string; name_key: string; profile: Record<string, unknown> | null }>;
+    const existing = people.find((p) => p.name_key === key) || bestMatch(name, people, (p) => p.display_name);
+    let personId: string | null = existing?.id || null;
     if (remember) {
-      const key = nameKey(name);
-      const { data: existing } = await sb.from("presenter_people").select("id, profile").eq("name_key", key).maybeSingle();
       if (existing) {
-        personId = existing.id;
         const profile = (existing.profile || {}) as Record<string, unknown>;
         const sessions = Array.from(new Set([...((profile.sessions as string[]) || []), session.code]));
         await sb
           .from("presenter_people")
-          .update({ display_name: name, remember: true, profile: { ...profile, sessions, ...(intro ? { lastIntro: intro } : {}) }, updated_at: new Date().toISOString() })
+          .update({ remember: true, profile: { ...profile, sessions, ...(intro ? { lastIntro: intro } : {}) }, updated_at: new Date().toISOString() })
           .eq("id", existing.id);
       } else {
         const { data: p } = await sb

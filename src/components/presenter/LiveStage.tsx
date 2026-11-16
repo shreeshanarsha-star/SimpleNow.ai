@@ -70,6 +70,13 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     speakTimer: 0 as unknown as ReturnType<typeof setTimeout>,
     gen: 0,
     slideNarrated: false,
+    intros: false,
+    entranceTest: false,
+    sens: "med" as "low" | "med" | "high",
+    listening: null as PresenterStatus["listening"],
+    entrance: "",
+    testHit: "",
+    introSaved: "",
     pendingAfterSpeech: null as null | (() => void),
   });
 
@@ -86,6 +93,11 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       slideCount: s.current.slideCount,
       lastHeard: s.current.lastHeard,
       lastSaid: s.current.lastSaid,
+      listening: s.current.listening,
+      entrance: s.current.entrance,
+      testHit: s.current.testHit,
+      intros: s.current.intros,
+      introSaved: s.current.introSaved,
       at: Date.now(),
       ...extra,
     };
@@ -176,7 +188,11 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           transcript: transcript.current.slice(-12),
           slideCount: s.current.slideCount,
           people: peopleContext(hubRef.current.board),
-          phase: hubContext(hubRef.current.hub, hubRef.current.board),
+          phase:
+            hubContext(hubRef.current.hub, hubRef.current.board) +
+            (s.current.intros
+              ? " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name + one task they wish they never had to do again). After each person, react warmly and briefly (1 to 2 sentences): use their name only if they said it or it matches someone signed in, relate lightly to Shreesha's note about them if there is one, then invite the next person. If it's unclear who spoke, react without a name."
+              : ""),
           ...body,
         }),
       });
@@ -225,6 +241,21 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       s.current.lastHeard = heard;
       transcript.current.push({ role: "room", text: heard });
       pushStatus();
+      if (s.current.intros && session?.id) {
+        // Save the spoken intro to that person's memory (background, never blocks Shree).
+        api<{ matched: string | null }>("/api/presenter/intro", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: session.id, heard }),
+        })
+          .then((r) => {
+            if (r.matched) {
+              s.current.introSaved = r.matched;
+              pushStatus();
+            }
+          })
+          .catch(() => {});
+      }
       const wasSlide = s.current.slide;
       let bridged = false;
       const t = setTimeout(() => {
@@ -246,7 +277,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         clearTimeout(t);
       }
     },
-    [director, presentSlide, pushStatus, slideText, speak]
+    [director, presentSlide, pushStatus, slideText, speak, session?.id]
   );
 
   /* ------------------------------ audience hub ------------------------------ */
@@ -520,6 +551,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           setLayoutBoth("standby");
           break;
         case "start":
+          stopEntranceRef.current();
+          if (!st.entrance) st.entrance = "button";
           setLayoutBoth("twin");
           await connectTwin();
           speak(await director({ mode: "free", instruction: "You have just appeared on screen after Shreesha's snap. Open with high energy in 4 to 6 short sentences: greet everyone (good evening), introduce yourself as Shree, Shreesha Narsha's digital twin, and say tonight is not a lecture, it's interactive: their phones are their remote (they have already joined). Give a one-line movie-trailer agenda: a quiz, a mirror, a story, a live app build, and a winner. End by saying the first vote is on their phones now. Under 40 seconds." }));
@@ -572,6 +605,22 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           }
           break;
         }
+        case "intros":
+          st.intros = cmd.on;
+          pushStatus();
+          break;
+        case "entrance-test":
+          st.entranceTest = cmd.on;
+          st.testHit = "";
+          if (cmd.on && !anamRef.current) startEntranceRef.current();
+          if (!cmd.on && st.layout !== "standby") stopEntranceRef.current();
+          pushStatus();
+          break;
+        case "entrance-sens":
+          st.sens = cmd.level;
+          if (st.listening) st.listening = { ...st.listening, sens: cmd.level };
+          pushStatus();
+          break;
         case "mic":
           st.micOn = cmd.on;
           if (anamRef.current) {
@@ -712,6 +761,167 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     return () => window.removeEventListener("resize", onResize);
   }, [drawSlide]);
 
+  /* ------------------------------ dark-screen entrance ------------------------------ */
+  // While the TV is dark, the laptop mic listens for (1) a finger snap and
+  // (2) "Hey Shree" / "Hey bro, come in front". Whichever fires first brings
+  // Shree in; the phone button is always the last backup.
+  const entranceRef = useRef<{ stream: MediaStream | null; ctx: AudioContext | null; iv: ReturnType<typeof setInterval> | null; rec: any; active: boolean }>({
+    stream: null,
+    ctx: null,
+    iv: null,
+    rec: null,
+    active: false,
+  });
+
+  const stopEntrance = useCallback(() => {
+    const e = entranceRef.current;
+    e.active = false;
+    if (e.iv) clearInterval(e.iv);
+    e.iv = null;
+    try {
+      e.rec?.stop();
+    } catch {}
+    e.rec = null;
+    e.stream?.getTracks().forEach((t) => t.stop());
+    e.stream = null;
+    e.ctx?.close().catch(() => {});
+    e.ctx = null;
+    if (s.current.listening) {
+      s.current.listening = null;
+      pushStatus();
+    }
+  }, [pushStatus]);
+
+  const fireEntrance = useCallback(
+    (how: "snap" | "voice", detail: string) => {
+      const st = s.current;
+      if (st.entranceTest) {
+        st.testHit = `${how === "snap" ? "Snap" : "Voice"} detected ${detail}`;
+        pushStatus();
+        return;
+      }
+      if (st.layout !== "standby" || anamRef.current) return;
+      st.entrance = how;
+      stopEntrance();
+      handleRef.current({ type: "start" });
+    },
+    [pushStatus, stopEntrance]
+  );
+
+  const startEntrance = useCallback(async () => {
+    const e = entranceRef.current;
+    if (e.active) return;
+    e.active = true;
+    let snap = false;
+    let voice = false;
+    // (1) Snap: short, sharp, high-frequency burst that dies away fast.
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      if (!e.active) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      const ctx = new AudioContext();
+      const src = ctx.createMediaStreamSource(stream);
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 1800;
+      const an = ctx.createAnalyser();
+      an.fftSize = 1024;
+      src.connect(hp);
+      hp.connect(an);
+      const buf = new Float32Array(an.fftSize);
+      let baseline = 0.02;
+      let cand: { at: number; peak: number; loud: number } | null = null;
+      let lastFire = 0;
+      e.stream = stream;
+      e.ctx = ctx;
+      e.iv = setInterval(() => {
+        an.getFloatTimeDomainData(buf);
+        let peak = 0;
+        for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i]));
+        const now = performance.now();
+        const t = { low: { min: 0.32, ratio: 8 }, med: { min: 0.18, ratio: 6 }, high: { min: 0.1, ratio: 4.5 } }[s.current.sens];
+        if (cand) {
+          if (peak > cand.peak * 0.5) cand.loud++;
+          if (cand.loud >= 4) cand = null; // stayed loud: speech, music or a cough
+          else if (now - cand.at > 90) {
+            const strength = cand.peak;
+            cand = null;
+            if (now - lastFire > 1500) {
+              lastFire = now;
+              fireEntrance("snap", `(strength ${strength.toFixed(2)})`);
+            }
+          }
+          return;
+        }
+        if (peak > t.min && peak > baseline * t.ratio) cand = { at: now, peak, loud: 0 };
+        else baseline = baseline * 0.97 + Math.max(peak, 0.005) * 0.03;
+      }, 10);
+      snap = true;
+    } catch {
+      snap = false;
+    }
+    // (2) Voice: Chrome's built-in speech recognition (needs internet).
+    const W = window as unknown as { SpeechRecognition?: any; webkitSpeechRecognition?: any };
+    const Rec = W.SpeechRecognition || W.webkitSpeechRecognition;
+    if (Rec) {
+      const WAKE = /\b(hey|hi|hello|ok|okay|come on|yo)[ ,]+(shree|shri|sree|sri|shre|bro|brother)\b|\bcome (in )?(to )?(the )?front\b|\b(shree|shri|sree|sri)\b.{0,25}\bcome\b/i;
+      const begin = () => {
+        if (!e.active) return;
+        const rec = new Rec();
+        rec.lang = "en-IN";
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.onresult = (ev: any) => {
+          for (let i = ev.resultIndex; i < ev.results.length; i++) {
+            const text = String(ev.results[i][0].transcript || "");
+            if (WAKE.test(text)) {
+              fireEntrance("voice", `("${text.trim().slice(0, 60)}")`);
+              try {
+                rec.abort();
+              } catch {}
+              return;
+            }
+          }
+        };
+        rec.onend = () => {
+          if (e.active && e.rec === rec) setTimeout(begin, 250);
+        };
+        rec.onerror = (ev: any) => {
+          if (ev?.error === "not-allowed" && s.current.listening) {
+            s.current.listening = { ...s.current.listening, voice: false };
+            pushStatus();
+          }
+        };
+        e.rec = rec;
+        try {
+          rec.start();
+        } catch {}
+      };
+      begin();
+      voice = true;
+    }
+    s.current.listening = { snap, voice, test: s.current.entranceTest, sens: s.current.sens };
+    pushStatus();
+  }, [fireEntrance, pushStatus]);
+
+  const startEntranceRef = useRef(startEntrance);
+  startEntranceRef.current = startEntrance;
+  const stopEntranceRef = useRef(stopEntrance);
+  stopEntranceRef.current = stopEntrance;
+
+  // Listen only while the screen is dark and Shree isn't on yet (or in test mode).
+  useEffect(() => {
+    if (!armed) return;
+    if (layout === "standby" && !connected) {
+      s.current.entrance = "";
+      startEntrance();
+    } else if (!s.current.entranceTest) stopEntrance();
+  }, [armed, layout, connected, startEntrance, stopEntrance]);
+
+  useEffect(() => () => stopEntranceRef.current(), []);
+
   /* ------------------------------ render ------------------------------ */
   const twinBig = layout === "twin";
   const showTwin = layout === "twin" || layout === "slides" || layout === "hub";
@@ -724,6 +934,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           onClick={() => {
             setArmed(true);
             document.documentElement.requestFullscreen?.().catch(() => {});
+            // Ask for the microphone now (one click), so the snap listener is ready later.
+            navigator.mediaDevices?.getUserMedia({ audio: true }).then((m) => m.getTracks().forEach((t) => t.stop())).catch(() => {});
             // Pre-show: the lobby (title + QR) is on screen until Shreesha starts.
             refreshHub();
             setLayoutBoth("hub");

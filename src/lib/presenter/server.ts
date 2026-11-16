@@ -233,29 +233,41 @@ export type Brain = { vocab?: string; rules?: string; knowledge?: string };
 /** Briefing text for the Director: vocabulary, do's and don'ts, background, and notes on people signed in tonight. */
 export async function loadBrain(sessionId: string) {
   const sb = db();
-  const [{ data: sess }, { data: att }] = await Promise.all([
+  const [{ data: sess }, { data: att }, { data: qs }, { data: commits }] = await Promise.all([
     sb.from("presenter_sessions").select("state").eq("id", sessionId).maybeSingle(),
-    sb.from("presenter_attendees").select("display_name, person_id").eq("session_id", sessionId),
+    sb.from("presenter_attendees").select("id, display_name, person_id, intro, data").eq("session_id", sessionId),
+    sb.from("presenter_questions").select("attendee_id, text").eq("session_id", sessionId).order("created_at", { ascending: false }).limit(60),
+    sb.from("presenter_responses").select("attendee_id, value").eq("session_id", sessionId).eq("kind", "commit"),
   ]);
   const brain = ((sess?.state as Record<string, unknown>)?.brain || {}) as Brain;
-  const ids = (att || []).map((a) => a.person_id).filter(Boolean) as string[];
-  let peopleNotes = "";
-  if (ids.length) {
-    const { data: ppl } = await sb.from("presenter_people").select("id, display_name, role, profile").in("id", ids);
-    peopleNotes = (ppl || [])
-      .map((p) => {
-        const pr = (p.profile || {}) as Record<string, unknown>;
-        const bits = [p.role, pr.notes, pr.lastCommitment ? `last commitment: ${pr.lastCommitment}` : ""].filter(Boolean).join("; ");
-        return bits ? `- ${p.display_name}: ${bits}` : "";
-      })
-      .filter(Boolean)
-      .join("\n");
-  }
+  const attendees = (att || []) as Array<{ id: string; display_name: string; person_id: string | null; intro: string | null; data: Record<string, unknown> | null }>;
+  const ids = attendees.map((a) => a.person_id).filter(Boolean) as string[];
+  const ppl = ids.length ? ((await sb.from("presenter_people").select("id, display_name, role, profile").in("id", ids)).data || []) : [];
+  const byId = new Map(ppl.map((p) => [p.id, p]));
+  // One line per person signed in tonight: Shreesha's notes + what they did on their phone (never scores).
+  const peopleNotes = attendees
+    .map((a) => {
+      const p = a.person_id ? byId.get(a.person_id) : null;
+      const pr = (p?.profile || {}) as Record<string, unknown>;
+      const asked = (qs || []).filter((q) => q.attendee_id === a.id).slice(0, 3).map((q) => `"${q.text}"`);
+      const commit = (commits || []).find((c) => c.attendee_id === a.id)?.value as { text?: string } | undefined;
+      const spoken = (a.data as { spokenIntro?: string } | null)?.spokenIntro;
+      const bits = [
+        p?.role ? `role: ${p.role}` : "",
+        pr.notes ? `Shreesha's note: ${pr.notes}` : "",
+        a.intro ? `task they'd love to drop (phone): ${a.intro}` : "",
+        spoken ? `said in their intro: ${spoken}` : "",
+        asked.length ? `asked on phone: ${asked.join("; ")}` : "",
+        commit?.text ? `tonight's commitment: ${commit.text}` : pr.lastCommitment ? `last session's commitment: ${pr.lastCommitment}` : "",
+      ].filter(Boolean);
+      return `- ${a.display_name}${bits.length ? `: ${bits.join(" | ")}` : ""}`;
+    })
+    .join("\n");
   const parts = [
     brain.vocab ? `TEAM VOCABULARY (names, terms, correct spellings; the room's speech-to-text may mishear these):\n${brain.vocab}` : "",
     brain.rules ? `DO'S AND DON'TS:\n${brain.rules}` : "",
     brain.knowledge ? `BACKGROUND YOU MAY USE:\n${brain.knowledge}` : "",
-    peopleNotes ? `NOTES ON PEOPLE SIGNED IN TONIGHT:\n${peopleNotes}` : "",
+    peopleNotes ? `PEOPLE SIGNED IN TONIGHT (names are certain; use notes only to relate warmly, never read them out):\n${peopleNotes}` : "",
   ].filter(Boolean);
   return parts.join("\n\n");
 }

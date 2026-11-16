@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/presenter/client";
 
 type Brain = { vocab?: string; rules?: string; knowledge?: string };
+type Tonight = { name: string; matchedTo: string | null; phoneIntro: string | null; spokenIntro: string | null };
 type Person = { id?: string; name: string; role: string; notes: string; lastIntro?: string | null; lastCommitment?: string | null; sessions?: string[]; remember?: boolean };
 
 const FIELDS: Array<{ key: keyof Brain; label: string; hint: string; rows: number }> = [
@@ -15,14 +16,16 @@ const FIELDS: Array<{ key: keyof Brain; label: string; hint: string; rows: numbe
 export default function BrainPanel({ sessionId }: { sessionId: string }) {
   const [brain, setBrain] = useState<Brain>({});
   const [people, setPeople] = useState<Person[]>([]);
+  const [tonight, setTonight] = useState<Tonight[]>([]);
   const [draft, setDraft] = useState<Person>({ name: "", role: "", notes: "" });
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const d = await api<{ brain: Brain; people: Person[] }>(`/api/presenter/brain?sessionId=${sessionId}`);
+    const d = await api<{ brain: Brain; people: Person[]; tonight: Tonight[] }>(`/api/presenter/brain?sessionId=${sessionId}`);
     setBrain(d.brain || {});
     setPeople(d.people || []);
+    setTonight(d.tonight || []);
   }, [sessionId]);
 
   useEffect(() => {
@@ -80,6 +83,29 @@ export default function BrainPanel({ sessionId }: { sessionId: string }) {
       <button onClick={saveBrain} disabled={busy} className="rounded-lg bg-ink px-4 py-2 text-sm text-surface disabled:opacity-50">
         {busy ? "Saving…" : "Save briefing"}
       </button>
+
+      <div className="border-t border-border pt-4">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-medium">Signed in this session ({tonight.length})</div>
+          <button onClick={() => load()} className="text-xs underline">Refresh</button>
+        </div>
+        <div className="text-xs text-ink-muted">Matched = Shree has your notes for them. Not matched = add them below with the same name.</div>
+        <div className="mt-2 space-y-1">
+          {tonight.length === 0 && <div className="text-xs text-ink-muted">Nobody yet.</div>}
+          {tonight.map((t, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
+              <b>{t.name}</b>
+              {t.matchedTo ? (
+                <span className="rounded-full bg-green-600/15 px-2 py-0.5 text-xs text-green-700">matched{t.matchedTo !== t.name ? ` to “${t.matchedTo}”` : ""}</span>
+              ) : (
+                <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-xs text-yellow-700">not matched</span>
+              )}
+              {t.spokenIntro && <span className="text-xs text-ink-muted">said: “{t.spokenIntro}”</span>}
+              {!t.spokenIntro && t.phoneIntro && <span className="text-xs text-ink-muted">phone: “{t.phoneIntro}”</span>}
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div className="border-t border-border pt-4">
         <div className="text-sm font-medium">People Shree remembers ({people.length})</div>

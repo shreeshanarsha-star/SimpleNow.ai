@@ -147,7 +147,7 @@ export default function ControlPad({ sessionId }: { sessionId?: string }) {
         <button className={`${btn} py-3 bg-neutral-900`} onClick={() => send({ type: "layout", layout: "handover" })}>Take over</button>
       </div>
 
-      {session && <HubControls sessionId={session.id} send={send} />}
+      {session && <HubControls sessionId={session.id} send={send} status={status} />}
 
       <div className="space-y-2">
         <textarea
@@ -191,7 +191,7 @@ type BoardLite = {
   serverNow: number;
 };
 
-function HubControls({ sessionId, send }: { sessionId: string; send: (c: PresenterCommand) => void }) {
+function HubControls({ sessionId, send, status }: { sessionId: string; send: (c: PresenterCommand) => void; status: PresenterStatus | null }) {
   const [hub, setHub] = useState<HubState | null>(null);
   const [board, setBoard] = useState<BoardLite | null>(null);
   const [code, setCode] = useState("");
@@ -260,10 +260,18 @@ function HubControls({ sessionId, send }: { sessionId: string; send: (c: Present
       hint: "Intros, 30 s each. Shree reacts by name.",
       run: () => {
         send({ type: "layout", layout: "twin" });
+        send({ type: "intros", on: true });
         send({ type: "direct", text: "Start the introductions: invite each person, one at a time, to say their name and one task they wish they never had to do again. Keep each to about 30 seconds and react briefly and warmly by name. Begin now by inviting the first volunteer." });
       },
     },
-    { label: "Act 3 · Quiz screen", hint: "Then tap Quiz ▶ GO below.", run: () => phase("quiz") },
+    {
+      label: "Act 3 · Quiz screen",
+      hint: "Then tap Quiz ▶ GO below.",
+      run: () => {
+        send({ type: "intros", on: false });
+        return phase("quiz");
+      },
+    },
     { label: "Act 4 · The Mirror", hint: "20-question self-assessment on phones.", run: () => phase("assessment") },
     { label: "Act 5 · The Story (slides)", hint: "Shree presents. Polls 1 and 2 buttons below.", run: () => send({ type: "present" }) },
     { label: "Act 5 · Debate", hint: "Two sides vote on phones; Shree moderates.", run: () => phase("poll", { poll: "debate" }) },
@@ -277,6 +285,24 @@ function HubControls({ sessionId, send }: { sessionId: string; send: (c: Present
     { label: "Act 9 · Commitments", hint: "Pledge on TV, commitments on phones.", run: () => phase("commit") },
     { label: "Thank you", hint: "Your last word.", run: () => phase("closed") },
   ];
+  // Snap or "Hey Shree" brought him in: move the stepper on without re-running the step.
+  const lastEntrance = useRef("");
+  useEffect(() => {
+    const how = status?.entrance || "";
+    if (how && how !== lastEntrance.current) {
+      lastEntrance.current = how;
+      if (ACTS[actIdx]?.label === "Act 1 · Dark for the snap") {
+        const n = actIdx + 1;
+        setActIdx(n);
+        try {
+          localStorage.setItem(`presenter-act-${sessionId}`, String(n));
+        } catch {}
+      }
+    }
+    if (!how) lastEntrance.current = "";
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status?.entrance]);
+
   const goAct = async (i: number) => {
     const n = Math.max(0, Math.min(ACTS.length - 1, i));
     setActIdx(n);
@@ -293,12 +319,22 @@ function HubControls({ sessionId, send }: { sessionId: string; send: (c: Present
         <div className="mt-1 text-base font-bold">{ACTS[actIdx]?.label}</div>
         <div className="text-xs text-white/60">{ACTS[actIdx]?.hint}</div>
         {actIdx + 1 < ACTS.length && <div className="mt-1 text-xs text-white/40">Next: {ACTS[actIdx + 1].label}</div>}
+        {status?.listening && (
+          <div className="mt-2 rounded-lg bg-black/40 px-2 py-1.5 text-xs">
+            👂 Listening for {status.listening.snap ? "snap ✓" : "snap ✗ (mic blocked)"} · {status.listening.voice ? "“Hey Shree” ✓" : "voice ✗"}
+            {status.listening.test && <span className="text-yellow-300"> · TEST MODE</span>}
+          </div>
+        )}
+        {status?.entrance && status.layout !== "standby" && <div className="mt-2 text-xs text-green-400">Shree in via {status.entrance} ✓</div>}
+        {status?.intros && <div className="mt-2 text-xs text-sky-300">Intros on: saving each spoken intro{status.introSaved ? ` · last saved: ${status.introSaved}` : ""}</div>}
         <div className="mt-3 grid grid-cols-3 gap-2">
           <button className={`${b} bg-neutral-700`} onClick={() => goAct(actIdx - 1)}>◀ Back</button>
           <button className={`${b} bg-neutral-700`} onClick={() => goAct(actIdx)}>Redo</button>
           <button className={`${b} bg-orange-600 text-base`} onClick={() => goAct(actIdx + 1)}>Next act ▶</button>
         </div>
       </div>
+      <EntranceTest status={status} send={send} />
+
       <div className="flex items-center justify-between text-sm">
         <b>Audience hub {code && <span className="text-white/50">· /p/{code}</span>}</b>
         <span className="text-white/60">{board?.attendees.length || 0} joined</span>
@@ -431,6 +467,41 @@ function FlyerControls({
       </div>
       <button className="w-full rounded-lg bg-neutral-800 py-2 text-xs" onClick={() => onReveal(true)}>Reveal the backup app instead</button>
       <div className="text-[11px] text-white/40">Reveal uses the live build if it&apos;s ready, otherwise the tested backup app with the same details. Nobody sees the switch.</div>
+    </div>
+  );
+}
+
+function EntranceTest({ status, send }: { status: PresenterStatus | null; send: (c: PresenterCommand) => void }) {
+  const [open, setOpen] = useState(false);
+  const test = !!status?.listening?.test;
+  const sens = status?.listening?.sens || "med";
+  if (!open)
+    return (
+      <button className="w-full rounded-lg bg-neutral-800 py-2 text-xs text-white/70" onClick={() => setOpen(true)}>
+        Test snap & “Hey Shree” before the show
+      </button>
+    );
+  return (
+    <div className="space-y-2 rounded-lg border border-yellow-500/40 p-2 text-xs">
+      <div className="flex items-center justify-between">
+        <b>Entrance test</b>
+        <button className="text-white/50" onClick={() => { send({ type: "entrance-test", on: false }); setOpen(false); }}>Close</button>
+      </div>
+      <div className="text-white/60">Turn test on, then snap or say “Hey Shree” near the laptop. Nothing starts in test mode; you just see what was detected.</div>
+      <div className="grid grid-cols-2 gap-2">
+        <button className={`rounded-lg py-2 font-semibold ${test ? "bg-yellow-600" : "bg-neutral-700"}`} onClick={() => send({ type: "entrance-test", on: !test })}>
+          Test mode: {test ? "ON" : "off"}
+        </button>
+        <div className="flex gap-1">
+          {(["low", "med", "high"] as const).map((l) => (
+            <button key={l} className={`flex-1 rounded-lg py-2 ${sens === l ? "bg-orange-600" : "bg-neutral-700"}`} onClick={() => send({ type: "entrance-sens", level: l })}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="min-h-[1.5em] text-sm text-green-400">{status?.testHit || (test ? "Waiting for a snap or “Hey Shree”…" : "")}</div>
+      <div className="text-white/40">Sensitivity: high catches soft snaps but may react to claps or bangs; low needs a sharp snap close to the laptop.</div>
     </div>
   );
 }

@@ -11,13 +11,23 @@ export async function GET(req: Request) {
   if (g instanceof Response) return g;
   const id = new URL(req.url).searchParams.get("sessionId") || "";
   const sb = db();
-  const [{ data: sess }, { data: people }] = await Promise.all([
+  const [{ data: sess }, { data: people }, { data: att }] = await Promise.all([
     sb.from("presenter_sessions").select("state").eq("id", id).maybeSingle(),
     sb.from("presenter_people").select("id, display_name, role, profile, remember, updated_at").order("display_name"),
+    sb.from("presenter_attendees").select("display_name, person_id, intro, data").eq("session_id", id).order("created_at"),
   ]);
+  // Who signed in tonight, and which of Shreesha's notes they were matched to.
+  const nameOf = new Map((people || []).map((p) => [p.id, p.display_name]));
+  const tonight = (att || []).map((a) => ({
+    name: a.display_name,
+    matchedTo: a.person_id ? nameOf.get(a.person_id) || null : null,
+    phoneIntro: a.intro || null,
+    spokenIntro: ((a.data as Record<string, unknown> | null)?.spokenIntro as string) || null,
+  }));
   const brain = ((sess?.state as Record<string, unknown>)?.brain || {}) as Brain;
   return json({
     brain,
+    tonight,
     people: (people || []).map((p) => {
       const pr = (p.profile || {}) as Record<string, unknown>;
       return { id: p.id, name: p.display_name, role: p.role || "", notes: String(pr.notes || ""), lastIntro: pr.lastIntro || null, lastCommitment: pr.lastCommitment || null, sessions: (pr.sessions as string[]) || [], remember: p.remember };

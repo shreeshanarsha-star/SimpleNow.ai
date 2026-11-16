@@ -21,6 +21,9 @@ export type PresenterCommand =
   | { type: "auto"; on: boolean }
   | { type: "reconnect" }
   | { type: "hub" }
+  | { type: "intros"; on: boolean }
+  | { type: "entrance-test"; on: boolean }
+  | { type: "entrance-sens"; level: "low" | "med" | "high" }
   | { type: "flyer-build"; inputs: { name: string; date: string; venue: string; highlights: string[] } };
 
 export type PresenterStatus = {
@@ -35,6 +38,14 @@ export type PresenterStatus = {
   lastHeard?: string;
   lastSaid?: string;
   note?: string;
+  /** Dark-screen entrance listeners (snap + "Hey Shree"). */
+  listening?: { snap: boolean; voice: boolean; test: boolean; sens: "low" | "med" | "high" } | null;
+  /** How Shree was brought in: "snap" | "voice" | "button". */
+  entrance?: string;
+  /** Latest test-mode detection, e.g. "Snap detected (strength 0.41)". */
+  testHit?: string;
+  intros?: boolean;
+  introSaved?: string;
   at: number;
 };
 
