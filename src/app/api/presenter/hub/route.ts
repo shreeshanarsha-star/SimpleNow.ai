@@ -183,7 +183,7 @@ export async function POST(req: Request) {
     const text = cleanText(body.text, 400);
     if (text.length < 5) return json({ error: "Type a question" }, 400);
     const { count } = await sb.from("presenter_questions").select("id", { count: "exact", head: true }).eq("attendee_id", me.id);
-    if ((count || 0) >= MAX_QUESTIONS_PER_PERSON) return json({ error: "That's the limit for tonight. Ask Shreesha in Q&A!" }, 429);
+    if ((count || 0) >= MAX_QUESTIONS_PER_PERSON) return json({ error: "That's the limit for today. Ask Shreesha in Q&A!" }, 429);
     const { data: row, error } = await sb
       .from("presenter_questions")
       .insert({ session_id: session.id, attendee_id: me.id, source: "phone", text, votes: 1 })

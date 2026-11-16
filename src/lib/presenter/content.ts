@@ -116,7 +116,7 @@ export type Poll = {
   liveResult?: boolean;
 };
 export const POLLS: Poll[] = [
-  { key: "before", label: "Before poll", q: "How confident are you using AI in your daily work?", options: ["Not yet", "A little", "Fairly", "Very"] },
+  { key: "before", label: "AI confidence check · start", q: "How confident are you using AI in your daily work?", options: ["Not yet", "A little", "Fairly", "Very"] },
   { key: "poll1", label: "Poll 1 · Reality check", q: "Has AI saved you real time this month, after checking its work?", options: ["Yes, a lot", "A little", "Not really", "I don't use it yet"] },
   { key: "poll2", label: "Poll 2 · Tool by task", q: "Which task will you try with AI first?", options: ["Writing & emails", "Excel & data", "Policy answers", "Presentations & flyers", "Meeting notes"] },
   { key: "debate", label: "Debate · 300 employees", q: "A 300-employee company: will AI agents replace jobs or redesign them?", options: ["Replace: jobs will shrink", "Redesign: jobs will change"] },
@@ -156,7 +156,7 @@ export const POLLS: Poll[] = [
     options: ["It completes it on its own", "It completes it with human help", "It gets blocked"],
     liveResult: true,
   },
-  { key: "after", label: "After poll", q: "How confident are you using AI in your daily work?", options: ["Not yet", "A little", "Fairly", "Very"] },
+  { key: "after", label: "AI confidence check · end", q: "How confident are you using AI in your daily work?", options: ["Not yet", "A little", "Fairly", "Very"] },
 ];
 export const pollByKey = (k?: string | null) => POLLS.find((p) => p.key === k);
 
@@ -253,9 +253,10 @@ export const HR_PROMPTS = [
 // Budgets in seconds; they add up to the 75-minute plan. Each step ends when it's
 // done or its budget runs out. Shreesha can pause, skip or go back at any time.
 export const SHOW_STEPS: Array<{ id: string; label: string; budget: number }> = [
-  { id: "before", label: "Act 1 · Before poll", budget: 60 },
-  { id: "intros", label: "Act 2 · Meet the cast", budget: 300 },
+  { id: "welcome", label: "Act 1 · You introduce Shree", budget: 150 },
+  { id: "intros", label: "Act 2 · Meet the team", budget: 300 },
   { id: "wishwall", label: "Act 2 · HR Wish Wall", budget: 60 },
+  { id: "before", label: "Act 2 · AI confidence check (start)", budget: 60 },
   { id: "quiz", label: "Act 3 · Quiz", budget: 480 },
   { id: "mirror", label: "Act 4 · The Mirror", budget: 330 },
   { id: "story", label: "Act 5 · The Story", budget: 600 },

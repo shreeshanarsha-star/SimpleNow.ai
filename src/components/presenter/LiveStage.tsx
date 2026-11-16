@@ -102,6 +102,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     expect: null as null | ((heard: string) => Promise<boolean>),
     preShow: true,
     autoDark: true,
+    cue: null as null | { re: RegExp; done: () => void },
+    selfIntroDone: false,
     ears: { on: false, lines: 0, last: "" },
     ap: {
       on: true,
@@ -334,7 +336,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           phase:
             hubContext(hubRef.current.hub, hubRef.current.board) +
             (s.current.intros
-              ? " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name + one task they wish they never had to do again). After each person, react warmly and briefly (1 to 2 sentences): use their name only if they said it or it matches someone signed in, relate lightly to Shreesha's note about them if there is one, then invite the next person. If it's unclear who spoke, react without a name."
+              ? " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name + one task they wish they never had to do again). React like you're finally meeting someone you've heard a lot about: warm, natural, 1 to 2 short sentences. Vary it every time (\"Nice to meet you, X, I've heard a lot about you\" is one option, never the same phrase twice in a row). Pick ONE light, specific detail from Shreesha's note about them, from what the room has said today, or from what they just said, and have fun with it gently (never personal, never a score). Use their name only if they said it or it matches someone signed in; if unsure who spoke, react without a name. Then invite the next person."
               : ""),
           ...body,
         }),
@@ -441,6 +443,12 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       logRoom(heard);
       transcript.current.push({ role: "room", text: heard });
       pushStatus();
+      if (st.cue && st.cue.re.test(heard)) {
+        const done = st.cue.done;
+        st.cue = null;
+        done();
+        return;
+      }
       if (st.quietListen) return; // Shreesha (or a guest) has the floor: listen only
       if (st.expect) {
         const handled = await st.expect(heard).catch(() => false);
@@ -594,7 +602,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             : step === 2
               ? ann(1, "second")
               : step === 3
-                ? ann(0, "first. They are tonight's quiz champion")
+                ? ann(0, "first. They are today's quiz champion")
                 : step === 4
                   ? `Reveal the team AI-level chart (counts only): ${(h.board?.assessment.levelCounts || []).map((l) => `${l.name} ${l.count}`).join(", ")}. Two or three sentences: celebrate honestly, then the goal of one level up in 90 days. Everyone's badge is on their phone, private. Name nobody.`
                   : `Compare the before and after poll ("${pollByKey("before")?.q}"): before ${JSON.stringify(h.board?.polls["before"] || [])}, after ${JSON.stringify(h.board?.polls["after"] || [])} for options ${JSON.stringify(pollByKey("before")?.options || [])}. Two sentences, honest.`;
@@ -885,8 +893,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           const linePromise = flushRoomRef.current().then(() => director({
             mode: "free",
             instruction:
-              "You have just appeared on screen after a cinematic montage; Shreesha introduced you and snapped his fingers to bring you in. Open with high energy in 4 to 6 short sentences: a light, friendly comeback to Shreesha (for example, that unlike him you didn't need three cups of filter coffee to get here), greet everyone (good evening), introduce yourself as Shree, Shreesha's digital twin, and say tonight is not a lecture, it's interactive: their phones are their remote (they have already joined). Give a one-line movie-trailer agenda: a quiz, a mirror, a story, a live app build, and a winner. End by saying the first vote is on their phones now. Under 40 seconds. If something funny or notable was said in the room before you appeared (see WHAT THE ROOM HAS SAID TONIGHT), especially by Shreesha about you, work ONE light callback to it into your comeback, so they realise you were listening all along.",
-          })).catch(() => "Good evening everyone! I'm Shree, Shreesha's digital twin. Tonight isn't a lecture, it's interactive, and your phone is your remote. The first vote is on your phones now.");
+              "You have just appeared on screen after a cinematic montage: Shreesha snapped his fingers and you arrived. Say hello in ONE or TWO short, natural sentences, like a friend walking into the room: a warm, witty line to Shreesha or the room. If something funny or notable was said before you appeared (see WHAT THE ROOM HAS SAID), make it a light callback to that, especially anything Shreesha said about you; otherwise a light comeback (for example, that unlike him you didn't need three cups of filter coffee to get here). Do NOT introduce yourself, do NOT give an agenda, do NOT mention votes or phones: Shreesha is about to introduce you. Under 12 seconds.",
+          })).catch(() => "Good evening, everyone! Shreesha, that was quite the entrance.");
           const connecting = connectTwin();
           await new Promise<void>((r) => (montageDone.current = r));
           setMontage(false);
@@ -1257,13 +1265,49 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       };
 
       const STEP: Record<string, (budget: number) => Promise<void>> = {
+        welcome: async (b) => {
+          // Shreesha introduces Shree to the team; Shree only listens until he's handed the floor.
+          setLayoutBoth("twin");
+          ap.waiting = "Introduce Shree, then say “introduce yourself” / “over to you” (or tap Skip)";
+          pushStatus();
+          s.current.quietListen = true;
+          await new Promise<void>((resolve) => {
+            const t0 = Date.now();
+            s.current.cue = {
+              re: /introduc(e|ing) yourself|over to you|take it (away|over)|(you )?(can|may) (start|begin|go ahead)|go ahead|floor is yours|all yours|your turn|stage is yours/i,
+              done: resolve,
+            };
+            const iv = setInterval(() => {
+              if (!alive() || ap.skip || Date.now() - t0 > b - 30_000) {
+                clearInterval(iv);
+                resolve();
+              }
+            }, 300);
+          });
+          s.current.cue = null;
+          s.current.quietListen = false;
+          ap.waiting = "";
+          pushStatus();
+          if (!alive()) return;
+          await line(
+            "Shreesha has just introduced you to the team and handed you the floor (his words are in the recent conversation). Introduce yourself naturally in 4 to 6 short spoken sentences: react warmly or wittily to something specific Shreesha just said about you; you're Shree, Shreesha's digital twin; today isn't a lecture, it's interactive, and their phones are the remote; a one-line taste of what's coming (a quiz, a mirror, a story, an app built live, and a champion). Then turn it around: you've heard a lot about this team and now you'd love to meet them. Invite each person, one at a time, to say their name and one task they wish they never had to do again, and ask who wants to go first. Under 45 seconds."
+          );
+          s.current.selfIntroDone = true;
+        },
         before: async (b) => {
-          await pollRun("before", Math.min(b - 10_000, 50_000), undefined, `Read the result of "${pollByKey("before")?.q}" in one light sentence and say we'll ask again at the end.`);
+          await pollRun(
+            "before",
+            Math.min(b - 10_000, 50_000),
+            "One or two short sentences: before we start, a quick, honest check on their phones: how confident are you using AI in your daily work today? We'll ask the same question at the very end.",
+            `Read the result of "${pollByKey("before")?.q}" in one light sentence and say we'll see if it moves by the end.`
+          );
         },
         intros: async (b) => {
           setLayoutBoth("twin");
           s.current.intros = true;
-          await line("Start the introductions now: invite each person, one at a time, to say their name and one task they wish they never had to do again, in about 20 seconds. Ask for the first volunteer.");
+          if (!s.current.selfIntroDone)
+            await line("Start the introductions now: invite each person, one at a time, to say their name and one task they wish they never had to do again, in about 20 seconds. Ask for the first volunteer.");
+          s.current.selfIntroDone = false;
           const t0 = Date.now();
           let lastNudge = Date.now();
           const all = () => {
@@ -1508,7 +1552,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         finale: async () => {
           await adminAct({ action: "phase", phase: "finale" });
           hubView();
-          await line("One high-energy sentence: it's finale time, starting with tonight's quiz champions.");
+          await line("One high-energy sentence: it's finale time, starting with today's quiz champions.");
           for (const step of [1, 2, 3, 4]) {
             if (!alive()) return;
             await adminAct({ action: "finale-step", step });

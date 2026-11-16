@@ -167,7 +167,7 @@ Return ONLY JSON: {"groups":[{"label":"...","items":["..."]}]}`,
     const prev = String((mem?.payload as { text?: string } | undefined)?.text || "");
     try {
       const out = await callTextModel(
-        `You keep a short running memory of what an HR team said out loud tonight, so an AI co-host can join their banter naturally later. Speech-to-text, so words may be misheard; speakers are unknown unless a name is said.
+        `You keep a short running memory of what an HR team said out loud today, so an AI co-host can join their banter naturally later. Speech-to-text, so words may be misheard; speakers are unknown unless a name is said.
 Previous memory: ${prev || "(none yet)"}
 New lines heard: ${JSON.stringify(heard)}
 Write the updated memory in at most 150 words: running jokes and funny moments, nicknames, who teased whom (only when names were said), what was said about Shreesha or about AI, the room's mood. Leave out anything private, personal, health-related or hurtful. Plain text, no preamble.`,

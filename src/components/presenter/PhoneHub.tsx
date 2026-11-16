@@ -166,7 +166,7 @@ function Join({ title, onJoin }: { title: string; onJoin: (b: { name: string; in
         <div className="rounded-xl bg-white/5 p-3 text-xs leading-relaxed text-white/60">
           We&apos;ll remember your name, your intro and your commitment for future sessions. Quiz and assessment scores are never shown to anyone else; only the top 3 quiz names appear on screen.
           <label className="mt-2 flex items-center gap-2 text-white/80">
-            <input type="checkbox" checked={!remember} onChange={(e) => setRemember(!e.target.checked)} className="h-4 w-4" /> Don&apos;t remember me after tonight
+            <input type="checkbox" checked={!remember} onChange={(e) => setRemember(!e.target.checked)} className="h-4 w-4" /> Don&apos;t remember me after today
           </label>
         </div>
         {err && <div className="text-sm text-red-400">{err}</div>}
@@ -458,7 +458,7 @@ function Ask({ st, post, reload }: { st: State; post: PostFn; reload: () => void
   return (
     <div className="space-y-4">
       <Card title="Ask Shree">
-        <textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={400} rows={3} placeholder="Anything about AI, tools, or tonight's session" className="w-full rounded-xl bg-white/10 p-3 outline-none focus:ring-2 focus:ring-orange-500" />
+        <textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={400} rows={3} placeholder="Anything about AI, tools, or today's session" className="w-full rounded-xl bg-white/10 p-3 outline-none focus:ring-2 focus:ring-orange-500" />
         {err && <div className="text-sm text-red-400">{err}</div>}
         <button
           disabled={busy || text.trim().length < 5}

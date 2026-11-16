@@ -238,7 +238,7 @@ function Kit({ deckUrl }: { deckUrl?: string | null }) {
       </Section>
       {deckUrl && (
         <a href={deckUrl} target="_blank" rel="noreferrer" className="block rounded-2xl bg-white/10 py-3 text-center font-semibold">
-          Download tonight&apos;s slides (PDF)
+          Download today&apos;s slides (PDF)
         </a>
       )}
       <p className="text-center text-sm text-white/50">Thank you for your time, your questions and your curiosity.</p>

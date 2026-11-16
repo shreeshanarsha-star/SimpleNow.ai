@@ -17,7 +17,7 @@ const FRAMES: Array<{ src: string; line: string }> = [
   { src: "m12", line: "With trust built in." },
   { src: "m10", line: "Learning together." },
   { src: "m14", line: "The path is open." },
-  { src: "m01", line: "Tonight, meet your co-host." },
+  { src: "m01", line: "Today, meet your co-host." },
 ];
 const FRAME_MS = 1900;
 const TITLE_MS = 3200;

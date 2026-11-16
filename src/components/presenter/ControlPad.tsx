@@ -268,9 +268,8 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
     { label: "Lobby", hint: "Title + QR on TV. People join on phones.", run: () => phase("lobby") },
     { label: "Act 1 · Dark for the snap", hint: "You open (60–90 s), then snap.", run: () => send({ type: "standby" }) },
     { label: "Act 1 · Shree enters", hint: "Twin appears and opens the show.", run: () => send({ type: "start" }) },
-    { label: "Act 1 · Before poll", hint: "Confidence poll on phones.", run: () => phase("poll", { poll: "before" }) },
     {
-      label: "Act 2 · Meet the cast",
+      label: "Act 2 · Meet the team",
       hint: "Intros, 30 s each. Shree reacts by name.",
       run: () => {
         send({ type: "layout", layout: "twin" });
@@ -286,6 +285,7 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
         await act({ action: "wishwall" });
       },
     },
+    { label: "Act 2 · AI confidence check (start)", hint: "Confidence poll on phones.", run: () => phase("poll", { poll: "before" }) },
     {
       label: "Act 3 · Quiz screen",
       hint: "Then tap Quiz ▶ GO below.",
@@ -306,7 +306,7 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
     { label: "Act 6½ · Score the app", hint: "Fact poll (then Value, ROI buttons).", run: () => phase("poll", { poll: "check-fact" }) },
     { label: "Act 8 · Ask anything", hint: "Q&A list on TV; 'Shree answers' below.", run: () => phase("questions") },
     { label: "Act 9 · Finale", hint: "Tap 'Finale next' for 3rd, 2nd, winner, levels.", run: () => phase("finale") },
-    { label: "Act 9 · After poll", hint: "Same question as the start.", run: () => phase("poll", { poll: "after" }) },
+    { label: "Act 9 · AI confidence check (end)", hint: "Same question as the start.", run: () => phase("poll", { poll: "after" }) },
     { label: "Act 9 · Commitments", hint: "Pledge on TV, commitments on phones.", run: () => phase("commit") },
     {
       label: "Act 9 · Ask Shree",
