@@ -1,11 +1,12 @@
 // Presenter.ai — owner-only hub controls (TV laptop + control phone).
 import { db, json, ownerGuard } from "@/lib/presenter/server";
-import { POLLS, QUIZ_TIMING, type HubPhase, type HubState } from "@/lib/presenter/content";
+import { callTextModel } from "@/lib/aiClient";
+import { ASSESSMENT, POLLS, QUIZ_TIMING, levelFor, type HubPhase, type HubState } from "@/lib/presenter/content";
 import { QUIZ_KEY, buildBoard, hubOf, patchHub, sessionById } from "@/lib/presenter/hub";
 
 export const dynamic = "force-dynamic";
 
-const PHASES: HubPhase[] = ["lobby", "quiz", "assessment", "poll", "questions", "build", "flyer", "commit", "finale", "closed"];
+const PHASES: HubPhase[] = ["lobby", "wishwall", "quiz", "assessment", "poll", "questions", "build", "flyer", "commit", "finale", "closed"];
 
 export async function GET(req: Request) {
   const g = await ownerGuard();
@@ -31,6 +32,7 @@ export async function POST(req: Request) {
     const phase = String(body.phase) as HubPhase;
     if (!PHASES.includes(phase)) return json({ error: "Unknown phase" }, 400);
     const patch: Partial<HubState> = { phase };
+    if (phase === "poll") patch.pollReveal = null;
     if (phase === "poll") {
       const key = String(body.poll || "");
       if (!POLLS.some((p) => p.key === key)) return json({ error: "Unknown poll" }, 400);
@@ -50,6 +52,60 @@ export async function POST(req: Request) {
   if (action === "quiz-reset") {
     await db().from("presenter_responses").delete().eq("session_id", id).eq("kind", "quiz");
     return json({ hub: await patchHub(id, { quiz: null }) });
+  }
+
+  if (action === "poll-reveal") {
+    const best = body.best === null ? null : Number(body.best);
+    return json({ hub: await patchHub(id, { pollReveal: best === null || Number.isNaN(best) ? null : best }) });
+  }
+
+  if (action === "wishwall") {
+    // Show the wall at once; group the tasks by theme (AI) and update it.
+    const board = await buildBoard(id);
+    const wishes = (board as { wishes?: string[] }).wishes || [];
+    await patchHub(id, { phase: "wishwall", wishGroups: null });
+    let groups: Array<{ label: string; items: string[] }> | null = null;
+    if (wishes.length >= 3) {
+      try {
+        const out = await callTextModel(
+          `Group these "tasks I wish I never had to do again" from an HR team into 2 to 5 themes. Short theme labels (2 to 4 words, e.g. "Chasing follow-ups"). Every task goes in exactly one theme; keep each task's wording.
+Tasks: ${JSON.stringify(wishes)}
+Return ONLY JSON: {"groups":[{"label":"...","items":["..."]}]}`,
+          600,
+          15_000,
+          process.env.PRESENTER_FALLBACK_MODEL || "gpt-4o"
+        );
+        const parsed = JSON.parse(out.replace(/^[^{]*/, "").replace(/[^}]*$/, ""));
+        if (Array.isArray(parsed.groups)) groups = parsed.groups.slice(0, 6);
+      } catch {
+        groups = null; // the ungrouped wall is the silent backup
+      }
+    }
+    return json({ hub: await patchHub(id, { phase: "wishwall", wishGroups: groups }) });
+  }
+
+  if (action === "finale-step" && Number(body.step ?? (hub.finaleStep || 0) + 1) >= 4) {
+    // Levels are revealed: keep each consenting person's level for the 60–90 day re-assessment.
+    const sb = db();
+    const [{ data: att }, { data: resp }] = await Promise.all([
+      sb.from("presenter_attendees").select("id, person_id, data").eq("session_id", id),
+      sb.from("presenter_responses").select("attendee_id, value").eq("session_id", id).eq("kind", "assess"),
+    ]);
+    const totals = new Map<string, { n: number; t: number }>();
+    for (const r of resp || []) {
+      const cur = totals.get(r.attendee_id) || { n: 0, t: 0 };
+      cur.n++;
+      cur.t += Number((r.value as { score?: number })?.score) || 0;
+      totals.set(r.attendee_id, cur);
+    }
+    for (const a of att || []) {
+      const tt = totals.get(a.id);
+      if (!a.person_id || !tt || tt.n < ASSESSMENT.length || (a.data as { remember?: boolean } | null)?.remember === false) continue;
+      const { data: p } = await sb.from("presenter_people").select("profile").eq("id", a.person_id).maybeSingle();
+      const profile = (p?.profile || {}) as Record<string, unknown>;
+      const levels = { ...((profile.levels as Record<string, unknown>) || {}), [session.code]: { level: levelFor(tt.t).name, score: tt.t, at: new Date().toISOString().slice(0, 10) } };
+      await sb.from("presenter_people").update({ profile: { ...profile, levels } }).eq("id", a.person_id);
+    }
   }
 
   if (action === "finale-step") {

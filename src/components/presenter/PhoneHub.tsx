@@ -2,9 +2,10 @@
 // Presenter.ai — the audience's phone (/p/<code>). No login: a random device
 // token kept on the phone identifies the person for this session.
 import { useCallback, useEffect, useRef, useState } from "react";
+import Passport from "@/components/presenter/Passport";
 import { ASSESSMENT, PHONE_TAKEAWAYS, QUIZ, pollByKey, quizClock, type HubPhase, type QuizState } from "@/lib/presenter/content";
 
-type HubView = { phase: HubPhase; quiz: QuizState | null; poll: string | null; finaleStep: number; flyerUrl: string | null };
+type HubView = { phase: HubPhase; quiz: QuizState | null; poll: string | null; pollReveal: number | null; finaleStep: number; flyerUrl: string | null };
 type Me = { name: string; quiz: string[]; assess: Record<string, number>; polls: Record<string, number>; commit: string | null };
 type State = {
   session: { title: string; code: string };
@@ -12,6 +13,7 @@ type State = {
   me: Me | null;
   badge: { level: string | null; quiz: number; quizOf: number } | null;
   myQuestions: Array<{ id: string; text: string; answer: string | null }>;
+  deckUrl?: string | null;
   serverNow: number;
 };
 
@@ -185,7 +187,13 @@ function Now({ st, serverNow, post, reload, pending, goAsk }: { st: State; serve
 
   if (hub.phase === "quiz") return <Quiz hub={hub} me={me} serverNow={serverNow} post={post} pending={pending} />;
   if (hub.phase === "assessment") return <Assessment me={me} post={post} reload={reload} />;
-  if (hub.phase === "poll") return <PollCard pollKey={hub.poll} me={me} post={post} reload={reload} />;
+  if (hub.phase === "poll") return <PollCard key={hub.poll || ""} pollKey={hub.poll} reveal={hub.pollReveal} me={me} post={post} reload={reload} />;
+  if (hub.phase === "wishwall")
+    return (
+      <Card title="The HR Wish Wall">
+        <p className="text-white/60">Your &quot;task I&apos;d never do again&quot; is on the TV wall (no names). Look up: Shree is grouping them.</p>
+      </Card>
+    );
   if (hub.phase === "commit") return <Commit me={me} post={post} reload={reload} />;
   if (hub.phase === "build")
     return (
@@ -344,7 +352,7 @@ function Assessment({ me, post, reload }: { me: Me; post: PostFn; reload: () => 
   );
 }
 
-function PollCard({ pollKey, me, post, reload }: { pollKey: string | null; me: Me; post: PostFn; reload: () => void }) {
+function PollCard({ pollKey, reveal, me, post, reload }: { pollKey: string | null; reveal: number | null; me: Me; post: PostFn; reload: () => void }) {
   const poll = pollByKey(pollKey);
   const [picked, setPicked] = useState<number | undefined>(undefined);
   if (!poll) return <Card title="Poll"><p className="text-white/60">Opening…</p></Card>;
@@ -362,13 +370,22 @@ function PollCard({ pollKey, me, post, reload }: { pollKey: string | null; me: M
                 reload();
               } catch {}
             }}
-            className={`${btn} ${cur === i ? "bg-orange-600" : "bg-white/10"}`}
+            disabled={reveal !== null}
+            className={`${btn} ${reveal === i ? "bg-emerald-600" : cur === i ? "bg-orange-600" : "bg-white/10"} ${reveal !== null && reveal !== i ? "opacity-40" : ""}`}
           >
+            {reveal === i && "✓ "}
             {o}
           </button>
         ))}
       </div>
-      <div className="mt-3 h-5 text-center text-sm text-white/60">{cur !== undefined ? "Vote in ✓ (you can change it)" : ""}</div>
+      {reveal !== null ? (
+        <div className="mt-3 rounded-xl bg-emerald-600/20 p-3 text-sm text-emerald-100">
+          {poll.liveResult ? `What actually happened: ${poll.options[reveal]}` : poll.explain}
+          {!poll.liveResult && cur !== undefined && <div className="mt-1 font-semibold">{cur === reveal ? "You got it ✓" : "Not this time. Now you know!"}</div>}
+        </div>
+      ) : (
+        <div className="mt-3 h-5 text-center text-sm text-white/60">{cur !== undefined ? "Vote in ✓ (you can change it)" : ""}</div>
+      )}
     </Card>
   );
 }
@@ -407,15 +424,16 @@ function Commit({ me, post, reload }: { me: Me; post: PostFn; reload: () => void
 function Badge({ st }: { st: State }) {
   const b = st.badge!;
   return (
-    <div className="space-y-4">
-      <div className="rounded-3xl bg-gradient-to-br from-orange-600 to-rose-700 p-6 text-center">
-        <div className="text-xs uppercase tracking-widest text-white/80">Your AI level · private</div>
-        <div className="mt-2 text-4xl font-black">{b.level || "Not completed"}</div>
-        <div className="mt-4 text-sm text-white/80">Quiz: {b.quiz} / {b.quizOf}</div>
-        <div className="mt-1 text-xs text-white/70">Goal: one level up in 90 days. We&apos;ll repeat this in 60–90 days.</div>
-      </div>
-      {st.hub.phase === "closed" && <Takeaways />}
-    </div>
+    <Passport
+      name={st.me?.name || ""}
+      level={b.level}
+      quiz={b.quiz}
+      quizOf={b.quizOf}
+      commit={st.me?.commit || null}
+      showKit={st.hub.phase === "closed"}
+      deckUrl={st.deckUrl}
+      title={st.session.title}
+    />
   );
 }
 

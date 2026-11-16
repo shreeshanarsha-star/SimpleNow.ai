@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, presenterChannel, type PresenterCommand, type PresenterStatus } from "@/lib/presenter/client";
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { FLYER_PRESETS, POLLS, backupFlyerUrl, quizClock, type FlyerInputs, type HubState } from "@/lib/presenter/content";
+import { FLYER_PRESETS, POLLS, backupFlyerUrl, pollByKey, quizClock, type FlyerInputs, type HubState } from "@/lib/presenter/content";
 
 type Session = { id: string; code: string; title: string };
 
@@ -265,6 +265,14 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
       },
     },
     {
+      label: "Act 2 · HR Wish Wall",
+      hint: "Everyone's 'never again' task on TV; Shree groups them.",
+      run: async () => {
+        send({ type: "intros", on: false });
+        await act({ action: "wishwall" });
+      },
+    },
+    {
       label: "Act 3 · Quiz screen",
       hint: "Then tap Quiz ▶ GO below.",
       run: () => {
@@ -274,15 +282,29 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
     },
     { label: "Act 4 · The Mirror", hint: "20-question self-assessment on phones.", run: () => phase("assessment") },
     { label: "Act 5 · The Story (slides)", hint: "Shree presents. Polls 1 and 2 buttons below.", run: () => send({ type: "present" }) },
+    { label: "Act 5 · AI, HI or Notepad? game", hint: "3 quick votes. Tap Reveal answer, then game-2, game-3 below.", run: () => phase("poll", { poll: "game-1" }) },
     { label: "Act 5 · Debate", hint: "Two sides vote on phones; Shree moderates.", run: () => phase("poll", { poll: "debate" }) },
     { label: "Act 6 · The Build", hint: "Fill the flyer inputs below, tap Start build.", run: () => send({ type: "layout", layout: "twin" }) },
+    { label: "Act 7 · Prediction poll", hint: "Phones predict your agent demo. Then Next act.", run: () => phase("poll", { poll: "predict" }) },
     { label: "Act 7 · Over to you", hint: "Shree pauses; switch HDMI.", run: () => send({ type: "layout", layout: "handover" }) },
     { label: "Act 6½ · Welcome back + reveal", hint: "Shree returns; tap Reveal app below.", run: () => send({ type: "resume" }) },
+    { label: "Act 6½ · Prediction result", hint: "Tap what actually happened (buttons below).", run: () => phase("poll", { poll: "predict" }) },
     { label: "Act 6½ · Score the app", hint: "Fact poll (then Value, ROI buttons).", run: () => phase("poll", { poll: "check-fact" }) },
     { label: "Act 8 · Ask anything", hint: "Q&A list on TV; 'Shree answers' below.", run: () => phase("questions") },
     { label: "Act 9 · Finale", hint: "Tap 'Finale next' for 3rd, 2nd, winner, levels.", run: () => phase("finale") },
     { label: "Act 9 · After poll", hint: "Same question as the start.", run: () => phase("poll", { poll: "after" }) },
     { label: "Act 9 · Commitments", hint: "Pledge on TV, commitments on phones.", run: () => phase("commit") },
+    {
+      label: "Act 9 · Ask Shree",
+      hint: "Ask out loud: 'Shree, what's the one thing you want them to remember?'",
+      run: () => {
+        send({ type: "layout", layout: "twin" });
+        send({
+          type: "direct",
+          text: "Shreesha asks you: after 75 minutes with our P&C team, what is the one thing you want them to remember? Answer in your own words in 3 to 5 warm, memorable sentences (you don't need to be a tech expert; spot the problem, ask better questions, check the answer; use AI where it creates value, human judgement where it matters, a notepad when that's enough), ending with: AI, HI or notepad: what matters is ROI. Then say the last word belongs to Shreesha.",
+        });
+      },
+    },
     { label: "Thank you", hint: "Your last word.", run: () => phase("closed") },
   ];
   // Snap or "Hey Shree" brought him in: move the stepper on without re-running the step.
@@ -369,6 +391,24 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
         <button className={`${b} ${on(hub?.phase === "questions")}`} onClick={() => act({ action: "phase", phase: "questions" })}>Q&A list</button>
         <button className={`${b} ${on(hub?.phase === "commit")}`} onClick={() => act({ action: "phase", phase: "commit" })}>Commit</button>
       </div>
+
+      {hub?.phase === "poll" && pollByKey(hub.poll)?.best !== undefined && (
+        <button className={`${b} w-full bg-emerald-700`} onClick={() => act({ action: "poll-reveal", best: pollByKey(hub.poll)!.best })}>
+          {typeof hub.pollReveal === "number" ? "Answer revealed ✓" : "Reveal answer"}
+        </button>
+      )}
+      {hub?.phase === "poll" && pollByKey(hub.poll)?.liveResult && (
+        <div className="space-y-1">
+          <div className="text-xs text-white/50">After the demo, tap what actually happened:</div>
+          <div className="grid grid-cols-3 gap-2">
+            {pollByKey(hub.poll)!.options.map((o, i) => (
+              <button key={i} className={`${b} py-2 text-xs ${hub.pollReveal === i ? "bg-emerald-700" : "bg-neutral-700"}`} onClick={() => act({ action: "poll-reveal", best: i })}>
+                {o}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-4 gap-2">
         {POLLS.map((p) => (

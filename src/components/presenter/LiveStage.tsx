@@ -44,12 +44,14 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   const montageDone = useRef<(() => void) | null>(null);
   const [buildText, setBuildText] = useState("");
   const building = useRef(false);
-  const hubRef = useRef<{ hub: HubState; board: Board | null; offset: number; lastQuizNote: number; lastFinale: number }>({
+  const hubRef = useRef<{ hub: HubState; board: Board | null; offset: number; lastQuizNote: number; lastFinale: number; lastReveal: string; lastWish: string }>({
     hub: DEFAULT_HUB,
     board: null,
     offset: 0,
     lastQuizNote: -1,
     lastFinale: 0,
+    lastReveal: "",
+    lastWish: "",
   });
 
   const anamRef = useRef<AnamClient | null>(null);
@@ -225,7 +227,14 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       try {
         await drawSlide(idx);
         const [text, nextA, nextB] = await Promise.all([slideText(idx), slideText(idx + 1), slideText(idx + 2)]);
-        const say = await director({ mode: "slide", slideIdx: idx, slideText: text, nextSlidesText: `${nextA}\n---\n${nextB}` });
+        // No dead air between slides: a short transition if the next line takes a moment.
+        const bridge = setTimeout(() => {
+          if (gen === s.current.gen && anamRef.current && !s.current.speaking) {
+            const lines = ["Right, moving on.", "Okay, next one.", "Now, here's where it gets interesting.", "Let's keep going.", "Alright, next."];
+            anamRef.current.talk(lines[(idx * 7) % lines.length]).catch(() => {});
+          }
+        }, 2500);
+        const say = await director({ mode: "slide", slideIdx: idx, slideText: text, nextSlidesText: `${nextA}\n---\n${nextB}` }).finally(() => clearTimeout(bridge));
         if (gen !== s.current.gen) return; // superseded
         setNote("");
         await speak(say, () => {
@@ -327,6 +336,36 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             ? `The quiz just ended. Room got about ${pct}% right overall. One or two short sentences: scores are locked, the winner is revealed at the finale. Name nobody.`
             : `Quiz checkpoint after question ${checkpoint + 1} of 30. The room got about ${pct}% of the last five right. Make ONE short, witty sentence (under 15 words) to keep energy up. Don't read questions or answers. Name nobody. The next question starts in 2 seconds.`;
         speak(await director({ mode: "free", instruction }).catch(() => "[SILENT]"));
+      }
+    }
+    // Game / prediction reveal.
+    if (h.hub.phase === "poll" && typeof h.hub.pollReveal === "number" && h.hub.poll) {
+      const key = `${h.hub.poll}:${h.hub.pollReveal}`;
+      const p = pollByKey(h.hub.poll);
+      if (p && key !== h.lastReveal) {
+        h.lastReveal = key;
+        const counts = h.board?.polls[p.key] || [];
+        const votes = p.options.map((o, i) => `${o} = ${counts[i] || 0}`).join("; ");
+        const instruction = p.liveResult
+          ? `Reveal the prediction result. The room predicted: ${votes}. What actually happened in Shreesha's demo: "${p.options[h.hub.pollReveal]}". In 2 or 3 sentences, react to how the room guessed, then land the lesson: an agent can only act within the information, tools, access and permissions it has; intelligence doesn't grant access. Name nobody.`
+          : `Reveal the answer to "${p.q}". Votes: ${votes}. Best answer: "${p.options[h.hub.pollReveal]}". Why: ${p.explain}. In 2 short sentences, react to the vote with light humour and explain why, ending with the idea that AI, HI or notepad: what matters is ROI. Name nobody.`;
+        cue("correct");
+        speak(await director({ mode: "free", instruction }).catch(() => "[SILENT]"));
+        return;
+      }
+    }
+    if (h.hub.phase === "wishwall" && h.hub.wishGroups?.length) {
+      const key = JSON.stringify(h.hub.wishGroups.map((g) => g.label));
+      if (key !== h.lastWish) {
+        h.lastWish = key;
+        const themes = h.hub.wishGroups.map((g) => `${g.label} (${g.items.length})`).join(", ");
+        speak(
+          await director({
+            mode: "free",
+            instruction: `The HR Wish Wall is on screen, grouped into themes: ${themes}. In 2 or 3 short sentences: note that different roles share very similar frustrations, with light humour, then say: maybe our first AI opportunity isn't replacing anyone, it's removing some of this repetitive work. Name nobody.`,
+          }).catch(() => "[SILENT]")
+        );
+        return;
       }
     }
     if (h.hub.phase !== "finale") {

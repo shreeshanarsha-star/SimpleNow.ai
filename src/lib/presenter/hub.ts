@@ -52,11 +52,11 @@ type Resp = { attendee_id: string; kind: string; item_key: string; value: Record
 export async function buildBoard(sessionId: string) {
   const sb = db();
   const [{ data: att }, { data: resp }, { data: qs }] = await Promise.all([
-    sb.from("presenter_attendees").select("id, display_name, intro, created_at").eq("session_id", sessionId).order("created_at"),
+    sb.from("presenter_attendees").select("id, display_name, intro, data, created_at").eq("session_id", sessionId).order("created_at"),
     sb.from("presenter_responses").select("attendee_id, kind, item_key, value, ms").eq("session_id", sessionId).limit(5000),
     sb.from("presenter_questions").select("id, text, answer, votes, status, created_at").eq("session_id", sessionId).order("votes", { ascending: false }).order("created_at").limit(100),
   ]);
-  const attendees = (att || []) as Array<{ id: string; display_name: string; intro: string | null }>;
+  const attendees = (att || []) as Array<{ id: string; display_name: string; intro: string | null; data: Record<string, unknown> | null }>;
   const responses = (resp || []) as Resp[];
   const nameOf = new Map(attendees.map((a) => [a.id, a.display_name]));
 
@@ -110,7 +110,9 @@ export async function buildBoard(sessionId: string) {
     .filter(Boolean);
 
   return {
-    attendees: attendees.map((a) => ({ name: a.display_name, intro: a.intro })),
+    attendees: attendees.map((a) => ({ name: a.display_name, intro: a.intro, spoken: ((a.data || {}).spokenIntro as string) || null })),
+    // Wish Wall: each person's "task I'd never do again" (spoken beats phone), no names.
+    wishes: attendees.map((a) => (((a.data || {}).spokenIntro as string) || a.intro || "").trim()).filter(Boolean),
     quiz: { perQuestion, leaderboard: leaderboard.slice(0, 10), players: quizScore.size },
     assessment: { started: assess.size, completed: completed.length, levelCounts },
     polls,

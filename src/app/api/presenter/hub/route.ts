@@ -54,10 +54,22 @@ export async function GET(req: Request) {
 
   return json({
     session: { title: session.title, code: session.code },
-    hub: { phase: hub.phase, quiz: hub.quiz || null, poll: hub.poll || null, finaleStep: hub.finaleStep || 0, flyerUrl: hub.flyerUrl || null },
+    hub: {
+      phase: hub.phase,
+      quiz: hub.quiz || null,
+      poll: hub.poll || null,
+      pollReveal: typeof hub.pollReveal === "number" ? hub.pollReveal : null,
+      finaleStep: hub.finaleStep || 0,
+      flyerUrl: hub.flyerUrl || null,
+    },
     me: me ? { name: me.display_name, ...mine } : null,
     badge,
     myQuestions,
+    // Slides PDF for the take-home kit, only once the session has closed.
+    deckUrl:
+      hub.phase === "closed" && me
+        ? (await sb.storage.from("presenter").createSignedUrl(`${session.id}/deck.pdf`, 60 * 60 * 24 * 7)).data?.signedUrl || null
+        : null,
     serverNow: Date.now(),
   });
 }

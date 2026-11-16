@@ -95,7 +95,17 @@ export function levelFor(score: number) {
 
 /* ------------------------------ Polls (DRAFT) ------------------------------ */
 // DRAFT by Claude for Shreesha's approval (open item 4).
-export type Poll = { key: string; label: string; q: string; options: string[] };
+export type Poll = {
+  key: string;
+  label: string;
+  q: string;
+  options: string[];
+  /** Games: index of the best answer, revealed with a one-line why. */
+  best?: number;
+  explain?: string;
+  /** Prediction: the real outcome is chosen live by Shreesha. */
+  liveResult?: boolean;
+};
 export const POLLS: Poll[] = [
   { key: "before", label: "Before poll", q: "How confident are you using AI in your daily work?", options: ["Not yet", "A little", "Fairly", "Very"] },
   { key: "poll1", label: "Poll 1 · Reality check", q: "Has AI saved you real time this month, after checking its work?", options: ["Yes, a lot", "A little", "Not really", "I don't use it yet"] },
@@ -104,17 +114,54 @@ export const POLLS: Poll[] = [
   { key: "check-fact", label: "App check · Fact", q: "Fact check: are the event details, logo and colours right?", options: ["👍 Yes", "👌 Mostly", "👎 No"] },
   { key: "check-value", label: "App check · Value", q: "Value: is it better than what we'd make in Canva or Word?", options: ["👍 Yes", "👌 About the same", "👎 No"] },
   { key: "check-roi", label: "App check · ROI", q: "ROI: did it save time, once checking is included?", options: ["👍 Yes", "👌 Not sure", "👎 No"] },
+  // AI, HI or notepad? (DRAFT, needs approval): the core message as a game.
+  {
+    key: "game-1",
+    label: "AI, HI or Notepad? · 1",
+    q: "An employee asks for their exact leave entitlement under company policy. Best way to answer?",
+    options: ["Ask a free chatbot", "Approved policy hub + HR checks it", "Notepad", "An agent that approves leave by itself"],
+    best: 1,
+    explain: "AI retrieves from the approved policy, HR validates. Fast and correct.",
+  },
+  {
+    key: "game-2",
+    label: "AI, HI or Notepad? · 2",
+    q: "Writing to an employee who just lost a parent. Best way to write it?",
+    options: ["AI writes it", "HI: your own words (AI can help structure)", "Notepad", "An agent sends it"],
+    best: 1,
+    explain: "Empathy and judgement are human work. The words should be yours.",
+  },
+  {
+    key: "game-3",
+    label: "AI, HI or Notepad? · 3",
+    q: "Jotting three action points in a 10-minute team huddle. Best tool?",
+    options: ["An AI meeting agent", "A long AI summary", "Notepad", "Ask HR to minute it"],
+    best: 2,
+    explain: "Fast, free and private. Not everything needs AI: that's ROI thinking.",
+  },
+  // Before Shreesha's live agent demo (DRAFT): the result is set live after the demo.
+  {
+    key: "predict",
+    label: "Prediction · the agent demo",
+    q: "Shreesha's AI agent will try a real HR task. What will happen?",
+    options: ["It completes it on its own", "It completes it with human help", "It gets blocked"],
+    liveResult: true,
+  },
   { key: "after", label: "After poll", q: "How confident are you using AI in your daily work?", options: ["Not yet", "A little", "Fairly", "Very"] },
 ];
 export const pollByKey = (k?: string | null) => POLLS.find((p) => p.key === k);
 
 /* ------------------------------ Hub state ------------------------------ */
-export type HubPhase = "lobby" | "quiz" | "assessment" | "poll" | "questions" | "build" | "flyer" | "commit" | "finale" | "closed";
+export type HubPhase = "lobby" | "wishwall" | "quiz" | "assessment" | "poll" | "questions" | "build" | "flyer" | "commit" | "finale" | "closed";
 export type HubState = {
   phase: HubPhase;
   quiz?: QuizState | null;
   poll?: string | null; // poll key while phase === "poll"
   finaleStep?: number; // 0 nothing · 1 third · 2 second · 3 winner · 4 levels · 5 before vs after
+  /** Game / prediction: the revealed answer index (null = not revealed). */
+  pollReveal?: number | null;
+  /** HR Wish Wall: tasks grouped by theme. */
+  wishGroups?: Array<{ label: string; items: string[] }> | null;
   flyerUrl?: string | null;
   flyerBuild?: FlyerBuild | null;
   at?: number;
@@ -140,4 +187,55 @@ export const PHONE_TAKEAWAYS = [
   "AI, HI or notepad: what matters is ROI.",
   "Never paste employee data into personal AI tools.",
   "Start small: one assistant, one design tool, one automation.",
+];
+
+/* ------------------------------ Take-home kit ------------------------------ */
+export const NEXT_STEP: Record<string, string> = {
+  Explorer: "Use AI every week for one real task, and run the 3 checks on every output.",
+  Practitioner: "Turn one task you repeat into a saved prompt or project you reuse.",
+  Builder: "Automate one repeatable workflow, with a human check before anything goes out.",
+  "Agent Creator": "Design one bounded agent: clear goal, limited permissions, human approval step.",
+};
+
+// From deck slide 13 ("Pick the tool by the task"). Vendor pricing pages are the source; they change often.
+export const TOOL_BY_TASK = [
+  { task: "Writing, documents, emails", tools: "Claude · ChatGPT" },
+  { task: "Presentations", tools: "Gamma · Claude · ChatGPT" },
+  { task: "Flyers and design", tools: "Canva" },
+  { task: "Excel and data", tools: "Microsoft 365 Copilot · ChatGPT" },
+  { task: "Research with sources", tools: "Perplexity · NotebookLM" },
+  { task: "Meeting notes", tools: "Fireflies · Otter" },
+  { task: "Websites, apps, dashboards", tools: "Claude · Lovable · Replit" },
+  { task: "Workflow agents", tools: "Copilot Studio · n8n · Zapier" },
+];
+
+// From deck slide 16 ("Use AI, protect people's data").
+export const SAFETY = {
+  do: [
+    "Use company-approved accounts",
+    "Turn off 'train on my data' on any personal account",
+    "Use aggregate or synthetic data where you can",
+    "Check AI output before it leaves the team",
+    "Ask IT when unsure",
+  ],
+  dont: [
+    "Paste employee data, salaries, CVs or customer lists into personal tools",
+    "Assume removing names makes data anonymous: employee codes are identifiers too",
+    "Let an agent send external emails or payments without approval",
+    "Trust a citation you haven't opened",
+  ],
+};
+
+// DRAFT for Shreesha's approval: 10 starter prompts (placeholders in [brackets]).
+export const HR_PROMPTS = [
+  { title: "Job description", prompt: "You are an HR recruiter at a nutraceutical and animal-health company. Draft a job description for [role]: purpose, 6 key responsibilities, must-have and nice-to-have skills, and a 2-line company intro. Mark anything you're unsure of as [TO CONFIRM]." },
+  { title: "Employee announcement", prompt: "Write a warm, clear 120-word announcement to all employees about [event or policy]. Include what, when, who it affects and who to contact. Mark gaps as [TO CONFIRM]." },
+  { title: "Policy answer with source", prompt: "Using only the approved policy I've attached, answer: [question]. Quote the exact section and page. If the policy doesn't cover it, say so instead of guessing." },
+  { title: "Interview questions", prompt: "Create 8 competency-based interview questions for [role], each with what a strong answer and a weak answer sound like." },
+  { title: "Offer letter template", prompt: "Draft an offer letter template for [role] with placeholders for [CTC], [joining date], [location] and [reporting manager]. Don't invent any numbers." },
+  { title: "Spot trends in a tracker", prompt: "This is an anonymised [attrition / hiring] table. Find the 3 biggest trends, flag any odd numbers, and suggest one chart for each. Show your working so I can check the totals." },
+  { title: "Summarise feedback", prompt: "Summarise these anonymised survey comments into 5 themes, with one example comment and one suggested action for each." },
+  { title: "Meeting minutes", prompt: "Turn these rough notes into minutes: decisions made, action items with owner and due date, and open questions." },
+  { title: "Make an email clearer", prompt: "Rewrite this email to be shorter, clearer and kind. Keep every fact. Then list what you changed." },
+  { title: "Onboarding plan", prompt: "Create a 4-week onboarding plan for a new [role]: week by week, with owners, checkpoints and the one thing they should be able to do by the end of each week." },
 ];

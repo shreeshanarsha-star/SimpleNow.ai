@@ -6,7 +6,8 @@ import QRCode from "qrcode";
 import { ASSESSMENT, QUIZ, pollByKey, quizClock, type HubState } from "@/lib/presenter/content";
 
 export type Board = {
-  attendees: Array<{ name: string; intro: string | null }>;
+  attendees: Array<{ name: string; intro: string | null; spoken?: string | null }>;
+  wishes?: string[];
   quiz: { perQuestion: Array<{ answered: number; correct: number; counts: number[] }>; leaderboard: Array<{ name: string; correct: number; ms: number }>; players: number };
   assessment: { started: number; completed: number; levelCounts: Array<{ name: string; line: string; count: number }> };
   polls: Record<string, number[]>;
@@ -79,6 +80,43 @@ export default function HubScreen({
         {joinBox()}
       </div>
     );
+
+  /* ------------------------------ HR wish wall ------------------------------ */
+  if (hub.phase === "wishwall") {
+    const wishes = board?.wishes || [];
+    const groups = hub.wishGroups;
+    const COLORS = ["bg-orange-600/80", "bg-sky-600/80", "bg-emerald-600/80", "bg-fuchsia-600/80", "bg-amber-500/80", "bg-rose-600/80"];
+    return (
+      <div className="flex h-full flex-col px-[3vw] py-[2vw]">
+        <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Act 2 · Meet the cast</div>
+        <div className="mt-1 text-[3.6vw] font-black leading-none">The HR Wish Wall</div>
+        <div className="mt-1 text-[1.4vw] text-white/60">Tasks we wish we never had to do again{groups ? ", grouped by Shree" : ""}</div>
+        {wishes.length === 0 && <div className="mt-[3vw] text-[2vw] text-white/50">Waiting for intros…</div>}
+        {groups ? (
+          <div className="mt-[2vw] grid flex-1 auto-rows-min grid-cols-2 gap-[1.4vw]">
+            {groups.map((g, gi) => (
+              <div key={gi} className="rounded-3xl bg-white/[0.06] p-[1.2vw]">
+                <div className={`inline-block rounded-full px-[1vw] py-[0.3vw] text-[1.3vw] font-bold ${COLORS[gi % COLORS.length]}`}>{g.label}</div>
+                <div className="mt-[0.8vw] flex flex-wrap gap-[0.6vw]">
+                  {g.items.map((t, ti) => (
+                    <span key={ti} className="rounded-xl bg-white/10 px-[0.9vw] py-[0.4vw] text-[1.2vw]">{t}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-[2vw] flex flex-1 flex-wrap content-start gap-[1vw]">
+            {wishes.map((t, i) => (
+              <span key={i} className={`rounded-2xl px-[1.2vw] py-[0.8vw] text-[1.6vw] font-semibold ${COLORS[i % COLORS.length]}`} style={{ transform: `rotate(${((i * 37) % 7) - 3}deg)` }}>
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   /* ------------------------------ quiz ------------------------------ */
   if (hub.phase === "quiz") {
@@ -164,6 +202,7 @@ export default function HubScreen({
     const poll = pollByKey(hub.poll);
     const counts = (poll && board?.polls[poll.key]) || [];
     const total = counts.reduce((a, b) => a + b, 0);
+    const reveal = typeof hub.pollReveal === "number" ? hub.pollReveal : null;
     return (
       <div className="flex h-full flex-col px-[3vw] py-[2.5vw]">
         <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">{poll?.label}</div>
@@ -172,9 +211,12 @@ export default function HubScreen({
           {poll?.options.map((o, i) => {
             const pct = total ? Math.round((counts[i] / total) * 100) : 0;
             return (
-              <div key={i}>
+              <div key={i} className={`transition-opacity duration-500 ${reveal !== null && reveal !== i ? "opacity-35" : ""}`}>
                 <div className="mb-1 flex justify-between text-[1.8vw]">
-                  <span>{o}</span>
+                  <span className={reveal === i ? "font-bold text-emerald-300" : ""}>
+                    {reveal === i && "✓ "}
+                    {o}
+                  </span>
                   <span className="text-white/60">{counts[i] || 0} · {pct}%</span>
                 </div>
                 <div className="h-[2.4vw] overflow-hidden rounded-full bg-white/10">
@@ -184,6 +226,11 @@ export default function HubScreen({
             );
           })}
         </div>
+        {reveal !== null && (
+          <div className="mb-[1.5vw] rounded-2xl bg-emerald-600/20 px-[1.6vw] py-[1vw] text-[1.8vw] text-emerald-100">
+            {poll?.liveResult ? `What actually happened: ${poll.options[reveal]}` : poll?.explain}
+          </div>
+        )}
         <div className="flex items-end justify-between">
           <div className="text-[1.4vw] text-white/50">{total} votes</div>
           {joinBox(true)}
@@ -237,6 +284,14 @@ export default function HubScreen({
             ))}
           </div>
         )}
+        <div className="mt-[1.2vw] grid grid-cols-6 gap-[0.6vw]">
+          {buildMilestones(buildText, b?.status).map((m) => (
+            <div key={m.label} className={`rounded-xl px-[0.8vw] py-[0.6vw] text-[1vw] transition-colors ${m.done ? "bg-emerald-600/80 text-white" : "bg-white/5 text-white/40"}`}>
+              {m.done ? "✓ " : "○ "}
+              {m.label}
+            </div>
+          ))}
+        </div>
         <pre className="mt-[1.2vw] flex-1 overflow-hidden whitespace-pre-wrap break-all rounded-2xl bg-[#0b1220] p-[1.2vw] font-mono text-[0.85vw] leading-snug text-emerald-300/90">
           {tail || "Sending the instruction to the AI…"}
         </pre>
@@ -376,4 +431,17 @@ export default function HubScreen({
 
 function Center({ children }: { children: React.ReactNode }) {
   return <div className="flex h-full flex-col items-center justify-center gap-[1.5vw] text-center">{children}</div>;
+}
+
+/** Milestones read from the code actually being written, so the screen never over-claims. */
+function buildMilestones(code: string, status?: string) {
+  const c = code.toLowerCase();
+  return [
+    { label: "Read the 4 inputs", done: c.length > 0 },
+    { label: "App structure", done: c.includes("<body") || c.includes("<form") },
+    { label: "Three layouts", done: c.includes("celebration") && c.includes("minimal") },
+    { label: "Live preview", done: c.includes("getcontext") || c.includes("<canvas") },
+    { label: "Download & share", done: (c.includes("toblob") || c.includes("todataurl")) && c.includes("share") },
+    { label: "Built & saved", done: status === "ready" },
+  ];
 }
