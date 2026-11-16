@@ -23,7 +23,8 @@ export function getModel() {
 async function chatCompletion(
   messages: unknown[],
   maxTokens: number,
-  timeoutMs: number
+  timeoutMs: number,
+  model?: string
 ): Promise<string> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is not set on the server.");
@@ -41,7 +42,7 @@ async function chatCompletion(
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: getModel(),
+        model: model || getModel(),
         max_tokens: maxTokens,
         messages,
       }),
@@ -73,9 +74,10 @@ async function chatCompletion(
 export async function callTextModel(
   prompt: string,
   maxTokens: number,
-  timeoutMs: number = AI_TIMEOUT_MS
+  timeoutMs: number = AI_TIMEOUT_MS,
+  model?: string
 ): Promise<string> {
-  return chatCompletion([{ role: "user", content: prompt }], maxTokens, timeoutMs);
+  return chatCompletion([{ role: "user", content: prompt }], maxTokens, timeoutMs, model);
 }
 
 // Multimodal call for image understanding (Jotz.ai's business card /

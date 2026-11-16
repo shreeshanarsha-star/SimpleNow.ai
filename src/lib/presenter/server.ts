@@ -202,7 +202,8 @@ export async function runDirector(input: DirectorInput): Promise<{ say: string; 
     }
   }
   if (hasAiKey()) {
-    const text = await callTextModel(`${TWIN_FRAMEWORK}\n\n${prompt}`, maxTokens, 20_000);
+    // Presenter-only fallback model (stronger than the site default); the rest of SimpleNow is unchanged.
+    const text = await callTextModel(`${TWIN_FRAMEWORK}\n\n${prompt}`, maxTokens, 20_000, process.env.PRESENTER_FALLBACK_MODEL || "gpt-4o");
     return { say: clean(text), provider: "openai" };
   }
   throw new Error("No AI key configured for the Director.");

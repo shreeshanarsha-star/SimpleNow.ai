@@ -65,6 +65,7 @@ export default function HubScreen({
     return (
       <div className="flex h-full items-center gap-[4vw] px-[3vw]">
         <div className="flex-1">
+          <img src="/flyer/nrpl-logo.png" alt="Natural Remedies" className="mb-[2vw] w-[9vw] rounded-xl bg-white p-[0.6vw]" />
           <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Tonight</div>
           <div className="mt-2 text-[5vw] font-black leading-none">{title}</div>
           <div className="mt-4 text-[1.8vw] text-white/60">Scan to join. Quiz, polls and questions happen on your phone.</div>

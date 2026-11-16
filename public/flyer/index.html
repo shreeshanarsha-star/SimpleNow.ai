@@ -108,7 +108,7 @@
   const canvas = $("flyer"), ctx = canvas.getContext("2d");
   const fields = ["name", "date", "venue", "h1", "h2", "h3", "org"];
   const DEFAULTS = { name: "", date: "", venue: "", h1: "", h2: "", h3: "", org: "" };
-  let layout = "corporate", logoImg = null, touched = false;
+  let layout = "corporate", logoImg = null, defaultLogo = null, touched = false;
 
   // Prefill from the URL (the presenter passes the room's 4 inputs).
   const q = new URLSearchParams(location.search);
@@ -187,7 +187,7 @@
   /* ---------------- layouts ---------------- */
   function corporate(d) {
     ctx.fillStyle = C.white; ctx.fillRect(0, 0, W, H);
-    drawBrand(80, 70, 340, 110);
+    drawBrand(80, 50, 340, logoImg ? 160 : 110);
     ctx.fillStyle = C.blue; ctx.fillRect(0, 230, W, 8);
     ctx.fillStyle = C.green; ctx.fillRect(0, 238, 360, 8);
     ctx.fillStyle = C.orange; ctx.fillRect(360, 238, 360, 8);
@@ -224,8 +224,13 @@
     ctx.beginPath(); ctx.arc(0, H, 200, 0, Math.PI * 2); ctx.fillStyle = C.blue; ctx.fill();
     dots.forEach(([x, y, r, c]) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = c; ctx.fill(); });
     // white logo plate (logo only on white)
-    roundRect(W / 2 - 230, 60, 460, 140, 70, C.white);
-    drawBrand(W / 2, 92, 380, 80, "center");
+    if (logoImg) {
+      roundRect(W / 2 - 140, 30, 280, 220, 40, C.white);
+      drawBrand(W / 2, 45, 240, 185, "center");
+    } else {
+      roundRect(W / 2 - 230, 60, 460, 140, 70, C.white);
+      drawBrand(W / 2, 92, 380, 80, "center");
+    }
     ctx.font = `900 34px ${FONT}`; ctx.fillStyle = C.orange; ctx.textAlign = "center"; ctx.fillText("YOU'RE INVITED!", W / 2, 260);
     let y = drawLines(fit(d.name, W - 220, 104, 46, 3, 900), W / 2, 320, C.blue, 900, 1.06, "center") + 36;
     const pill = (text, color, yy) => {
@@ -247,7 +252,7 @@
 
   function minimal(d) {
     ctx.fillStyle = C.white; ctx.fillRect(0, 0, W, H);
-    drawBrand(110, 110, 300, 90);
+    drawBrand(110, 90, 300, logoImg ? 170 : 90);
     ctx.fillStyle = C.blue; ctx.fillRect(110, 300, 90, 6);
     let y = drawLines(fit(d.name, W - 220, 88, 40, 4, 700), 110, 350, C.ink, 700, 1.1) + 60;
     y = drawLines(fit(d.date, W - 220, 38, 24, 2, 400), 110, y, C.blue, 500, 1.25) + 8;
@@ -310,7 +315,16 @@
     img.onerror = () => toast("That image couldn't be read. Try a PNG or JPG.");
     img.src = URL.createObjectURL(f);
   });
-  $("logo-clear").addEventListener("click", () => { logoImg = null; $("logo").value = ""; $("logo-name").textContent = 'None: the text "Natural Remedies" is shown'; $("logo-clear").style.display = "none"; render(); });
+  const DEFAULT_LOGO_LABEL = "Natural Remedies logo (default)";
+  $("logo-clear").addEventListener("click", () => {
+    logoImg = defaultLogo; $("logo").value = "";
+    $("logo-name").textContent = defaultLogo ? DEFAULT_LOGO_LABEL : 'None: the text "Natural Remedies" is shown';
+    $("logo-clear").style.display = "none"; render();
+  });
+  // The official logo ships with the app; an uploaded logo replaces it.
+  const dl = new Image();
+  dl.onload = () => { defaultLogo = dl; if (!logoImg) { logoImg = dl; $("logo-name").textContent = DEFAULT_LOGO_LABEL; render(); } };
+  dl.src = "nrpl-logo.png";
 
   $("download").addEventListener("click", async () => {
     touched = true;

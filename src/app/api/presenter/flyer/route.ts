@@ -26,7 +26,7 @@ Goal: let an NRPL employee create a professional internal event flyer by enterin
 2. Branding
 - Natural Remedies colours: blue #0066B3, green #6AA132, orange #F26522, yellow #FBB116, on a white background.
 - Roboto font (Google Fonts), with a clean sans-serif fallback.
-- Use the uploaded logo, on white only. Never draw or recreate the logo; if none is uploaded, show the text "Natural Remedies".
+- Official logo: load it by default from https://www.simplenow.ai/flyer/nrpl-logo.png (set img.crossOrigin = "anonymous" BEFORE setting src, so the canvas can still export a PNG). An uploaded logo replaces it. Place the logo on white only, about 150 to 200 px tall on the canvas. Never draw or recreate the logo; if it fails to load, show the text "Natural Remedies".
 - Good contrast; all text readable.
 
 3. Three layouts, selectable, and the preview updates instantly: Corporate (clean, formal, structured), Celebration (colourful and energetic), Minimal (generous white space).
