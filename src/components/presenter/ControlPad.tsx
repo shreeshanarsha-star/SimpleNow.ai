@@ -241,8 +241,64 @@ function HubControls({ sessionId, send }: { sessionId: string; send: (c: Present
   const on = (cond: boolean) => (cond ? "bg-orange-600" : "bg-neutral-800");
   const clock = hub?.phase === "quiz" ? quizClock(hub.quiz, now) : null;
 
+  /* ---------- Run of show: one button walks the 9 acts in order ---------- */
+  const [actIdx, setActIdx] = useState(() => {
+    try {
+      return Number(localStorage.getItem(`presenter-act-${sessionId}`) || 0);
+    } catch {
+      return 0;
+    }
+  });
+  const phase = (p: string, extra: Record<string, unknown> = {}) => act({ action: "phase", phase: p, ...extra });
+  const ACTS: Array<{ label: string; hint: string; run: () => Promise<void> | void }> = [
+    { label: "Lobby", hint: "Title + QR on TV. People join on phones.", run: () => phase("lobby") },
+    { label: "Act 1 · Dark for the snap", hint: "You open (60–90 s), then snap.", run: () => send({ type: "standby" }) },
+    { label: "Act 1 · Shree enters", hint: "Twin appears and opens the show.", run: () => send({ type: "start" }) },
+    { label: "Act 1 · Before poll", hint: "Confidence poll on phones.", run: () => phase("poll", { poll: "before" }) },
+    {
+      label: "Act 2 · Meet the cast",
+      hint: "Intros, 30 s each. Shree reacts by name.",
+      run: () => {
+        send({ type: "layout", layout: "twin" });
+        send({ type: "direct", text: "Start the introductions: invite each person, one at a time, to say their name and one task they wish they never had to do again. Keep each to about 30 seconds and react briefly and warmly by name. Begin now by inviting the first volunteer." });
+      },
+    },
+    { label: "Act 3 · Quiz screen", hint: "Then tap Quiz ▶ GO below.", run: () => phase("quiz") },
+    { label: "Act 4 · The Mirror", hint: "20-question self-assessment on phones.", run: () => phase("assessment") },
+    { label: "Act 5 · The Story (slides)", hint: "Shree presents. Polls 1 and 2 buttons below.", run: () => send({ type: "present" }) },
+    { label: "Act 5 · Debate", hint: "Two sides vote on phones; Shree moderates.", run: () => phase("poll", { poll: "debate" }) },
+    { label: "Act 6 · The Build", hint: "Fill the flyer inputs below, tap Start build.", run: () => send({ type: "layout", layout: "twin" }) },
+    { label: "Act 7 · Over to you", hint: "Shree pauses; switch HDMI.", run: () => send({ type: "layout", layout: "handover" }) },
+    { label: "Act 6½ · Welcome back + reveal", hint: "Shree returns; tap Reveal app below.", run: () => send({ type: "resume" }) },
+    { label: "Act 6½ · Score the app", hint: "Fact poll (then Value, ROI buttons).", run: () => phase("poll", { poll: "check-fact" }) },
+    { label: "Act 8 · Ask anything", hint: "Q&A list on TV; 'Shree answers' below.", run: () => phase("questions") },
+    { label: "Act 9 · Finale", hint: "Tap 'Finale next' for 3rd, 2nd, winner, levels.", run: () => phase("finale") },
+    { label: "Act 9 · After poll", hint: "Same question as the start.", run: () => phase("poll", { poll: "after" }) },
+    { label: "Act 9 · Commitments", hint: "Pledge on TV, commitments on phones.", run: () => phase("commit") },
+    { label: "Thank you", hint: "Your last word.", run: () => phase("closed") },
+  ];
+  const goAct = async (i: number) => {
+    const n = Math.max(0, Math.min(ACTS.length - 1, i));
+    setActIdx(n);
+    try {
+      localStorage.setItem(`presenter-act-${sessionId}`, String(n));
+    } catch {}
+    await ACTS[n].run();
+  };
+
   return (
     <div className="rounded-xl bg-neutral-900 p-3 space-y-3">
+      <div className="rounded-xl bg-neutral-800 p-3">
+        <div className="text-[11px] uppercase tracking-wider text-white/50">Run of show · step {actIdx + 1}/{ACTS.length}</div>
+        <div className="mt-1 text-base font-bold">{ACTS[actIdx]?.label}</div>
+        <div className="text-xs text-white/60">{ACTS[actIdx]?.hint}</div>
+        {actIdx + 1 < ACTS.length && <div className="mt-1 text-xs text-white/40">Next: {ACTS[actIdx + 1].label}</div>}
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <button className={`${b} bg-neutral-700`} onClick={() => goAct(actIdx - 1)}>◀ Back</button>
+          <button className={`${b} bg-neutral-700`} onClick={() => goAct(actIdx)}>Redo</button>
+          <button className={`${b} bg-orange-600 text-base`} onClick={() => goAct(actIdx + 1)}>Next act ▶</button>
+        </div>
+      </div>
       <div className="flex items-center justify-between text-sm">
         <b>Audience hub {code && <span className="text-white/50">· /p/{code}</span>}</b>
         <span className="text-white/60">{board?.attendees.length || 0} joined</span>

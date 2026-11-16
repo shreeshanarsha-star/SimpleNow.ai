@@ -68,6 +68,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     lastHeard: "",
     lastSaid: "",
     speakTimer: 0 as unknown as ReturnType<typeof setTimeout>,
+    gen: 0,
+    slideNarrated: false,
     pendingAfterSpeech: null as null | (() => void),
   });
 
@@ -140,18 +142,19 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       s.current.lastSaid = text;
       transcript.current.push({ role: "shree", text });
       setCaption(text);
-      if (!client) {
-        setNote("Twin not connected — showing text only");
-        after?.();
-        return;
-      }
+      const words = text.split(/\s+/).length;
       s.current.speaking = true;
       setSpeaking(true);
       s.current.pendingAfterSpeech = after || null;
       pushStatus();
-      // Safety net in case the end-of-speech event never arrives.
-      const words = text.split(/\s+/).length;
       clearTimeout(s.current.speakTimer);
+      if (!client) {
+        // No twin: show the caption for a natural reading time, never race ahead.
+        setNote("Twin not connected — showing text only");
+        s.current.speakTimer = setTimeout(markSpeechDone, (words / 2.6) * 1000 + 1500);
+        return;
+      }
+      // Safety net in case the end-of-speech event never arrives.
       s.current.speakTimer = setTimeout(markSpeechDone, (words / 2.4) * 1000 + 4000);
       try {
         await client.talk(text);
@@ -185,8 +188,11 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   /* ------------------------------ presenting ------------------------------ */
   const presentSlide = useCallback(
     async (idx: number) => {
-      if (s.current.busy) return;
+      // Each call supersedes any earlier one still waiting on the Director,
+      // so a Next/Prev tap never leaves two flows racing (the "jumping" bug).
+      const gen = ++s.current.gen;
       s.current.busy = true;
+      s.current.slideNarrated = false;
       s.current.slide = idx;
       setSlide(idx);
       setNote(`Preparing slide ${idx + 1}…`);
@@ -195,16 +201,19 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         await drawSlide(idx);
         const [text, nextA, nextB] = await Promise.all([slideText(idx), slideText(idx + 1), slideText(idx + 2)]);
         const say = await director({ mode: "slide", slideIdx: idx, slideText: text, nextSlidesText: `${nextA}\n---\n${nextB}` });
+        if (gen !== s.current.gen) return; // superseded
         setNote("");
         await speak(say, () => {
-          if (s.current.auto && !s.current.paused && s.current.slide === idx && idx + 1 < s.current.slideCount) {
+          if (gen !== s.current.gen) return;
+          s.current.slideNarrated = true;
+          if (s.current.auto && !s.current.paused && s.current.layout === "slides" && s.current.slide === idx && idx + 1 < s.current.slideCount) {
             presentSlide(idx + 1);
           }
         });
       } catch (err) {
-        setNote(err instanceof Error ? err.message : "Director error");
+        if (gen === s.current.gen) setNote(err instanceof Error ? err.message : "Director error");
       } finally {
-        s.current.busy = false;
+        if (gen === s.current.gen) s.current.busy = false;
       }
     },
     [director, drawSlide, pushStatus, slideText, speak]
@@ -227,8 +236,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         clearTimeout(t);
         if (say.includes("[SILENT]")) return;
         await speak(bridged ? say : say, () => {
-          // Continue the current slide's flow, if presenting.
-          if (s.current.layout === "slides" && s.current.auto && !s.current.paused && wasSlide + 1 < s.current.slideCount) {
+          // Move on only if this slide had already been fully presented; otherwise
+          // stay put (Shreesha taps Next), so a stray remark never skips content.
+          if (s.current.slideNarrated && s.current.slide === wasSlide && s.current.layout === "slides" && s.current.auto && !s.current.paused && wasSlide + 1 < s.current.slideCount) {
             presentSlide(wasSlide + 1);
           }
         });
@@ -498,6 +508,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   const handle = useCallback(
     async (cmd: PresenterCommand) => {
       const st = s.current;
+      // Any new instruction cancels a slide narration still being prepared.
+      if (!["mic", "auto", "reconnect"].includes(cmd.type)) st.gen++;
       switch (cmd.type) {
         case "wake":
           setLayoutBoth("twin");
@@ -510,7 +522,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         case "start":
           setLayoutBoth("twin");
           await connectTwin();
-          speak(await director({ mode: "free", instruction: "Open the session with high energy: greet everyone (good evening), introduce yourself as Shree, Shreesha Narsha's digital twin, and say tonight is interactive. Ask: did I say interact? Then answer yourself. Ask everyone to scan the QR code. Under 60 seconds." }));
+          speak(await director({ mode: "free", instruction: "You have just appeared on screen after Shreesha's snap. Open with high energy in 4 to 6 short sentences: greet everyone (good evening), introduce yourself as Shree, Shreesha Narsha's digital twin, and say tonight is not a lecture, it's interactive: their phones are their remote (they have already joined). Give a one-line movie-trailer agenda: a quiz, a mirror, a story, a live app build, and a winner. End by saying the first vote is on their phones now. Under 40 seconds." }));
           break;
         case "present":
           setLayoutBoth("slides");
@@ -712,14 +724,16 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           onClick={() => {
             setArmed(true);
             document.documentElement.requestFullscreen?.().catch(() => {});
-            pushStatus();
+            // Pre-show: the lobby (title + QR) is on screen until Shreesha starts.
+            refreshHub();
+            setLayoutBoth("hub");
           }}
           className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-black/90"
         >
           <span className="text-2xl font-semibold">Presenter.ai — TV screen</span>
           <span className="text-white/60">{session ? `Session ${session.code} · ${slideCount || "no"} slides` : "Loading…"}</span>
-          <span className="mt-4 rounded-full bg-orange-600 px-6 py-3 text-lg">Click to arm (full screen, sound on)</span>
-          <span className="text-white/40 text-sm mt-2">The screen stays dark until you wake the twin from your control page.</span>
+          <span className="mt-4 rounded-full bg-orange-600 px-6 py-3 text-lg">Click to start (full screen, sound on)</span>
+          <span className="text-white/40 text-sm mt-2">Opens on the lobby (title + QR). Run the show from your phone with Next act.</span>
         </button>
       )}
 

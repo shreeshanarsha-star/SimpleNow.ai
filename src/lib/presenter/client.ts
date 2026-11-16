@@ -80,18 +80,46 @@ export async function pageText(doc: any, pageNo: number): Promise<string> {
   return out.replace(/[ \t]+/g, " ").replace(/\n\s+/g, "\n").trim();
 }
 
+// Only one render per canvas at a time: overlapping pdf.js renders on the same
+// canvas corrupt its transform (slides drawn upside down or half-drawn).
+const renderTasks = new WeakMap<HTMLCanvasElement, { cancel: () => void; promise: Promise<unknown> }>();
+let renderSeq = 0;
+
 export async function renderPage(doc: any, pageNo: number, canvas: HTMLCanvasElement, maxW: number, maxH: number) {
+  const mySeq = ++renderSeq;
+  const prev = renderTasks.get(canvas);
+  if (prev) {
+    prev.cancel();
+    await prev.promise.catch(() => {});
+  }
+  if (mySeq !== renderSeq) return; // a newer slide was requested meanwhile
   const page = await doc.getPage(pageNo);
+  if (mySeq !== renderSeq) return;
+  const dpr = window.devicePixelRatio || 1;
   const base = page.getViewport({ scale: 1 });
-  const scale = Math.min(maxW / base.width, maxH / base.height) * (window.devicePixelRatio || 1);
+  const scale = Math.min(maxW / base.width, maxH / base.height) * dpr;
   const vp = page.getViewport({ scale });
-  canvas.width = Math.floor(vp.width);
-  canvas.height = Math.floor(vp.height);
-  canvas.style.width = `${Math.floor(vp.width / (window.devicePixelRatio || 1))}px`;
-  canvas.style.height = `${Math.floor(vp.height / (window.devicePixelRatio || 1))}px`;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  // Draw off-screen first, then copy, so the visible slide never flashes or flips.
+  const off = document.createElement("canvas");
+  off.width = Math.floor(vp.width);
+  off.height = Math.floor(vp.height);
+  const octx = off.getContext("2d");
+  if (!octx) return;
+  const task = page.render({ canvasContext: octx, viewport: vp });
+  renderTasks.set(canvas, { cancel: () => task.cancel(), promise: task.promise });
+  try {
+    await task.promise;
+  } catch {
+    return; // cancelled by a newer render
+  } finally {
+    if (renderTasks.get(canvas)?.promise === task.promise) renderTasks.delete(canvas);
+  }
+  if (mySeq !== renderSeq) return;
+  canvas.width = off.width;
+  canvas.height = off.height;
+  canvas.style.width = `${Math.floor(vp.width / dpr)}px`;
+  canvas.style.height = `${Math.floor(vp.height / dpr)}px`;
+  canvas.getContext("2d")?.drawImage(off, 0, 0);
 }
 
 const BRIDGES = [
