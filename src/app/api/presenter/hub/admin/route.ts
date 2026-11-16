@@ -3,6 +3,7 @@ import { db, json, ownerGuard } from "@/lib/presenter/server";
 import { callTextModel } from "@/lib/aiClient";
 import { ASSESSMENT, POLLS, QUIZ_TIMING, levelFor, type HubPhase, type HubState } from "@/lib/presenter/content";
 import { QUIZ_KEY, buildBoard, hubOf, patchHub, sessionById } from "@/lib/presenter/hub";
+import { ensureFlyerToken } from "@/lib/presenter/flyerKit";
 
 export const dynamic = "force-dynamic";
 
@@ -111,6 +112,17 @@ Return ONLY JSON: {"groups":[{"label":"...","items":["..."]}]}`,
   if (action === "finale-step") {
     const step = Math.max(0, Math.min(5, Number(body.step ?? (hub.finaleStep || 0) + 1)));
     return json({ hub: await patchHub(id, { phase: "finale", finaleStep: step }) });
+  }
+
+  if (action === "flyer-inputs") {
+    // Claude Code mode: store the room's inputs; the laptop's Claude Code fetches them with the brief.
+    const i = (body.inputs || {}) as { name?: string; date?: string; venue?: string; highlights?: string[] };
+    const inputs = { name: String(i.name || "").slice(0, 80), date: String(i.date || "").slice(0, 60), venue: String(i.venue || "").slice(0, 70), highlights: (i.highlights || []).map((h) => String(h).slice(0, 70)).slice(0, 3) };
+    return json({ hub: await patchHub(id, { phase: "build", flyerBuild: { status: "waiting", startedAt: Date.now(), inputs, provider: "claude-code" } }) });
+  }
+
+  if (action === "flyer-kit") {
+    return json({ token: await ensureFlyerToken(session), code: session.code, base: new URL(req.url).origin });
   }
 
   if (action === "flyer-url") {

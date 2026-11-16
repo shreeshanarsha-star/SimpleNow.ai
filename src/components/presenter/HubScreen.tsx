@@ -260,6 +260,41 @@ export default function HubScreen({
   }
 
   /* ------------------------------ live build ------------------------------ */
+  if (hub.phase === "build" && hub.flyerBuild?.provider === "claude-code") {
+    const b = hub.flyerBuild;
+    const secs = Math.max(0, Math.round(((b.finishedAt || serverNow) - b.startedAt) / 1000));
+    const steps = [
+      { label: "Room's ideas collected", done: true },
+      { label: "Brief sent to Claude Code", done: b.status === "building" || b.status === "ready" },
+      { label: "App written", done: b.status === "ready" },
+      { label: "Deployed live: simplenow.ai/flyer-ai", done: b.status === "ready" },
+    ];
+    return (
+      <div className="flex h-full flex-col px-[3vw] py-[2vw]">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Live: Claude builds an app</div>
+            <div className="mt-1 text-[3vw] font-black leading-none">Flyer.ai</div>
+          </div>
+          <div className="text-[3vw] font-black tabular-nums">{Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}</div>
+        </div>
+        <div className="mt-[1.2vw] flex flex-wrap gap-2 text-[1.2vw]">
+          {[b.inputs.name, b.inputs.date, b.inputs.venue, ...b.inputs.highlights].map((t, i) => (
+            <span key={i} className="rounded-full bg-white/10 px-3 py-1">{t}</span>
+          ))}
+        </div>
+        <div className="mt-[2.5vw] space-y-[1vw]">
+          {steps.map((st) => (
+            <div key={st.label} className={`rounded-2xl px-[1.6vw] py-[1vw] text-[2vw] font-semibold transition-colors ${st.done ? "bg-emerald-600/80" : "bg-white/5 text-white/40"}`}>
+              {st.done ? "✓ " : "○ "}
+              {st.label}
+            </div>
+          ))}
+        </div>
+        {b.status === "waiting" && <div className="mt-auto text-[1.6vw] text-white/60">Shreesha: in Claude Code, type “build and deploy”.</div>}
+      </div>
+    );
+  }
   if (hub.phase === "build") {
     const b = hub.flyerBuild;
     const secs = b ? Math.max(0, Math.round(((b.finishedAt || serverNow) - b.startedAt) / 1000)) : 0;

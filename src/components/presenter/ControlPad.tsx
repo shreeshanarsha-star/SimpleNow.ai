@@ -435,6 +435,13 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
         setFi={setFi}
         build={hub?.flyerBuild || null}
         now={now}
+        onClaudeCode={async () => {
+          if (!fi.name.trim() || !fi.date.trim() || !fi.venue.trim() || fi.highlights.some((h) => !h.trim())) {
+            setMsg("Fill all 4 flyer inputs (or tap a preset).");
+            return;
+          }
+          await act({ action: "flyer-inputs", inputs: fi });
+        }}
         onBuild={async () => {
           if (!fi.name.trim() || !fi.date.trim() || !fi.venue.trim() || fi.highlights.some((h) => !h.trim())) {
             setMsg("Fill all 4 flyer inputs (or tap a preset).");
@@ -446,7 +453,13 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
         onReveal={async (forceBackup: boolean) => {
           const fb = hub?.flyerBuild;
           // Silent switch: live build if it's ready, otherwise the pre-built backup with the same inputs.
-          const path = fb?.status === "ready" && !forceBackup ? `/api/presenter/flyer/app?code=${code}` : backupFlyerUrl(fb?.inputs || (fi.name ? fi : FLYER_PRESETS[0].inputs));
+          const claudeBuilt = fb?.provider === "claude" || fb?.provider === "claude-code";
+          const path =
+            fb?.status === "ready" && !forceBackup
+              ? claudeBuilt
+                ? `/flyer-ai?code=${code}`
+                : `/api/presenter/flyer/app?code=${code}`
+              : backupFlyerUrl(fb?.inputs || (fi.name ? fi : FLYER_PRESETS[0].inputs));
           await act({ action: "flyer-url", url: `${window.location.origin}${path}` });
           await act({ action: "phase", phase: "flyer" });
         }}
@@ -485,6 +498,7 @@ function FlyerControls({
   build,
   now,
   onBuild,
+  onClaudeCode,
   onReveal,
 }: {
   fi: FlyerInputs;
@@ -492,6 +506,7 @@ function FlyerControls({
   build: HubState["flyerBuild"] | null;
   now: number;
   onBuild: () => void;
+  onClaudeCode: () => void;
   onReveal: (forceBackup: boolean) => void;
 }) {
   const inp = "w-full rounded-lg bg-neutral-800 px-3 py-2 text-sm outline-none";
@@ -519,8 +534,11 @@ function FlyerControls({
       {fi.highlights.map((h, i) => (
         <input key={i} className={inp} placeholder={`Highlight ${i + 1}`} value={h} onChange={(e) => { const hs = [...fi.highlights]; hs[i] = e.target.value; setFi({ ...fi, highlights: hs }); }} />
       ))}
+      <button className="w-full rounded-xl bg-orange-600 py-3 text-sm font-semibold" onClick={onClaudeCode}>
+        Send brief to Claude Code (then type “build and deploy”)
+      </button>
       <div className="grid grid-cols-2 gap-2">
-        <button className="rounded-xl bg-green-700 py-3 text-sm font-semibold" onClick={onBuild}>Start build ▶</button>
+        <button className="rounded-xl bg-green-700 py-3 text-sm font-semibold" onClick={onBuild}>API build ▶</button>
         <button className="rounded-xl bg-orange-700 py-3 text-sm font-semibold" onClick={() => onReveal(false)}>Reveal app</button>
       </div>
       <button className="w-full rounded-lg bg-neutral-800 py-2 text-xs" onClick={() => onReveal(true)}>Reveal the backup app instead</button>

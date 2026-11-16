@@ -167,7 +167,7 @@ export type HubState = {
   at?: number;
 };
 export type FlyerInputs = { name: string; date: string; venue: string; highlights: string[] };
-export type FlyerBuild = { status: "building" | "ready" | "failed"; startedAt: number; finishedAt?: number; inputs: FlyerInputs; provider?: string; error?: string };
+export type FlyerBuild = { status: "waiting" | "building" | "ready" | "failed"; startedAt: number; finishedAt?: number; inputs: FlyerInputs; provider?: string; error?: string };
 
 /** Backup flyer app (pre-built, tested), prefilled with the room's inputs. */
 export function backupFlyerUrl(i: FlyerInputs) {

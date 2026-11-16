@@ -1286,9 +1286,22 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             inputs = { name: inputs.name || p.name, date: inputs.date || p.date, venue: inputs.venue || p.venue, highlights: [...inputs.highlights, ...p.highlights].slice(0, 3) };
             await say("Let me fill in the gaps with one of my own ideas.");
           }
-          await adminAct({ action: "phase", phase: "build" });
-          await handleRef.current({ type: "flyer-build", inputs: { name: inputs.name!, date: inputs.date!, venue: inputs.venue!, highlights: inputs.highlights } });
-          await settle();
+          // Claude Code on the laptop builds and deploys it (Shreesha types "build and deploy").
+          await adminAct({ action: "flyer-inputs", inputs });
+          hubView();
+          await say(`Here's our brief: ${inputs.name}, on ${inputs.date}, at ${inputs.venue}, with ${inputs.highlights.join(", ")}. Shreesha, over to Claude. Tell it: build and deploy.`);
+          await wait(12_000);
+          await line(
+            "While Claude Code builds the app on the laptop, explain vibe coding in 3 or 4 short sentences: we describe the app in plain English, the AI writes the code and publishes it, and a human checks it. Then say we'll open the app on everyone's phone right after Shreesha's demo."
+          );
+          const isLive = () => H().hub.flyerBuild?.status === "ready";
+          await wait(240_000, isLive);
+          if (isLive()) {
+            const fb = H().hub.flyerBuild!;
+            const secs = fb.finishedAt ? Math.round((fb.finishedAt - fb.startedAt) / 1000) : null;
+            cue("correct");
+            await line(`The app Claude just built is live${secs ? ` (built and deployed in ${Math.floor(secs / 60)} minutes ${secs % 60} seconds; quote it)` : ""}. One excited sentence, then: Shreesha, bring me back on screen.`);
+          } else await line("One sentence: Claude is still finishing the app; we'll check on it right after Shreesha's demo.");
         },
         predict: async () => {
           await pollRun("predict", 30_000, "One or two sentences: before Shreesha shows you a real AI agent, predict on your phones: will it finish the task on its own, need a human, or get blocked?");
@@ -1344,9 +1357,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         },
         reveal: async () => {
           const fb = H().hub.flyerBuild;
-          // Live build only if it's ready and built by Claude; otherwise the tested backup (no build-time claim).
-          const live = fb?.status === "ready" && fb.provider === "claude";
-          const path = live ? `/api/presenter/flyer/app?code=${session?.code}` : backupFlyerUrl(fb?.inputs || FLYER_PRESETS[0].inputs);
+          // Live build only if Claude built and published it; otherwise the tested backup (no build-time claim).
+          const live = fb?.status === "ready" && (fb.provider === "claude" || fb.provider === "claude-code");
+          const path = live ? `/flyer-ai?code=${session?.code}` : backupFlyerUrl(fb?.inputs || FLYER_PRESETS[0].inputs);
           await adminAct({ action: "flyer-url", url: `${window.location.origin}${path}` });
           await adminAct({ action: "phase", phase: "flyer" });
           hubView();
