@@ -174,7 +174,7 @@ function buildPrompt(i: DirectorInput) {
   if (i.mode === "slide")
     task = `TASK: Present this slide now, in your own words, as a co-host. Land the INTENT. Use the EXAMPLE if it helps. If there is an ENGAGE question, end by asking it. Keep it tight: 30 to 45 seconds of speech (about 70 to 110 words); a little longer only if the slide has a POLL or debate, in which case end by inviting everyone to vote on their phones. Don't read the slide. Don't say "slide". Flow naturally from what was said before.`;
   else if (i.mode === "room")
-    task = `TASK: Someone in the room just said: "${i.heard}". Respond naturally and briefly (1 to 3 sentences; during the introductions, follow the introductions guidance in the session phase), like a human co-host:
+    task = `TASK: Someone in the room just said: "${i.heard}". Respond naturally and briefly (1 to 3 sentences; during the introductions, follow the introductions guidance in the session phase instead, including its length), like a human co-host:
 - A quick question you can answer from the material: answer it now.
 - Covered by a later slide: say you're covering it shortly.
 - A bigger question better for Q&A: say you've noted it for Q&A, and END your reply with the tag [QA: the question in under 15 words].
@@ -268,7 +268,7 @@ export async function loadBrain(sessionId: string, opts: { people?: boolean } = 
       const spoken = (a.data as { spokenIntro?: string } | null)?.spokenIntro;
       const bits = [
         p?.role ? `role: ${p.role}` : "",
-        pr.notes ? `Shreesha's note: ${pr.notes}` : "",
+        sayableNote(pr.notes) ? `Shreesha's note: ${sayableNote(pr.notes)}` : "",
         a.intro ? `task they'd love to drop (phone): ${a.intro}` : "",
         spoken ? `said in their intro: ${spoken}` : "",
         asked.length ? `asked on phone: ${asked.join("; ")}` : "",
@@ -282,12 +282,12 @@ export async function loadBrain(sessionId: string, opts: { people?: boolean } = 
     .filter((p) => !signedIn.has(p.id))
     .map((p) => {
       const pr = (p.profile || {}) as Record<string, unknown>;
-      const bits = [p.role ? `role: ${p.role}` : "", pr.notes ? `Shreesha's note: ${pr.notes}` : ""].filter(Boolean);
+      const bits = [p.role ? `role: ${p.role}` : "", sayableNote(pr.notes) ? `Shreesha's note: ${sayableNote(pr.notes)}` : ""].filter(Boolean);
       return `- ${p.display_name}${bits.length ? `: ${bits.join(" | ")}` : ""}`;
     })
     .join("\n");
   const noteRule =
-    "HOW TO USE SHREESHA'S NOTES: a note may have a MUST SAY part and an INFO ONLY part. When that person introduces themselves (or when it fits naturally, once), say the MUST SAY points in your own words, warmly and with the tone the note asks for. NEVER say anything from INFO ONLY, and never read a note out word for word; INFO ONLY is private background to shape how warmly you treat them. A note without those labels: use it only to relate warmly, don't quote it.";
+    "HOW TO USE SHREESHA'S NOTES: a note may have a MUST SAY part and an INFO ONLY part. When that person introduces themselves (or when it fits naturally, once), say EVERY MUST SAY point (all of them, none skipped) in your own words, warmly and with the tone the note asks for. Never read a note out word for word. Never add praise or opinions of Shreesha's that aren't in the note.";
   const parts = [
     brain.vocab ? `TEAM VOCABULARY (names, terms, correct spellings; the room's speech-to-text may mishear these):\n${brain.vocab}` : "",
     brain.rules ? `DO'S AND DON'TS:\n${brain.rules}` : "",
@@ -297,6 +297,14 @@ export async function loadBrain(sessionId: string, opts: { people?: boolean } = 
     withPeople && otherPeople ? `OTHER TEAM MEMBERS SHREESHA HAS NOTES ON (not signed in on a phone; may or may not be in the room: use a name only when they say it or introduce themselves):\n${otherPeople}` : "",
   ].filter(Boolean);
   return parts.join("\n\n");
+}
+
+/** Shreesha's private INFO ONLY part never reaches Shree: cut it out of the note on the server. */
+export function sayableNote(note: unknown) {
+  const t = String(note || "").trim();
+  if (!t) return "";
+  const cut = t.search(/INFO\s*ONLY/i);
+  return (cut >= 0 ? t.slice(0, cut) : t).trim();
 }
 
 /** Room ears: tonight's digest + the lines heard since it (never sent to phones). */
