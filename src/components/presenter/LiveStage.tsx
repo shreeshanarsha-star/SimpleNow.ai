@@ -103,6 +103,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     preShow: true,
     autoDark: true,
     cue: null as null | { re: RegExp; done: () => void },
+    bookmark: null as null | { idx: number; slide: number; layout: Layout; phase: string; poll: string | null; finaleStep: number; quizPausedAt: number; resumeText: string; label: string },
     selfIntroDone: false,
     ears: { on: false, lines: 0, last: "" },
     ap: {
@@ -120,6 +121,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       waiting: "",
       waitResume: null as null | (() => void),
       storyFrom: 0,
+      resumed: false,
+      fresh: true,
+      finaleFrom: 0,
     },
   });
 
@@ -146,6 +150,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       preShow: s.current.preShow,
       autoDark: s.current.autoDark,
       ears: s.current.ears,
+      bookmark: s.current.bookmark ? { label: s.current.bookmark.label } : null,
       ap: {
         on: s.current.ap.on,
         running: s.current.ap.running,
@@ -336,7 +341,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           phase:
             hubContext(hubRef.current.hub, hubRef.current.board) +
             (s.current.intros
-              ? " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name + one task they wish they never had to do again). React like you're finally meeting someone you've heard a lot about: warm, natural, 1 to 2 short sentences. Vary it every time (\"Nice to meet you, X, I've heard a lot about you\" is one option, never the same phrase twice in a row). Pick ONE light, specific detail from Shreesha's note about them, from what the room has said today, or from what they just said, and have fun with it gently (never personal, never a score). Use their name only if they said it or it matches someone signed in; if unsure who spoke, react without a name. Then invite the next person."
+              ? " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name + one task they wish they never had to do again). React like you're finally meeting someone you've heard a lot about: warm and natural. Vary it every time (\"Nice to meet you, X, I've heard a lot about you\" is one option, never the same phrase twice in a row). If Shreesha's note about them has a MUST SAY part, cover those points now, naturally and in your own words (never anything marked INFO ONLY); otherwise pick ONE light, specific detail from his note, from what the room has said today, or from what they just said, and have fun with it gently (never personal, never a score). 2 to 4 short sentences. Use their name only if they said it or it matches someone signed in; if unsure who spoke, react without a name. Then invite the next person."
               : ""),
           ...body,
         }),
@@ -347,7 +352,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   );
 
   /* ------------------------------ room ears ------------------------------ */
-  // Everything the room says (text only) is kept for tonight so Shree can join the banter later.
+  // Everything the room says (text only) is kept for today so Shree can join the banter later.
   const roomBuf = useRef<string[]>([]);
   const logRoom = useCallback(
     (text: string) => {
@@ -1023,6 +1028,42 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           st.autoDark = cmd.on;
           pushStatus();
           break;
+        case "a": {
+          // A: back to the first screen from anywhere, keeping a bookmark of where we were (B returns there).
+          const h = hubRef.current.hub;
+          if (st.ap.running || anamRef.current) {
+            const idx = st.ap.running ? st.ap.idx : -1;
+            const step = idx >= 0 ? SHOW_STEPS[idx] : null;
+            let resumeText = "";
+            if (st.speaking && st.speakText) {
+              const words = st.speakText.split(/\s+/);
+              const spoken = Math.floor(((Date.now() - st.speakStart) / 1000) * 2.5);
+              const rest = words.slice(spoken).join(" ");
+              if (rest.split(/\s+/).length > 8) resumeText = rest;
+            }
+            const qc = quizClock(h.quiz, Date.now() + hubRef.current.offset);
+            st.bookmark = {
+              idx,
+              slide: st.slide,
+              layout: st.layout,
+              phase: h.phase,
+              poll: h.poll || null,
+              finaleStep: h.finaleStep || 0,
+              quizPausedAt: h.phase === "quiz" && (qc.status === "answer" || qc.status === "reveal" || qc.status === "leadin") ? Date.now() : 0,
+              resumeText: step?.id === "story" ? "" : resumeText,
+              label: step ? `${step.label}${step.id === "story" ? ` · slide ${st.slide + 1}` : ""}` : "where you were",
+            };
+          }
+          st.paused = false;
+          st.ap.pausedAt = 0;
+          st.cue = null;
+          st.quietListen = false;
+          st.expect = null;
+          st.intros = false;
+          window.speechSynthesis?.cancel();
+          markSpeechDone();
+        }
+        // falls through
         case "lobby":
           // Back to the very first screen; Shreesha has full control (autopilot stopped).
           st.ap.gen++;
@@ -1044,6 +1085,35 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           await refreshHub();
           setLayoutBoth("hub");
           break;
+        case "b": {
+          // B: back to exactly where A was tapped, then the show carries on by itself.
+          const bm = st.bookmark;
+          if (!bm) break;
+          st.bookmark = null;
+          pushStatus();
+          const post = (b: Record<string, unknown>) =>
+            session?.id
+              ? api("/api/presenter/hub/admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: session.id, ...b }) }).catch(() => {})
+              : Promise.resolve();
+          if (bm.quizPausedAt) await post({ action: "quiz-shift", ms: Date.now() - bm.quizPausedAt });
+          if (bm.phase && bm.phase !== "lobby" && bm.phase !== "finale") await post({ action: "phase", phase: bm.phase, ...(bm.phase === "poll" && bm.poll ? { poll: bm.poll } : {}) });
+          await refreshHub();
+          if (bm.layout === "slides") {
+            st.slide = bm.slide;
+            setSlide(bm.slide);
+            drawSlide(bm.slide);
+          }
+          setLayoutBoth(bm.layout === "standby" || bm.layout === "montage" ? "twin" : bm.layout);
+          if (bm.resumeText) await say(`Where was I? Right. ${bm.resumeText}`);
+          if (bm.idx >= 0) {
+            st.ap.storyFrom = SHOW_STEPS[bm.idx]?.id === "story" ? bm.slide : 0;
+            st.ap.resumed = true;
+            st.ap.finaleFrom = bm.finaleStep;
+            st.ap.on = true;
+            setTimeout(() => runShowRef.current(bm.idx), 300);
+          }
+          break;
+        }
         case "entrance-sens":
           st.sens = cmd.level;
           if (st.listening) st.listening = { ...st.listening, sens: cmd.level };
@@ -1251,7 +1321,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         if (!p) return;
         await adminAct({ action: "phase", phase: "poll", poll: key });
         hubView();
-        if (intro) await line(typeof intro === "string" ? intro : `Open the vote "${p.q}" in one short, lively sentence: everyone votes on their phones now.`);
+        const fresh = ap.fresh;
+        ap.fresh = true;
+        if (intro && fresh) await line(typeof intro === "string" ? intro : `Open the vote "${p.q}" in one short, lively sentence: everyone votes on their phones now.`);
         await wait(ms, () => people() > 0 && votes(key) >= people());
         if (!alive()) return;
         if (typeof p.best === "number") {
@@ -1305,7 +1377,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         intros: async (b) => {
           setLayoutBoth("twin");
           s.current.intros = true;
-          if (!s.current.selfIntroDone)
+          if (!ap.fresh) await line("We're back after a short break. In one warm sentence, invite the next person who hasn't introduced themselves yet to carry on with the introductions.");
+          else if (!s.current.selfIntroDone)
             await line("Start the introductions now: invite each person, one at a time, to say their name and one task they wish they never had to do again, in about 20 seconds. Ask for the first volunteer.");
           s.current.selfIntroDone = false;
           const t0 = Date.now();
@@ -1335,9 +1408,11 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         quiz: async (b) => {
           await adminAct({ action: "phase", phase: "quiz" });
           hubView();
-          await line("Introduce the quickfire quiz in two short, high-energy sentences: 30 questions, about 12 seconds each, phones ready, the winner is revealed at the end.");
+          const qs = quizClock(H().hub.quiz, Date.now() + H().offset).status;
+          const running = qs === "answer" || qs === "reveal" || qs === "leadin";
+          if (!running) await line("Introduce the quickfire quiz in two short, high-energy sentences: 30 questions, about 12 seconds each, phones ready, the winner is revealed at the end.");
           if (!alive()) return;
-          await adminAct({ action: "quiz-start" });
+          if (!running) await adminAct({ action: "quiz-start" });
           await wait(b, () => quizClock(H().hub.quiz, Date.now() + H().offset).status === "done");
           if (!alive() && !ap.skip) return;
           if (ap.skip) await adminAct({ action: "quiz-stop" });
@@ -1347,7 +1422,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         mirror: async (b) => {
           await adminAct({ action: "phase", phase: "assessment" });
           hubView();
-          await line("Introduce the Mirror in 2 or 3 sentences: 20 questions on their phones, about 5 minutes, pick the highest statement that's true today, honest beats impressive, it's private and the level is revealed at the end.");
+          if (ap.fresh) await line("Introduce the Mirror in 2 or 3 sentences: 20 questions on their phones, about 5 minutes, pick the highest statement that's true today, honest beats impressive, it's private and the level is revealed at the end.");
           const done = () => people() > 0 && (H().board?.assessment.completed || 0) >= people();
           await wait(b - 60_000, done);
           if (alive() && !done()) {
@@ -1517,7 +1592,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         qa: async (b) => {
           await adminAct({ action: "phase", phase: "questions" });
           hubView();
-          await line("Open Q&A in one or two sentences: ask out loud or on your phones, no question is too basic.");
+          if (ap.fresh) await line("Open Q&A in one or two sentences: ask out loud or on your phones, no question is too basic.");
           const t0 = Date.now();
           let quietRounds = 0;
           while (alive() && Date.now() - t0 < b - 25_000) {
@@ -1550,10 +1625,20 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           await line("Wrap up Q&A in one sentence: any question we didn't get to, Shreesha will follow up in the team's WhatsApp group.");
         },
         finale: async () => {
-          await adminAct({ action: "phase", phase: "finale" });
-          hubView();
-          await line("One high-energy sentence: it's finale time, starting with today's quiz champions.");
-          for (const step of [1, 2, 3, 4]) {
+          let first = 1;
+          if (!ap.fresh && ap.finaleFrom > 0) {
+            // Resumed: show what was already revealed without announcing it again.
+            first = ap.finaleFrom + 1;
+            H().lastFinale = ap.finaleFrom;
+            setFinaleShown(ap.finaleFrom);
+            await adminAct({ action: "finale-step", step: ap.finaleFrom });
+            hubView();
+          } else {
+            await adminAct({ action: "phase", phase: "finale" });
+            hubView();
+            await line("One high-energy sentence: it's finale time, starting with today's quiz champions.");
+          }
+          for (const step of [1, 2, 3, 4].filter((x) => x >= first)) {
             if (!alive()) return;
             await adminAct({ action: "finale-step", step });
             await wait(30_000, () => H().lastFinale === step && quiet());
@@ -1568,7 +1653,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         close: async () => {
           await adminAct({ action: "phase", phase: "commit" });
           hubView();
-          await line("In 2 or 3 sentences: invite everyone to read the pledge on screen together, out loud, then type their one 30-day commitment on their phones.");
+          if (ap.fresh) await line("In 2 or 3 sentences: invite everyone to read the pledge on screen together, out loud, then type their one 30-day commitment on their phones.");
           await wait(75_000, () => people() > 0 && (H().board?.commitments.length || 0) >= people());
           await line("Invite one or two volunteers to share their commitment out loud. One sentence.");
           const t0 = Date.now();
@@ -1590,6 +1675,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         ap.budget = SHOW_STEPS[i].budget;
         ap.stepStart = Date.now();
         ap.waiting = "";
+        ap.fresh = !ap.resumed;
+        ap.resumed = false;
         pushStatus();
         try {
           await STEP[SHOW_STEPS[i].id](SHOW_STEPS[i].budget * 1000);

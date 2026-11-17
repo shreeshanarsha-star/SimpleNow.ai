@@ -151,7 +151,7 @@ function buildPrompt(i: DirectorInput) {
   const parts: string[] = [];
   if (i.phase) parts.push(`CURRENT PHASE: ${i.phase}`);
   if (typeof i.minutesLeft === "number") parts.push(`TIME LEFT IN SESSION: about ${Math.round(i.minutesLeft)} minutes.`);
-  if (i.brain) parts.push(`SHREESHA'S BRIEFING FOR YOU (vocabulary, rules, background; use people notes only to relate warmly, never reveal them):\n"""${i.brain.slice(0, 8000)}"""`);
+  if (i.brain) parts.push(`SHREESHA'S BRIEFING FOR YOU (vocabulary, rules, background, people notes):\n"""${i.brain.slice(0, 16000)}"""`);
   if (i.room)
     parts.push(
       `WHAT THE ROOM HAS SAID TODAY (overheard by speech-to-text since people walked in, including before you appeared; words may be misheard; the speaker is unknown unless a name is said with it):\n"""${i.room.slice(0, 4000)}"""\nUse it like a co-host who was in the room all along: natural callbacks to running jokes, nicknames and teasing, warmly and sparingly (at most one callback every few minutes, only when it fits the moment). Never mock or embarrass anyone, never pin a line on a named person unless the name was said with it, never repeat anything private, personal or sensitive, and skip it when the moment is serious.`
@@ -174,7 +174,7 @@ function buildPrompt(i: DirectorInput) {
   if (i.mode === "slide")
     task = `TASK: Present this slide now, in your own words, as a co-host. Land the INTENT. Use the EXAMPLE if it helps. If there is an ENGAGE question, end by asking it. Keep it tight: 30 to 45 seconds of speech (about 70 to 110 words); a little longer only if the slide has a POLL or debate, in which case end by inviting everyone to vote on their phones. Don't read the slide. Don't say "slide". Flow naturally from what was said before.`;
   else if (i.mode === "room")
-    task = `TASK: Someone in the room just said: "${i.heard}". Respond naturally and briefly (1 to 3 sentences), like a human co-host:
+    task = `TASK: Someone in the room just said: "${i.heard}". Respond naturally and briefly (1 to 3 sentences; during the introductions, follow the introductions guidance in the session phase), like a human co-host:
 - A quick question you can answer from the material: answer it now.
 - Covered by a later slide: say you're covering it shortly.
 - A bigger question better for Q&A: say you've noted it for Q&A, and END your reply with the tag [QA: the question in under 15 words].
@@ -244,7 +244,8 @@ export function newCode() {
 export type Brain = { vocab?: string; rules?: string; knowledge?: string };
 
 /** Briefing text for the Director: vocabulary, do's and don'ts, background, and notes on people signed in tonight. */
-export async function loadBrain(sessionId: string) {
+export async function loadBrain(sessionId: string, opts: { people?: boolean } = {}) {
+  const withPeople = opts.people !== false;
   const sb = db();
   const [{ data: sess }, { data: att }, { data: qs }, { data: commits }] = await Promise.all([
     sb.from("presenter_sessions").select("state").eq("id", sessionId).maybeSingle(),
@@ -254,11 +255,11 @@ export async function loadBrain(sessionId: string) {
   ]);
   const brain = ((sess?.state as Record<string, unknown>)?.brain || {}) as Brain;
   const attendees = (att || []) as Array<{ id: string; display_name: string; person_id: string | null; intro: string | null; data: Record<string, unknown> | null }>;
-  const ids = attendees.map((a) => a.person_id).filter(Boolean) as string[];
-  const ppl = ids.length ? ((await sb.from("presenter_people").select("id, display_name, role, profile").in("id", ids)).data || []) : [];
+  // Everyone Shreesha has notes on, so a note works even if that person never signs in on a phone.
+  const ppl = withPeople ? ((await sb.from("presenter_people").select("id, display_name, role, profile")).data || []) : [];
   const byId = new Map(ppl.map((p) => [p.id, p]));
   // One line per person signed in tonight: Shreesha's notes + what they did on their phone (never scores).
-  const peopleNotes = attendees
+  const peopleNotes = !withPeople ? "" : attendees
     .map((a) => {
       const p = a.person_id ? byId.get(a.person_id) : null;
       const pr = (p?.profile || {}) as Record<string, unknown>;
@@ -276,11 +277,24 @@ export async function loadBrain(sessionId: string) {
       return `- ${a.display_name}${bits.length ? `: ${bits.join(" | ")}` : ""}`;
     })
     .join("\n");
+  const signedIn = new Set(attendees.map((a) => a.person_id).filter(Boolean));
+  const otherPeople = ppl
+    .filter((p) => !signedIn.has(p.id))
+    .map((p) => {
+      const pr = (p.profile || {}) as Record<string, unknown>;
+      const bits = [p.role ? `role: ${p.role}` : "", pr.notes ? `Shreesha's note: ${pr.notes}` : ""].filter(Boolean);
+      return `- ${p.display_name}${bits.length ? `: ${bits.join(" | ")}` : ""}`;
+    })
+    .join("\n");
+  const noteRule =
+    "HOW TO USE SHREESHA'S NOTES: a note may have a MUST SAY part and an INFO ONLY part. When that person introduces themselves (or when it fits naturally, once), say the MUST SAY points in your own words, warmly and with the tone the note asks for. NEVER say anything from INFO ONLY, and never read a note out word for word; INFO ONLY is private background to shape how warmly you treat them. A note without those labels: use it only to relate warmly, don't quote it.";
   const parts = [
     brain.vocab ? `TEAM VOCABULARY (names, terms, correct spellings; the room's speech-to-text may mishear these):\n${brain.vocab}` : "",
     brain.rules ? `DO'S AND DON'TS:\n${brain.rules}` : "",
     brain.knowledge ? `BACKGROUND YOU MAY USE:\n${brain.knowledge}` : "",
-    peopleNotes ? `PEOPLE SIGNED IN TODAY (names are certain; use notes only to relate warmly, never read them out):\n${peopleNotes}` : "",
+    withPeople && (peopleNotes || otherPeople) ? noteRule : "",
+    withPeople && peopleNotes ? `PEOPLE SIGNED IN TODAY (names are certain):\n${peopleNotes}` : "",
+    withPeople && otherPeople ? `OTHER TEAM MEMBERS SHREESHA HAS NOTES ON (not signed in on a phone; may or may not be in the room: use a name only when they say it or introduce themselves):\n${otherPeople}` : "",
   ].filter(Boolean);
   return parts.join("\n\n");
 }

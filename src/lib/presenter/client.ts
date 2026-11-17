@@ -30,6 +30,8 @@ export type PresenterCommand =
   | { type: "entrance-test"; on: boolean }
   | { type: "autodark"; on: boolean }
   | { type: "lobby" }
+  | { type: "a" }
+  | { type: "b" }
   | { type: "entrance-sens"; level: "low" | "med" | "high" }
   | { type: "flyer-build"; inputs: { name: string; date: string; venue: string; highlights: string[] } };
 
@@ -63,6 +65,8 @@ export type PresenterStatus = {
   autoDark?: boolean;
   /** Room ears: lines of room talk saved tonight (text only). */
   ears?: { on: boolean; lines: number; last: string };
+  /** Set by A: where the show was when Shreesha jumped to the start (B returns here). */
+  bookmark?: { label: string } | null;
   ap?: { on: boolean; running: boolean; idx: number; total: number; label: string; stepElapsed: number; budget: number; showElapsed: number; planned: number; waiting: string };
   at: number;
 };

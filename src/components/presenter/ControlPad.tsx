@@ -602,12 +602,18 @@ function Autopilot({ status, send, sessionId }: { status: PresenterStatus | null
   const ap = status?.ap;
   const [jump, setJump] = useState<"" | "steps" | "slides">("");
   const [slides, setSlides] = useState<Array<{ idx: number; title: string }>>([]);
+  const [storyEnd, setStoryEnd] = useState(16);
   useEffect(() => {
     if (!sessionId || jump !== "slides" || slides.length) return;
-    api<{ slides: Array<{ idx: number; title: string }> }>(`/api/presenter/hub/admin?id=${sessionId}`)
-      .then((d) => setSlides(d.slides || []))
+    api<{ slides: Array<{ idx: number; title: string }>; storyEnd?: number }>(`/api/presenter/hub/admin?id=${sessionId}`)
+      .then((d) => {
+        setSlides(d.slides || []);
+        if (typeof d.storyEnd === "number") setStoryEnd(d.storyEnd);
+      })
       .catch(() => {});
   }, [sessionId, jump, slides.length]);
+  const live = !!ap?.running;
+  const canHold = live || !!status?.connected;
   const storyIdx = SHOW_STEPS.findIndex((x) => x.id === "story");
   const late = ap ? ap.showElapsed - (ap.planned + Math.min(ap.stepElapsed, ap.budget)) : 0;
   const stepLeft = ap ? ap.budget - ap.stepElapsed : 0;
@@ -625,6 +631,20 @@ function Autopilot({ status, send, sessionId }: { status: PresenterStatus | null
           {ap?.on === false ? "OFF" : "ON"}
         </button>
       </div>
+      {status?.bookmark ? (
+        <button className="w-full rounded-2xl bg-green-600 py-4 text-lg font-bold active:scale-95 transition" onClick={() => send({ type: "b" })}>
+          B · Back to where I left
+          <div className="text-xs font-normal text-white/80">{status.bookmark.label}</div>
+        </button>
+      ) : (
+        <button
+          className="w-full rounded-2xl bg-sky-700 py-4 text-lg font-bold active:scale-95 transition"
+          onClick={() => send({ type: "a" })}
+        >
+          A · First screen
+          <div className="text-xs font-normal text-white/80">Stops everything and shows the lobby. Then this becomes B to come back.</div>
+        </button>
+      )}
       <div className="text-lg font-bold leading-tight">{ap?.label || "Ready. Runs by itself after Shree's opening."}</div>
       {!ap?.running && status?.layout !== "montage" && (
         <div className="grid grid-cols-2 gap-2">
@@ -673,12 +693,24 @@ function Autopilot({ status, send, sessionId }: { status: PresenterStatus | null
       )}
       {status?.intros && <div className="text-xs text-sky-300">Intros: saving each spoken intro{status.introSaved ? ` · last: ${status.introSaved}` : ""}</div>}
       <div className="grid grid-cols-3 gap-2">
-        <button className={`${btn} bg-neutral-700`} onClick={() => send({ type: "ap", action: "back" })}>◀ Back</button>
-        <button className={`${btn} ${status?.paused ? "bg-green-700" : "bg-red-700"}`} onClick={() => send({ type: status?.paused ? "resume" : "pause" })}>
-          {status?.paused ? "▶ Resume" : "❚❚ Pause"}
+        <button disabled={!live} className={`${btn} bg-neutral-700 disabled:opacity-30`} onClick={() => send({ type: "ap", action: "back" })}>
+          ⏮ Previous
+          <div className="text-[10px] font-normal text-white/60">screen</div>
         </button>
-        <button className={`${btn} bg-neutral-700`} onClick={() => send({ type: "ap", action: "skip" })}>Skip ▶</button>
+        <button
+          disabled={!canHold}
+          className={`${btn} ${status?.paused ? "bg-green-700" : "bg-red-700"} disabled:opacity-30`}
+          onClick={() => send({ type: status?.paused ? "resume" : "pause" })}
+        >
+          {status?.paused ? "▶ Continue" : "⏸ Hold"}
+          <div className="text-[10px] font-normal text-white/70">{status?.paused ? "from same point" : "Shree freezes"}</div>
+        </button>
+        <button disabled={!live} className={`${btn} bg-neutral-700 disabled:opacity-30`} onClick={() => send({ type: "ap", action: "skip" })}>
+          ⏭ Next
+          <div className="text-[10px] font-normal text-white/60">screen</div>
+        </button>
       </div>
+      {!live && <div className="text-center text-[10px] text-white/40">Previous / Next work after Shree enters. Hold works once Shree is on.</div>}
       {ap?.running && status?.layout !== "handover" && (
         <button className={`${btn} w-full bg-neutral-700`} onClick={() => send({ type: "layout", layout: "handover" })}>
           ✋ Take over now (Shree pauses)
@@ -702,8 +734,8 @@ function Autopilot({ status, send, sessionId }: { status: PresenterStatus | null
           <button
             className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs ${status?.preShow && status?.layout === "hub" ? "bg-orange-600" : "bg-neutral-800"}`}
             onClick={() => {
-              if (confirm("Go to screen 0: the lobby (title + QR)? The autopilot stops and you're in control.")) {
-                send({ type: "lobby" });
+              if (confirm("Go to screen 0: the lobby (same as A)? The autopilot stops; B brings you back.")) {
+                send({ type: "a" });
                 setJump("");
               }
             }}
@@ -740,7 +772,7 @@ function Autopilot({ status, send, sessionId }: { status: PresenterStatus | null
                 onClick={() => {
                   if (!confirm(`Go to slide ${i + 1}${t ? `: ${t}` : ""}?`)) return;
                   // Inside the Story, the autopilot carries on from that slide; otherwise just show it.
-                  if (ap?.on !== false && i < 16) send({ type: "ap", action: "start", idx: storyIdx, slide: i });
+                  if (ap?.on !== false && i < storyEnd) send({ type: "ap", action: "start", idx: storyIdx, slide: i });
                   else send({ type: "goto", idx: i });
                   setJump("");
                 }}
@@ -750,7 +782,7 @@ function Autopilot({ status, send, sessionId }: { status: PresenterStatus | null
               </button>
             );
           })}
-          <div className="px-1 text-[10px] text-white/40">Slides 1–16 are the Story: the autopilot continues from the one you pick. Others are just shown.</div>
+          <div className="px-1 text-[10px] text-white/40">Slides 1–{storyEnd} are the Story: the autopilot continues from the one you pick. Others are just shown.</div>
         </div>
       )}
       <div className="flex items-center gap-1 text-xs">

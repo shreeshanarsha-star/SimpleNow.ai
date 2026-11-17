@@ -22,7 +22,10 @@ export async function GET(req: Request) {
     const t = lines.find((x) => /[a-z]/.test(x) && x.length > 6 && !x.includes("·")) || lines[0] || "";
     return { idx: r.idx, title: t.slice(0, 60) };
   });
-  return json({ hub: hubOf(session), code: session.code, title: session.title, board, quizKey: QUIZ_KEY, slides });
+  // The Story runs until the build slide (searched from slide 2: slide 1's agenda mentions the build).
+  const se = (sl || []).find((r) => r.idx >= 1 && /FLYER CHALLENGE/i.test(String(r.body || "")));
+  const storyEnd = se ? se.idx : Math.min(16, slides.length);
+  return json({ hub: hubOf(session), code: session.code, title: session.title, board, quizKey: QUIZ_KEY, slides, storyEnd });
 }
 
 export async function POST(req: Request) {
@@ -55,6 +58,11 @@ export async function POST(req: Request) {
   }
   if (action === "quiz-stop") {
     return json({ hub: await patchHub(id, { quiz: hub.quiz ? { ...hub.quiz, stoppedAt: Date.now() } : null }) });
+  }
+  if (action === "quiz-shift") {
+    // B after A mid-quiz: push the clock forward by the time away, so nobody loses questions.
+    const ms = Math.max(0, Math.min(3_600_000, Number(body.ms) || 0));
+    return json({ hub: await patchHub(id, { quiz: hub.quiz ? { ...hub.quiz, start: hub.quiz.start + ms } : null }) });
   }
   if (action === "quiz-reset") {
     await db().from("presenter_responses").delete().eq("session_id", id).eq("kind", "quiz");

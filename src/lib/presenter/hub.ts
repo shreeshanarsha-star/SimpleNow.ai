@@ -130,7 +130,7 @@ export async function phoneAnswer(sessionId: string, question: string) {
     .map((s) => `[Slide ${s.idx + 1}] ${s.notes || s.body || ""}`)
     .join("\n")
     .slice(0, 24000);
-  const brain = await loadBrain(sessionId).catch(() => "");
+  const brain = await loadBrain(sessionId, { people: false }).catch(() => ""); // never people notes on phones
   const out = await runDirector({
     mode: "free",
     brain,
