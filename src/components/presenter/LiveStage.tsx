@@ -32,6 +32,11 @@ const CLOSING_LINE =
   "In the end, it's not about AI versus humans. Whether it's artificial intelligence, human intelligence, or a plain notepad or Excel sheet, the question is always the same: does it add real value, and is it worth the time and money? That's ROI. Use whatever gets you there.";
 type Layout = PresenterStatus["layout"];
 
+/** Voice hold / resume: "Bro, hold on" · "Shree, stop" · "Bro wait" → hold; "Shree, proceed / next / carry on / continue" → resume. */
+const CALL = String.raw`(?:bro|brother|buddy|shree|shri|sree|sri|shre)`;
+const VOICE_HOLD = new RegExp(String.raw`\b${CALL}\b[ ,.!]*(?:please[ ,]+)?(?:hold on|hold|stop|wait|pause|one (?:sec|second|minute)|just a (?:sec|second|minute))\b|\b(?:hold on|stop|wait|pause)[ ,.!]+${CALL}\b`, "i");
+const VOICE_RESUME = new RegExp(String.raw`\b${CALL}\b[ ,.!]*(?:please[ ,]+)?(?:proceed|next|carry on|continue|go on|go ahead|resume|you (?:can|may) (?:continue|proceed|go on|carry on))\b|\b(?:please[ ,]+)?(?:proceed|carry on|continue|go on|resume)[ ,.!]+${CALL}\b`, "i");
+
 /** Someone speaks straight to Shree ("Shree, can you hear me?"), not just about him. */
 const DIRECT_TO_SHREE = /\b(can|could|are|do) you (able to )?(hear|listen)|\b(hello|hi|hey)\b.{0,12}\b(shree|shri|sree|sri)\b|\b(shree|shri|sree|sri)\b[ ,?!.]*(can|are|do|did) you\b|\b(shree|shri|sree|sri)\s*\?/i;
 
@@ -109,6 +114,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     roomBusy: false,
     quietListen: false,
     welcomeWait: false,
+    lastVoiceCmd: 0,
     lastRoomAt: 0,
     expect: null as null | ((heard: string) => Promise<boolean>),
     preShow: true,
@@ -460,10 +466,39 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     [director, drawSlide, pushStatus, slideText, speak]
   );
 
+  /** Spoken hold / resume. Returns true if the words were a command (and it was handled). */
+  const voiceCommand = useCallback((heard: string) => {
+    const st = s.current;
+    if (!anamRef.current || st.preShow) return false;
+    const now = Date.now();
+    if (!st.paused && VOICE_HOLD.test(heard)) {
+      if (now - st.lastVoiceCmd > 2500) {
+        st.lastVoiceCmd = now;
+        handleRef.current({ type: "pause" });
+      }
+      return true;
+    }
+    if (st.paused && VOICE_RESUME.test(heard)) {
+      if (now - st.lastVoiceCmd > 2500) {
+        st.lastVoiceCmd = now;
+        handleRef.current({ type: "resume" });
+      }
+      return true;
+    }
+    return false;
+  }, []);
+  const voiceCommandRef = useRef(voiceCommand);
+  voiceCommandRef.current = voiceCommand;
+
   const onRoomSpeech = useCallback(
     async (heard: string) => {
       const st = s.current;
-      if (!heard.trim() || st.paused) return;
+      if (!heard.trim()) return;
+      if (voiceCommand(heard)) {
+        logRoom(heard);
+        return;
+      }
+      if (st.paused) return;
       // Echo filter: ignore anything that sounds like Shree's own last lines.
       const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 2);
       const hw = norm(heard);
@@ -554,7 +589,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         st.roomBusy = false;
       }
     },
-    [director, presentSlide, pushStatus, slideText, speak, say, session?.id, logRoom, rememberNote]
+    [director, presentSlide, pushStatus, slideText, speak, say, session?.id, logRoom, rememberNote, voiceCommand]
   );
 
   /* ------------------------------ audience hub ------------------------------ */
@@ -1961,6 +1996,50 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   }, [armed, layout, connected, startEntrance, stopEntrance]);
 
   useEffect(() => () => stopEntranceRef.current(), []);
+
+  // Command ears: during the show the laptop also listens (Chrome speech recognition) ONLY for
+  // "Bro, hold on" / "Shree, carry on", so they work even while Shree is talking and the echo
+  // guard has his own mic muted. Everything else still goes through Shree's normal listening.
+  useEffect(() => {
+    const live = armed && connected && !preShow && layout !== "handover" && layout !== "standby";
+    if (!live) return;
+    const W = window as unknown as { SpeechRecognition?: any; webkitSpeechRecognition?: any };
+    const Rec = W.SpeechRecognition || W.webkitSpeechRecognition;
+    if (!Rec) return;
+    let active = true;
+    let rec: any = null;
+    const begin = () => {
+      if (!active) return;
+      const r = new Rec();
+      r.lang = "en-IN";
+      r.continuous = true;
+      r.interimResults = true;
+      r.onresult = (ev: any) => {
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          const text = String(ev.results[i][0].transcript || "");
+          // Ignore Shree's own voice coming back from the TV speakers.
+          const mine = (s.current.speakText || "").toLowerCase();
+          if (mine && text.trim().length > 3 && mine.includes(text.trim().toLowerCase())) continue;
+          voiceCommandRef.current(text);
+        }
+      };
+      r.onend = () => {
+        if (active && rec === r) setTimeout(begin, 250);
+      };
+      rec = r;
+      try {
+        r.start();
+      } catch {}
+    };
+    begin();
+    return () => {
+      active = false;
+      try {
+        rec?.abort();
+      } catch {}
+      rec = null;
+    };
+  }, [armed, connected, preShow, layout]);
 
   // Lobby ears: from "Click to start" until the screen goes dark, Shree quietly listens and keeps
   // what's said. When Shreesha opens ("good morning everyone…") and keeps talking ~10 s, fade to dark.
