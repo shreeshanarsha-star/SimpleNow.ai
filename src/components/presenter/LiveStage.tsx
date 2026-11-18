@@ -1508,7 +1508,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           ap.waiting = "";
           pushStatus();
           s.current.intros = false;
-          await line("Wrap up the introductions in one warm sentence: what a mix of teams and roles, and AI has something useful for every one of them.");
+          await line("Close the introductions in two short, warm spoken sentences, in your own words: thank everyone for the introductions, say you're really happy to meet them all (a light touch on the mix of teams in the room is welcome), then: now, let's get started. Do not explain what comes next; that is the next line.");
         },
         wishwall: async () => {
           H().lastWish = "";
