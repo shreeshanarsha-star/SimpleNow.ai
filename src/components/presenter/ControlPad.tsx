@@ -276,7 +276,6 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
         send({ type: "direct", text: "Start the introductions: invite each person, one at a time, to say their name, their team and their designation. React in ONE short, warm, witty sentence (light office humour is welcome, like 'ah, the 49-tab Excel of doom'), by name. Begin now by inviting the first volunteer." });
       },
     },
-    { label: "Act 2 · AI confidence check (start)", hint: "Confidence poll on phones.", run: () => phase("poll", { poll: "before" }) },
     {
       label: "Act 3 · Quiz screen",
       hint: "Then tap Quiz ▶ GO below.",

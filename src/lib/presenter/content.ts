@@ -257,7 +257,6 @@ export const HR_PROMPTS = [
 export const SHOW_STEPS: Array<{ id: string; label: string; budget: number }> = [
   { id: "welcome", label: "Act 1 · Shree introduces himself", budget: 90 },
   { id: "intros", label: "Act 2 · Meet the team", budget: 480 },
-  { id: "before", label: "Act 2 · AI confidence check (start)", budget: 60 },
   { id: "quiz", label: "Act 3 · Quiz", budget: 480 },
   { id: "story", label: "Act 4 · The Story", budget: 1080 },
   { id: "debate", label: "Act 4 · Poll: 900 agents", budget: 120 },
