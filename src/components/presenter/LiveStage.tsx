@@ -658,7 +658,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         const pct = answered ? Math.round((correct / answered) * 100) : 0;
         const instruction =
           checkpoint === QUIZ.length
-            ? `The quiz just ended. Room got about ${pct}% right overall. One or two short sentences: scores are locked, the winners are revealed in the results at the end. Name nobody. Do not say "finale".`
+            ? `The quiz just ended. Room got about ${pct}% right overall. Two or three short sentences: the quiz is done, scores are locked and the winners are revealed in the results at the end; then end with: "Now, let's move to the main story." Name nobody. Do not say "finale".`
             : `Quiz checkpoint after question ${checkpoint + 1} of 30. The room got about ${pct}% of the last five right. Make ONE short, witty sentence (under 15 words) to keep energy up. Don't read questions or answers. Name nobody. The next question starts in 2 seconds.`;
         line(director({ mode: "free", instruction }).catch(() => "[SILENT]"));
       }
