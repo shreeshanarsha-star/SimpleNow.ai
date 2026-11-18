@@ -288,7 +288,7 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
     },
     { label: "Act 4 · The Mirror", hint: "20-question self-assessment on phones.", run: () => phase("assessment") },
     { label: "Act 5 · The Story (slides)", hint: "Shree presents. Polls 1 and 2 buttons below.", run: () => send({ type: "present" }) },
-    { label: "Act 5 · Debate", hint: "900 agents: Shree moderates, then the phone vote.", run: () => phase("poll", { poll: "debate" }) },
+    { label: "Act 5 · 900-agents poll", hint: "Straight to the phone vote, then Shree reads the result.", run: () => phase("poll", { poll: "debate" }) },
     { label: "Act 6 · The Build", hint: "Fill the flyer inputs below, tap Start build.", run: () => send({ type: "layout", layout: "twin" }) },
     { label: "Act 7 · Prediction poll", hint: "Phones predict your agent demo. Then Next act.", run: () => phase("poll", { poll: "predict" }) },
     { label: "Act 7 · Over to you", hint: "Shree pauses; switch HDMI.", run: () => send({ type: "layout", layout: "handover" }) },

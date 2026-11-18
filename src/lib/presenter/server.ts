@@ -182,7 +182,7 @@ function buildPrompt(i: DirectorInput) {
 
   let task = "";
   if (i.mode === "slide")
-    task = `TASK: Present this slide now, in your own words, as a co-host. Land the INTENT. Use the EXAMPLE if it helps. If there is an ENGAGE question, end by asking it. Keep it tight: 30 to 45 seconds of speech (about 70 to 110 words); a little longer only if the slide has a POLL or debate, in which case end by inviting everyone to vote on their phones. Don't read the slide. Don't say "slide". Flow naturally from what was said before.`;
+    task = `TASK: Present this slide now, in your own words, as a co-host. Land the INTENT. Use the EXAMPLE if it helps. If there is an ENGAGE question, end by asking it. Keep it tight: 30 to 45 seconds of speech (about 70 to 110 words); a little longer only if the slide has a POLL, in which case end by inviting everyone to vote on their phones. Don't read the slide. Don't say "slide". Flow naturally from what was said before.`;
   else if (i.mode === "room")
     task = `TASK: Someone in the room just said: "${i.heard}". Respond naturally and briefly (1 to 3 sentences; during the introductions, follow the introductions guidance in the session phase instead, including its length), like a human co-host:
 - A quick question you can answer from the material: answer it now.

@@ -744,7 +744,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   }, [layout]);
 
   /* ------------------------------ sound design ------------------------------ */
-  // Music never plays under intros, slides or the debate; it dips under Shree's voice.
+  // Music never plays under intros, slides or the 900-agents poll; it dips under Shree's voice.
   useEffect(() => {
     duck(speaking);
   }, [speaking]);
@@ -1484,7 +1484,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           pushStatus();
           if (!alive()) return;
           await line(
-            "Shreesha has just introduced you to the team and handed you the floor (his words are in the recent conversation). Introduce yourself naturally in 4 to 6 short spoken sentences: react warmly or wittily to something specific Shreesha just said about you; you're Shree, Shreesha's digital twin; today isn't a lecture, it's interactive, and their phones are the remote; a one-line taste of what's coming (a quiz, a mirror, the story of AI agents, a debate, an app built live, and the results). Then turn it around: you've heard a lot about this team and now you'd love to meet them. Invite each person, one at a time, to say their name and the one task they repeat most at work, the one that eats their time, and ask who wants to go first. Under 45 seconds."
+            "Shreesha has just introduced you to the team and handed you the floor (his words are in the recent conversation). Introduce yourself naturally in 4 to 6 short spoken sentences: react warmly or wittily to something specific Shreesha just said about you; you're Shree, Shreesha's digital twin; today isn't a lecture, it's interactive, and their phones are the remote; a one-line taste of what's coming (a quiz, a mirror, the story of AI agents, a quick poll, an app built live, and the results). Then turn it around: you've heard a lot about this team and now you'd love to meet them. Invite each person, one at a time, to say their name and the one task they repeat most at work, the one that eats their time, and ask who wants to go first. Under 45 seconds."
           );
           s.current.selfIntroDone = true;
         },
@@ -1593,45 +1593,17 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           for (const k of ["game-1", "game-2", "game-3"]) if (alive()) await pollRun(k, 40_000, true);
         },
         debate: async () => {
-          // Discussion first, the vote at the end.
+          // A straight poll (no discussion): set it up, vote, read the result, one-line takeaway.
           setLayoutBoth("twin");
-          if (ap.fresh)
-            await line(
-              "Set up the debate in 3 or 4 short, lively sentences: imagine NRPL, 300 people, and each one builds 3 AI agents for their own work: 900 agents running across the company. What happens? Does productivity shoot up, or does management end up with a whole new set of problems? Invite one person who thinks productivity shoots up to start."
-            );
-          if (!alive()) return;
-          // Moderate until the room has had its say: ends when Shreesha says "let's move on" / "let's vote", on Next,
-          // or after a long quiet spell once people have spoken.
-          let done = false;
-          const t0 = Date.now();
-          let lastPrompt = Date.now();
-          let prompts = 0;
-          s.current.cue = { re: /\b(let'?s|time to|okay|ok|shall we)\b.{0,15}\b(move on|vote)\b/i, done: () => (done = true) };
-          ap.waiting = "Debate: Shree moderates. Say “Shree, let's vote” (or tap ⏭ Next) when the room has had its say";
-          pushStatus();
-          while (alive() && !done) {
-            await wait(1000);
-            const silentFor = Date.now() - Math.max(s.current.lastRoomAt, s.current.lastSpeechEnd);
-            if (quiet() && silentFor > 15_000 && Date.now() - lastPrompt > 15_000) {
-              lastPrompt = Date.now();
-              prompts++;
-              if (prompts >= 3 && s.current.lastRoomAt > t0) break;
-              await line(
-                prompts === 1
-                  ? "The room is quiet. In one sentence, invite someone from the other side: who thinks management will end up with more problems?"
-                  : "In one sentence, invite one more view, or someone who thinks it's both, then say we'll vote in a moment."
-              );
-            }
-          }
-          s.current.cue = null;
-          ap.waiting = "";
-          pushStatus();
-          if (!alive()) return;
-          await pollRun("debate", 45_000, "One or two sentences: time to vote. 300 people, 900 agents: productivity shoots up, management gets more problems, or both? Vote on your phones now.");
+          await pollRun(
+            "debate",
+            45_000,
+            "In 2 short sentences, set up a quick poll on their phones (not a debate): imagine NRPL, 300 people, each builds 3 AI agents for their own work: 900 agents. What happens: productivity shoots up, management gets more problems, or both? Vote now."
+          );
           if (!alive()) return;
           const c = H().board?.polls["debate"] || [];
           await line(
-            `Read the vote in one sentence (productivity shoots up = ${c[0] || 0}, more problems for management = ${c[1] || 0}, both if managed well = ${c[2] || 0}), then close the debate in 2 or 3 balanced sentences: 900 agents can multiply what we do, or multiply our mess; the difference is ownership, clear rules, and the 3-check test: is it true, is it better, is it worth it?`
+            `Read the result in one sentence (productivity shoots up = ${c[0] || 0}, more problems for management = ${c[1] || 0}, both if managed well = ${c[2] || 0}), then one or two balanced sentences: 900 agents can multiply what we do, or multiply our mess; the difference is ownership, clear rules, and the 3-check test: is it true, is it better, is it worth it? Do not ask anyone to discuss it.`
           );
         },
         build: async () => {
