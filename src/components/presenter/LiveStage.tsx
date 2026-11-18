@@ -1568,12 +1568,6 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
               if (/\[SHARE PDF\]/i.test(t) && !(H().hub.sharedDocs || []).includes(SHARED_DOCS[0].key)) adminAct({ action: "share-doc", key: SHARED_DOCS[0].key });
             });
             await wait(150_000, () => s.current.slide === i && s.current.slideNarrated && quiet());
-            // Ended on a question: give the room a few seconds to answer before the next slide.
-            if (/\?\s*$/.test(s.current.lastSaid || "")) {
-              const asked = Date.now();
-              await wait(7000, () => s.current.lastRoomAt > asked);
-              if (s.current.lastRoomAt > asked) await wait(60_000, () => quiet() && Date.now() - s.current.lastRoomAt > 5000);
-            }
             const txt = await slideText(i);
             if (/POLL\s*1/i.test(txt)) await pollRun("poll1", 45_000, true, "Read the result in one sentence and connect it to the 3-check test.");
             if (/POLL\s*2/i.test(txt)) await pollRun("poll2", 45_000, true, "Read the result in one sentence: the most popular first task.");
