@@ -552,7 +552,7 @@ function FlyerControls({
 function EntranceTest({ status, send }: { status: PresenterStatus | null; send: (c: PresenterCommand) => void }) {
   const [open, setOpen] = useState(false);
   const test = !!status?.listening?.test;
-  const sens = status?.listening?.sens || "med";
+  const sens = status?.listening?.sens || "high";
   if (!open)
     return (
       <button className="w-full rounded-lg bg-neutral-800 py-2 text-xs text-white/70" onClick={() => setOpen(true)}>

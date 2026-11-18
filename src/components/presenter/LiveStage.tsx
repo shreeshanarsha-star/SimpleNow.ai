@@ -32,6 +32,9 @@ const CLOSING_LINE =
   "In the end, it's not about AI versus humans. Whether it's artificial intelligence, human intelligence, or a plain notepad or Excel sheet, the question is always the same: does it add real value, and is it worth the time and money? That's ROI. Use whatever gets you there.";
 type Layout = PresenterStatus["layout"];
 
+/** Someone speaks straight to Shree ("Shree, can you hear me?"), not just about him. */
+const DIRECT_TO_SHREE = /\b(can|could|are|do) you (able to )?(hear|listen)|\b(hello|hi|hey)\b.{0,12}\b(shree|shri|sree|sri)\b|\b(shree|shri|sree|sri)\b[ ,?!.]*(can|are|do|did) you\b|\b(shree|shri|sree|sri)\s*\?/i;
+
 export default function LiveStage({ sessionId }: { sessionId?: string }) {
   const [session, setSession] = useState<Session | null>(null);
   const [layout, setLayout] = useState<Layout>("standby");
@@ -89,7 +92,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     slideNarrated: false,
     intros: false,
     entranceTest: false,
-    sens: "med" as "low" | "med" | "high",
+    sens: "high" as "low" | "med" | "high",
     listening: null as PresenterStatus["listening"],
     entrance: "",
     testHit: "",
@@ -105,6 +108,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     manualInterrupt: 0,
     roomBusy: false,
     quietListen: false,
+    welcomeWait: false,
     lastRoomAt: 0,
     expect: null as null | ((heard: string) => Promise<boolean>),
     preShow: true,
@@ -474,6 +478,21 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         const done = st.cue.done;
         st.cue = null;
         done();
+        return;
+      }
+      if (st.quietListen && st.welcomeWait && !st.roomBusy && DIRECT_TO_SHREE.test(heard)) {
+        // Before the handover Shree only listens, but a direct question ("Shree, can you hear me?")
+        // gets one short answer so Shreesha knows he's live.
+        st.roomBusy = true;
+        try {
+          const r = await director({
+            mode: "free",
+            instruction: `Shreesha (or someone in the room) just spoke to you directly: "${heard.slice(0, 200)}". Answer in ONE short spoken sentence (for example: yes, you can hear him loud and clear). Do not introduce yourself yet and do not start the session: Shreesha is about to introduce you.`,
+          }).catch(() => "Loud and clear, Shreesha!");
+          await say(r);
+        } finally {
+          st.roomBusy = false;
+        }
         return;
       }
       if (st.quietListen) return; // Shreesha (or a guest) has the floor: listen only
@@ -1371,6 +1390,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           ap.waiting = "Introduce Shree, then say “introduce yourself” / “over to you” (or tap ⏭ Next)";
           pushStatus();
           s.current.quietListen = true;
+          s.current.welcomeWait = true;
           await new Promise<void>((resolve) => {
             s.current.cue = {
               re: /introduc(e|ing) yourself|over to you|take it (away|over)|(you )?(can|may) (start|begin|go ahead)|go ahead|floor is yours|all yours|your turn|stage is yours/i,
@@ -1386,6 +1406,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           });
           s.current.cue = null;
           s.current.quietListen = false;
+          s.current.welcomeWait = false;
           ap.waiting = "";
           pushStatus();
           if (!alive()) return;
@@ -1858,7 +1879,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         const t = { low: { min: 0.32, ratio: 8 }, med: { min: 0.18, ratio: 6 }, high: { min: 0.1, ratio: 4.5 } }[s.current.sens];
         if (cand) {
           if (peak > cand.peak * 0.5) cand.loud++;
-          if (cand.loud >= 4) cand = null; // stayed loud: speech, music or a cough
+          if (cand.loud >= 6) cand = null; // stayed loud: speech, music or a cough
           else if (now - cand.at > 90) {
             const strength = cand.peak;
             cand = null;
