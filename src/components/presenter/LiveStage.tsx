@@ -659,7 +659,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         const instruction =
           checkpoint === QUIZ.length
             ? `The quiz just ended. Room got about ${pct}% right overall. Two or three short sentences: the quiz is done, scores are locked and the winners are revealed in the results at the end; then end with: "Now, let's move to the main story." Name nobody. Do not say "finale".`
-            : `Quiz checkpoint after question ${checkpoint + 1} of 30. The room got about ${pct}% of the last five right. Make ONE short, witty sentence (under 15 words) to keep energy up. Don't read questions or answers. Name nobody. The next question starts in 2 seconds.`;
+            : `Quiz checkpoint after question ${checkpoint + 1} of 30. The room got about ${pct}% of the last five right. Make ONE short, warm sentence (under 15 words) to keep energy up. Don't read questions or answers. Name nobody. The next question starts in 2 seconds.`;
         line(director({ mode: "free", instruction }).catch(() => "[SILENT]"));
       }
     }
@@ -1022,7 +1022,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           const linePromise = flushRoomRef.current().then(() => director({
             mode: "free",
             instruction:
-              "You have just appeared on screen after a cinematic montage: Shreesha snapped his fingers and you arrived. Say hello in ONE or TWO short, natural sentences, like a friend walking into the room: a warm, witty line to Shreesha or the room. If something funny or notable was said before you appeared (see WHAT THE ROOM HAS SAID), make it a light callback to that, especially anything Shreesha said about you; otherwise a light comeback (for example, that unlike him you didn't need three cups of filter coffee to get here). Don't give an agenda or mention phones yet: you'll introduce yourself properly right after this line. Under 12 seconds.",
+              "You have just appeared on screen after a cinematic montage: Shreesha snapped his fingers and you arrived. Say good morning and hello in ONE or TWO short sentences: warm, respectful, sweet, with a gentle smile in it (not witty, not cheeky, no coffee jokes). If something kind or notable was said before you appeared (see WHAT THE ROOM HAS SAID), you may gently refer to it. Don't give an agenda or mention phones yet: you'll introduce yourself properly right after this line. Under 12 seconds.",
           })).catch(() => "Good morning, everyone! Shreesha, that was quite the entrance.");
           const connecting = connectTwin();
           await new Promise<void>((r) => (montageDone.current = r));
@@ -1467,7 +1467,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           setLayoutBoth("twin");
           if (!ap.fresh) return;
           await line(
-            "Introduce yourself now, naturally, in 4 to 6 short spoken sentences: you're Shree, Shreesha's digital twin; today isn't a lecture, it's interactive, and their phones are the remote; a one-line taste of what's coming (a quick quiz, the story of AI agents, a quick poll, the Mirror, your questions, and the results). Then turn it around: you've heard a lot about this team and now you'd love to meet them. Ask each person, one at a time, to say their name, their team and their designation, and ask who wants to go first. Under 45 seconds."
+            "Introduce yourself now, warmly, respectfully and with a gentle smile (not witty, not cheeky, never mention coffee), in 6 to 8 short spoken sentences: you're Shree, Shreesha's digital twin, and you're truly happy to be here with this team. Share a few of the things an AI like you can do once it is set up for the job: take interviews, run inductions, deliver product trainings, talk with customers, sell products, and check and validate things; and, with a gentle smile, that you never get tired, never take leave and are, in a way, immortal. Add, kindly, that you are here to help people, not to replace them. Today isn't a lecture, it's interactive, and their phones are the remote; a one-line taste of what's coming (a quick quiz, the story of AI agents, a quick poll, the Mirror, your questions, and the results). Then say you've heard a lot about this team and you'd love to meet them: ask each person, one at a time, to say their name, their team and their designation, and ask who would like to go first. Under 60 seconds."
           );
           s.current.selfIntroDone = true;
         },

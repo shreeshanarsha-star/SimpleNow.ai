@@ -273,7 +273,7 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
       run: () => {
         send({ type: "layout", layout: "twin" });
         send({ type: "intros", on: true });
-        send({ type: "direct", text: "Start the introductions: invite each person, one at a time, to say their name, their team and their designation. React in ONE short, warm, witty sentence (light office humour is welcome, like 'ah, the 49-tab Excel of doom'), by name. Begin now by inviting the first volunteer." });
+        send({ type: "direct", text: "Start the introductions: invite each person, one at a time, to say their name, their team and their designation. React in ONE or two short, warm, respectful sentences, by name. Begin now by inviting the first volunteer." });
       },
     },
     {
