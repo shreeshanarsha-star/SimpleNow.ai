@@ -274,15 +274,7 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
       run: () => {
         send({ type: "layout", layout: "twin" });
         send({ type: "intros", on: true });
-        send({ type: "direct", text: "Start the introductions: invite each person, one at a time, to say their name and one task they wish they never had to do again, in about 20 seconds. React in ONE short, warm, witty sentence (light office humour is welcome, like 'ah, the 49-tab Excel of doom'), by name. Begin now by inviting the first volunteer." });
-      },
-    },
-    {
-      label: "Act 2 · HR Wish Wall",
-      hint: "Everyone's 'never again' task on TV; Shree groups them.",
-      run: async () => {
-        send({ type: "intros", on: false });
-        await act({ action: "wishwall" });
+        send({ type: "direct", text: "Start the introductions: invite each person, one at a time, to say their name and the one task they repeat most at work, in about 20 seconds. React in ONE short, warm, witty sentence (light office humour is welcome, like 'ah, the 49-tab Excel of doom'), by name. Begin now by inviting the first volunteer." });
       },
     },
     { label: "Act 2 · AI confidence check (start)", hint: "Confidence poll on phones.", run: () => phase("poll", { poll: "before" }) },
@@ -296,26 +288,23 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
     },
     { label: "Act 4 · The Mirror", hint: "20-question self-assessment on phones.", run: () => phase("assessment") },
     { label: "Act 5 · The Story (slides)", hint: "Shree presents. Polls 1 and 2 buttons below.", run: () => send({ type: "present" }) },
-    { label: "Act 5 · AI, HI or Notepad? game", hint: "3 quick votes. Tap Reveal answer, then game-2, game-3 below.", run: () => phase("poll", { poll: "game-1" }) },
-    { label: "Act 5 · Debate", hint: "Two sides vote on phones; Shree moderates.", run: () => phase("poll", { poll: "debate" }) },
+    { label: "Act 5 · Debate", hint: "900 agents: Shree moderates, then the phone vote.", run: () => phase("poll", { poll: "debate" }) },
     { label: "Act 6 · The Build", hint: "Fill the flyer inputs below, tap Start build.", run: () => send({ type: "layout", layout: "twin" }) },
     { label: "Act 7 · Prediction poll", hint: "Phones predict your agent demo. Then Next act.", run: () => phase("poll", { poll: "predict" }) },
     { label: "Act 7 · Over to you", hint: "Shree pauses; switch HDMI.", run: () => send({ type: "layout", layout: "handover" }) },
-    { label: "Act 6½ · Welcome back + reveal", hint: "Shree returns; tap Reveal app below.", run: () => send({ type: "resume" }) },
-    { label: "Act 6½ · Prediction result", hint: "Tap what actually happened (buttons below).", run: () => phase("poll", { poll: "predict" }) },
-    { label: "Act 6½ · Score the app", hint: "Fact poll (then Value, ROI buttons).", run: () => phase("poll", { poll: "check-fact" }) },
+    { label: "Act 7 · Welcome back + reveal", hint: "Shree returns; tap Reveal app below.", run: () => send({ type: "resume" }) },
+    { label: "Act 7 · Prediction result", hint: "Tap what actually happened (buttons below).", run: () => phase("poll", { poll: "predict" }) },
     { label: "Act 8 · Ask anything", hint: "Q&A list on TV; 'Shree answers' below.", run: () => phase("questions") },
-    { label: "Act 9 · Finale", hint: "Tap 'Finale next' for 3rd, 2nd, winner, levels.", run: () => phase("finale") },
+    { label: "Act 9 · Results", hint: "Tap 'Finale next' for 3rd, 2nd, winner, AI scores.", run: () => phase("finale") },
     { label: "Act 9 · AI confidence check (end)", hint: "Same question as the start.", run: () => phase("poll", { poll: "after" }) },
-    { label: "Act 9 · Commitments", hint: "Pledge on TV, commitments on phones.", run: () => phase("commit") },
     {
-      label: "Act 9 · Ask Shree",
-      hint: "Ask out loud: 'Shree, what's the one thing you want them to remember?'",
+      label: "Act 9 · Close",
+      hint: "Shree's closing line, then your last word.",
       run: () => {
         send({ type: "layout", layout: "twin" });
         send({
-          type: "direct",
-          text: "Shreesha asks you: after 75 minutes with our P&C team, what is the one thing you want them to remember? Answer in your own words in 3 to 5 warm, memorable sentences (you don't need to be a tech expert; spot the problem, ask better questions, check the answer; use AI where it creates value, human judgement where it matters, a notepad when that's enough), ending with: AI, HI or notepad: what matters is ROI. Then say the last word belongs to Shreesha.",
+          type: "say",
+          text: "In the end, it's not about AI versus humans. Whether it's artificial intelligence, human intelligence, or a plain notepad or Excel sheet, the question is always the same: does it add real value, and is it worth the time and money? That's ROI. Use whatever gets you there. And the last word belongs to Shreesha.",
         });
       },
     },
@@ -437,7 +426,7 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
       </div>
 
       <div className="grid grid-cols-3 gap-2">
-        <button className={`${b} bg-amber-600`} onClick={() => act({ action: "finale-step" })}>Finale next ▶</button>
+        <button className={`${b} bg-amber-600`} onClick={() => act({ action: "finale-step" })}>Results next ▶</button>
         <button className={`${b} bg-neutral-800`} onClick={() => act({ action: "finale-step", step: Math.max(0, (hub?.finaleStep || 0) - 1) })}>◀ Finale back</button>
         <button className={`${b} ${on(hub?.phase === "closed")}`} onClick={() => act({ action: "phase", phase: "closed" })}>Thank you</button>
       </div>

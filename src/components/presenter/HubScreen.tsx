@@ -343,7 +343,7 @@ export default function HubScreen({
         {hub.flyerUrl && flyerQr ? (
           <>
             <img src={flyerQr} alt="Flyer app QR" className="w-[20vw] rounded-2xl bg-white p-2" />
-            <div className="text-[1.6vw] text-white/70">Scan, try it, share a flyer</div>
+            <div className="text-[1.6vw] text-white/70">Scan to open it, or tap the link on your phone</div>
           </>
         ) : (
           <div className="text-[2vw] text-white/60">Opening on your phones…</div>
@@ -385,7 +385,7 @@ export default function HubScreen({
       ];
       return (
         <div className="flex h-full flex-col items-center px-[3vw] py-[2vw]">
-          <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Finale · Quiz winners</div>
+          <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Results · Quiz winners</div>
           <div className="mt-1 text-[3.6vw] font-black">And the quiz champions are…</div>
           <div className="mt-auto flex w-full items-end justify-center gap-[2vw]">
             {slots.map((s) => {
@@ -409,7 +409,7 @@ export default function HubScreen({
       const max = Math.max(1, ...lc.map((l) => l.count));
       return (
         <div className="flex h-full flex-col px-[3vw] py-[2.5vw]">
-          <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Finale · Self-assessment</div>
+          <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Results · AI scores</div>
           <div className="mt-1 text-[3.6vw] font-black">Where our team stands today</div>
           <div className="mt-[3vw] grid flex-1 grid-cols-4 items-end gap-[2vw]">
             {lc.map((l, i) => (
@@ -433,7 +433,7 @@ export default function HubScreen({
     const ta = after.reduce((a, b) => a + b, 0) || 1;
     return (
       <div className="flex h-full flex-col px-[3vw] py-[2.5vw]">
-        <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Before vs after</div>
+        <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Results · AI confidence: start vs end</div>
         <div className="mt-1 text-[3vw] font-black">{poll?.q}</div>
         <div className="mt-[3vw] space-y-[1.6vw]">
           {poll?.options.map((o, i) => (

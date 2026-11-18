@@ -179,6 +179,7 @@ function buildPrompt(i: DirectorInput) {
 - Covered by a later slide: say you're covering it shortly.
 - A bigger question better for Q&A: say you've noted it for Q&A, and END your reply with the tag [QA: the question in under 15 words].
 - About building or tool setup: say Shreesha will take it in Q&A, and end with the [QA: ...] tag too.
+- Shreesha (or anyone) asks you to explain more, go deeper or give an example: give a fuller explanation of the current slide in 4 to 8 spoken sentences (about 45 to 60 seconds), using the slide and speaker notes, then stop.
 - Small talk or a reaction: respond with warmth or wit.
 - Not addressed to you, unclear, or just noise: reply with exactly [SILENT].`;
   else if (i.mode === "direct")
@@ -269,7 +270,7 @@ export async function loadBrain(sessionId: string, opts: { people?: boolean } = 
       const bits = [
         p?.role ? `role: ${p.role}` : "",
         sayableNote(pr.notes) ? `Shreesha's note: ${sayableNote(pr.notes)}` : "",
-        a.intro ? `task they'd love to drop (phone): ${a.intro}` : "",
+        a.intro ? `most repetitive task (phone): ${a.intro}` : "",
         spoken ? `said in their intro: ${spoken}` : "",
         asked.length ? `asked on phone: ${asked.join("; ")}` : "",
         commit?.text ? `today's commitment: ${commit.text}` : pr.lastCommitment ? `last session's commitment: ${pr.lastCommitment}` : "",

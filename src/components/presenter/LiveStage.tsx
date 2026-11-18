@@ -23,6 +23,13 @@ import { DEFAULT_HUB, FLYER_PRESETS, QUIZ, SHOW_STEPS, backupFlyerUrl, pollByKey
 
 type Session = { id: string; code: string; title: string; state: Record<string, unknown> };
 type Line = { role: "room" | "shree" | "shreesha"; text: string };
+
+const INTROS_GUIDE =
+  " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name + the one task they repeat most at work). React like you're finally meeting someone you've heard a lot about: warm and natural. Vary it every time (\"Nice to meet you, X, I've heard a lot about you\" is one option, never the same phrase twice in a row). If Shreesha's note about them has a MUST SAY part, you MUST cover EVERY one of those points now (all of them, none skipped), naturally and in your own words, in the tone the note asks for; never anything marked INFO ONLY. If there's no note, pick ONE light, specific detail from what the room has said today or from what they just said, and have fun with it gently (never personal, never a score). Up to 5 short spoken sentences. Use their name only if they said it or it matches someone signed in; if unsure who spoke, react without a name. Then invite the next person.";
+
+/** Shree's final line, said word for word (approved by Shreesha). */
+const CLOSING_LINE =
+  "In the end, it's not about AI versus humans. Whether it's artificial intelligence, human intelligence, or a plain notepad or Excel sheet, the question is always the same: does it add real value, and is it worth the time and money? That's ROI. Use whatever gets you there.";
 type Layout = PresenterStatus["layout"];
 
 export default function LiveStage({ sessionId }: { sessionId?: string }) {
@@ -105,6 +112,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     cue: null as null | { re: RegExp; done: () => void },
     bookmark: null as null | { idx: number; slide: number; layout: Layout; phase: string; poll: string | null; finaleStep: number; quizPausedAt: number; resumeText: string; label: string },
     selfIntroDone: false,
+    introLines: [] as string[],
     ears: { on: false, lines: 0, last: "" },
     ap: {
       on: true,
@@ -341,8 +349,10 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           phase:
             hubContext(hubRef.current.hub, hubRef.current.board) +
             (s.current.intros
-              ? " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name + one task they wish they never had to do again). React like you're finally meeting someone you've heard a lot about: warm and natural. Vary it every time (\"Nice to meet you, X, I've heard a lot about you\" is one option, never the same phrase twice in a row). If Shreesha's note about them has a MUST SAY part, you MUST cover EVERY one of those points now (all of them, none skipped), naturally and in your own words, in the tone the note asks for; never anything marked INFO ONLY. If there's no note, pick ONE light, specific detail from what the room has said today or from what they just said, and have fun with it gently (never personal, never a score). Up to 5 short spoken sentences. Use their name only if they said it or it matches someone signed in; if unsure who spoke, react without a name. Then invite the next person."
-              : ""),
+              ? INTROS_GUIDE
+              : s.current.introLines.length
+                ? ` INTRODUCTIONS ALREADY HAPPENED EARLIER TODAY. What people said when they introduced themselves: ${s.current.introLines.map((t) => `"${t}"`).join(" ")}. Anyone among them who speaks again: use their name if they say it, but do NOT repeat their welcome or the compliments from Shreesha's notes. Someone who introduces themselves now for the first time (a late arrival): give a one-line welcome with the single most important MUST SAY point from Shreesha's note about them, then respond to what they said.`
+                : ""),
           ...body,
         }),
       });
@@ -459,6 +469,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         const handled = await st.expect(heard).catch(() => false);
         if (handled) return;
       }
+      if (st.intros) st.introLines = [...st.introLines, heard.slice(0, 200)].slice(-40);
       if (st.intros && session?.id) {
         // Save the spoken intro to that person's memory (background, never blocks Shree).
         api<{ matched: string | null }>("/api/presenter/intro", {
@@ -1340,17 +1351,17 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         welcome: async (b) => {
           // Shreesha introduces Shree to the team; Shree only listens until he's handed the floor.
           setLayoutBoth("twin");
-          ap.waiting = "Introduce Shree, then say “introduce yourself” / “over to you” (or tap Skip)";
+          ap.waiting = "Introduce Shree, then say “introduce yourself” / “over to you” (or tap ⏭ Next)";
           pushStatus();
           s.current.quietListen = true;
           await new Promise<void>((resolve) => {
-            const t0 = Date.now();
             s.current.cue = {
               re: /introduc(e|ing) yourself|over to you|take it (away|over)|(you )?(can|may) (start|begin|go ahead)|go ahead|floor is yours|all yours|your turn|stage is yours/i,
               done: resolve,
             };
             const iv = setInterval(() => {
-              if (!alive() || ap.skip || Date.now() - t0 > b - 30_000) {
+              // No time limit: Shree waits for Shreesha's handover words (or Next).
+              if (!alive() || ap.skip) {
                 clearInterval(iv);
                 resolve();
               }
@@ -1362,7 +1373,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           pushStatus();
           if (!alive()) return;
           await line(
-            "Shreesha has just introduced you to the team and handed you the floor (his words are in the recent conversation). Introduce yourself naturally in 4 to 6 short spoken sentences: react warmly or wittily to something specific Shreesha just said about you; you're Shree, Shreesha's digital twin; today isn't a lecture, it's interactive, and their phones are the remote; a one-line taste of what's coming (a quiz, a mirror, a story, an app built live, and a champion). Then turn it around: you've heard a lot about this team and now you'd love to meet them. Invite each person, one at a time, to say their name and one task they wish they never had to do again, and ask who wants to go first. Under 45 seconds."
+            "Shreesha has just introduced you to the team and handed you the floor (his words are in the recent conversation). Introduce yourself naturally in 4 to 6 short spoken sentences: react warmly or wittily to something specific Shreesha just said about you; you're Shree, Shreesha's digital twin; today isn't a lecture, it's interactive, and their phones are the remote; a one-line taste of what's coming (a quiz, a mirror, the story of AI agents, a debate, an app built live, and the results). Then turn it around: you've heard a lot about this team and now you'd love to meet them. Invite each person, one at a time, to say their name and the one task they repeat most at work, the one that eats their time, and ask who wants to go first. Under 45 seconds."
           );
           s.current.selfIntroDone = true;
         },
@@ -1379,15 +1390,20 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           s.current.intros = true;
           if (!ap.fresh) await line("We're back after a short break. In one warm sentence, invite the next person who hasn't introduced themselves yet to carry on with the introductions.");
           else if (!s.current.selfIntroDone)
-            await line("Start the introductions now: invite each person, one at a time, to say their name and one task they wish they never had to do again, in about 20 seconds. Ask for the first volunteer.");
+            await line("Start the introductions now: invite each person, one at a time, to say their name and the one task they repeat most at work, the one that eats their time, in about 20 seconds. Ask for the first volunteer.");
           s.current.selfIntroDone = false;
-          const t0 = Date.now();
           let lastNudge = Date.now();
+          let moveOn = false;
           const all = () => {
             const a = H().board?.attendees || [];
             return a.length > 0 && a.filter((x) => x.spoken).length >= a.length;
           };
-          while (alive() && Date.now() - t0 < b - 25_000 && !all()) {
+          // No timer: moves on when everyone who joined has introduced themselves, when Shreesha
+          // says "Shree, let's move on", or on Next.
+          ap.waiting = "Intros run until everyone who joined has spoken. Say “Shree, let's move on” or tap ⏭ Next";
+          pushStatus();
+          s.current.cue = { re: /\b(let'?s|we can|time to|okay|ok|shall we)\b.{0,15}\bmove on\b|\bmove on\b.{0,20}\b(shree|please|now|next)\b/i, done: () => (moveOn = true) };
+          while (alive() && !all() && !moveOn) {
             await wait(1000);
             const silentFor = Date.now() - Math.max(s.current.lastRoomAt, s.current.lastSpeechEnd);
             if (quiet() && silentFor > 18_000 && Date.now() - lastNudge > 18_000) {
@@ -1395,8 +1411,11 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
               await line("The room has gone quiet during introductions. In one warm sentence, invite the next person who hasn't introduced themselves yet (no names unless certain).");
             }
           }
+          s.current.cue = null;
+          ap.waiting = "";
+          pushStatus();
           s.current.intros = false;
-          await line("Wrap up the introductions in one sentence and say: let's see what we have in common.");
+          await line("Wrap up the introductions in one warm sentence: notice how many of those repetitive tasks sound alike across the team, and that's exactly where AI should start helping.");
         },
         wishwall: async () => {
           H().lastWish = "";
@@ -1431,7 +1450,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           }
           await line("Thank everyone in one sentence; levels are revealed at the finale. Then say: now, the story.");
         },
-        story: async (b) => {
+        story: async () => {
           // Present every Story slide up to the live-build slide; open Polls 1 and 2 where the deck says so.
           // (Slide 1's agenda mentions the build, so search from slide 2 for the build slide.)
           let end = Math.min(16, s.current.slideCount || 16);
@@ -1441,14 +1460,10 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
               break;
             }
           }
-          const t0 = Date.now();
+          // The Story is never cut short or skipped: every slide is presented.
           const from = Math.max(0, Math.min(end - 1, ap.storyFrom || 0));
           ap.storyFrom = 0;
           for (let i = from; i < end && alive(); i++) {
-            if (Date.now() - t0 > b) {
-              await line("We're short on time: wrap up the story in one sentence and move on.");
-              break;
-            }
             setLayoutBoth("slides");
             await settle();
             presentSlide(i);
@@ -1462,18 +1477,47 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           await line("Introduce a quick game in one sentence: AI, HI or notepad? Three quick questions on your phones.");
           for (const k of ["game-1", "game-2", "game-3"]) if (alive()) await pollRun(k, 40_000, true);
         },
-        debate: async (b) => {
-          await pollRun(
-            "debate",
-            60_000,
-            "Present the debate in 2 or 3 sentences: a 300-employee company, will AI agents replace jobs or redesign them? Side A: jobs will shrink. Side B: jobs will be redesigned. Everyone votes on their phones now."
-          );
+        debate: async () => {
+          // Discussion first, the vote at the end.
+          setLayoutBoth("twin");
+          if (ap.fresh)
+            await line(
+              "Set up the debate in 3 or 4 short, lively sentences: imagine NRPL, 300 people, and each one builds 3 AI agents for their own work: 900 agents running across the company. What happens? Does productivity shoot up, or does management end up with a whole new set of problems? Invite one person who thinks productivity shoots up to start."
+            );
+          if (!alive()) return;
+          // Moderate until the room has had its say: ends when Shreesha says "let's move on" / "let's vote", on Next,
+          // or after a long quiet spell once people have spoken.
+          let done = false;
+          const t0 = Date.now();
+          let lastPrompt = Date.now();
+          let prompts = 0;
+          s.current.cue = { re: /\b(let'?s|time to|okay|ok|shall we)\b.{0,15}\b(move on|vote)\b/i, done: () => (done = true) };
+          ap.waiting = "Debate: Shree moderates. Say “Shree, let's vote” (or tap ⏭ Next) when the room has had its say";
+          pushStatus();
+          while (alive() && !done) {
+            await wait(1000);
+            const silentFor = Date.now() - Math.max(s.current.lastRoomAt, s.current.lastSpeechEnd);
+            if (quiet() && silentFor > 15_000 && Date.now() - lastPrompt > 15_000) {
+              lastPrompt = Date.now();
+              prompts++;
+              if (prompts >= 3 && s.current.lastRoomAt > t0) break;
+              await line(
+                prompts === 1
+                  ? "The room is quiet. In one sentence, invite someone from the other side: who thinks management will end up with more problems?"
+                  : "In one sentence, invite one more view, or someone who thinks it's both, then say we'll vote in a moment."
+              );
+            }
+          }
+          s.current.cue = null;
+          ap.waiting = "";
+          pushStatus();
+          if (!alive()) return;
+          await pollRun("debate", 45_000, "One or two sentences: time to vote. 300 people, 900 agents: productivity shoots up, management gets more problems, or both? Vote on your phones now.");
           if (!alive()) return;
           const c = H().board?.polls["debate"] || [];
-          await line(`Read the debate vote (replace = ${c[0] || 0}, redesign = ${c[1] || 0}) in one sentence, then invite one person from each side to say why, in a sentence each. Moderate warmly.`);
-          const t0 = Date.now();
-          await wait(70_000, () => s.current.lastRoomAt > t0 && Date.now() - s.current.lastRoomAt > 14_000 && quiet());
-          await line("Close the debate in 2 or 3 balanced sentences: neither outcome is guaranteed; what decides it is process redesign, skills, governance and human judgement. At 300 people the real risk isn't replacement, it's competitors with AI-skilled teams doing more with the same headcount.");
+          await line(
+            `Read the vote in one sentence (productivity shoots up = ${c[0] || 0}, more problems for management = ${c[1] || 0}, both if managed well = ${c[2] || 0}), then close the debate in 2 or 3 balanced sentences: 900 agents can multiply what we do, or multiply our mess; the difference is ownership, clear rules, and the 3-check test: is it true, is it better, is it worth it?`
+          );
         },
         build: async () => {
           let end = -1;
@@ -1585,9 +1629,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           await adminAct({ action: "phase", phase: "flyer" });
           hubView();
           const secs = live && fb?.finishedAt ? Math.round((fb.finishedAt - fb.startedAt) / 1000) : null;
-          await line(`The app is ready${secs ? ` (it was built in ${Math.floor(secs / 60)} minutes ${secs % 60} seconds, quote that)` : ""}. In 2 or 3 sentences: everyone scans the QR code, makes a flyer for the event, and shares it. You have 90 seconds.`);
-          await wait(90_000);
-          for (const k of ["check-fact", "check-value", "check-roi"]) if (alive()) await pollRun(k, 30_000, true, "Read the result in one short sentence.");
+          await line(`The app is live${secs ? ` (it was built and deployed in ${Math.floor(secs / 60)} minutes ${secs % 60} seconds, quote that)` : ""}. In 2 short sentences: the link and QR code are on the screen and on everyone's phone, so they can open it and try it any time. Then say: now, your questions.`);
+          await wait(8000);
         },
         qa: async (b) => {
           await adminAct({ action: "phase", phase: "questions" });
@@ -1636,7 +1679,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           } else {
             await adminAct({ action: "phase", phase: "finale" });
             hubView();
-            await line("One high-energy sentence: it's finale time, starting with today's quiz champions.");
+            await line("One high-energy sentence: it's results time, starting with today's quiz champions.");
           }
           for (const step of [1, 2, 3, 4].filter((x) => x >= first)) {
             if (!alive()) return;
@@ -1651,17 +1694,14 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           await wait(30_000, () => H().lastFinale === 5 && quiet());
         },
         close: async () => {
-          await adminAct({ action: "phase", phase: "commit" });
-          hubView();
-          if (ap.fresh) await line("In 2 or 3 sentences: invite everyone to read the pledge on screen together, out loud, then type their one 30-day commitment on their phones.");
-          await wait(75_000, () => people() > 0 && (H().board?.commitments.length || 0) >= people());
-          await line("Invite one or two volunteers to share their commitment out loud. One sentence.");
-          const t0 = Date.now();
-          await wait(45_000, () => s.current.lastRoomAt > t0 && Date.now() - s.current.lastRoomAt > 10_000 && quiet());
+          // No commitments: a short thank-you, the closing line word for word, then Shreesha's last word.
           setLayoutBoth("twin");
-          await line(
-            "Shreesha now asks you: after 75 minutes with our P&C team, what is the one thing you want them to remember? Answer in your own words in 3 to 5 warm, memorable sentences (you don't need to be a tech expert; spot the problem, ask better questions, check the answer; use AI where it creates value, human judgement where it matters, a notepad when that's enough), ending with: AI, HI or notepad: what matters is ROI. Then say the last word belongs to Shreesha."
-          );
+          if (ap.fresh) await line("In one or two warm sentences, thank the team for their energy, their honesty and their laughs today. Don't say goodbye yet.");
+          if (!alive()) return;
+          await settle();
+          await say(CLOSING_LINE);
+          if (!alive()) return;
+          await say("And the last word belongs to Shreesha.");
           await adminAct({ action: "phase", phase: "closed" });
           hubView();
         },
@@ -2081,7 +2121,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
 /* Context for the Director: phone-tagged names are certain, so Shree may use them. */
 function peopleContext(board: Board | null) {
   if (!board?.attendees.length) return undefined;
-  return board.attendees.map((a) => `- ${a.name}${a.intro ? ` (task they'd love to drop: ${a.intro})` : ""}`).join("\n");
+  return board.attendees.map((a) => `- ${a.name}${a.intro ? ` (most repetitive task: ${a.intro})` : ""}`).join("\n");
 }
 
 function hubContext(hub: HubState, board: Board | null) {

@@ -160,11 +160,11 @@ function Join({ title, onJoin }: { title: string; onJoin: (b: { name: string; in
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} autoComplete="given-name" className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 text-lg outline-none focus:ring-2 focus:ring-orange-500" placeholder="e.g. Priya" />
         </label>
         <label className="block">
-          <span className="text-sm text-white/70">One task you wish you never had to do again (optional)</span>
+          <span className="text-sm text-white/70">Your most repetitive task at work (optional)</span>
           <input value={intro} onChange={(e) => setIntro(e.target.value)} maxLength={160} className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500" placeholder="e.g. chasing interview feedback" />
         </label>
         <div className="rounded-xl bg-white/5 p-3 text-xs leading-relaxed text-white/60">
-          We&apos;ll remember your name, your intro and your commitment for future sessions. Quiz and assessment scores are never shown to anyone else; only the top 3 quiz names appear on screen.
+          We&apos;ll remember your name and your intro for future sessions. Quiz and assessment scores are never shown to anyone else; only the top 3 quiz names appear on screen.
           <label className="mt-2 flex items-center gap-2 text-white/80">
             <input type="checkbox" checked={!remember} onChange={(e) => setRemember(!e.target.checked)} className="h-4 w-4" /> Don&apos;t remember me after today
           </label>
@@ -216,6 +216,11 @@ function Now({ st, serverNow, post, reload, pending, goAsk }: { st: State; serve
       <Card title="Ask anything">
         <p className="text-white/60">No question is too basic. Ask here and get an instant answer; the best ones go to Shree and Shreesha.</p>
         <button onClick={goAsk} className="mt-4 w-full rounded-2xl bg-orange-600 py-4 text-lg font-semibold">Ask a question</button>
+        {hub.flyerUrl && (
+          <a href={hub.flyerUrl} target="_blank" rel="noreferrer" className="mt-3 block text-center text-sm text-orange-300 underline">
+            Open today&apos;s flyer app
+          </a>
+        )}
       </Card>
     );
   if ((hub.phase === "finale" || hub.phase === "closed") && st.badge) return <Badge st={st} />;
