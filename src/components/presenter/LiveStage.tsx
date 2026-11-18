@@ -646,7 +646,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     if (h.hub.phase === "quiz") {
       const c = quizClock(h.hub.quiz, Date.now() + h.offset);
       if (c.status === "leadin" || c.status === "off") h.lastQuizNote = -1;
-      const checkpoint = c.status === "reveal" && (c.idx + 1) % 5 === 0 && c.idx + 1 < QUIZ.length ? c.idx : c.status === "done" ? QUIZ.length : -1;
+      // No comments during the quiz (people answer without disturbance): Shree speaks only once it has ended.
+      const checkpoint = c.status === "done" ? QUIZ.length : -1;
       if (checkpoint >= 0 && checkpoint !== h.lastQuizNote) {
         h.lastQuizNote = checkpoint;
         const pq = h.board?.quiz.perQuestion || [];
