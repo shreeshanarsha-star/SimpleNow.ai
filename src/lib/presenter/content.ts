@@ -283,6 +283,8 @@ export const SHOW_STEPS: Array<{ id: string; label: string; budget: number }> = 
 
 /** The Story ends just before the first slide that matches this (the Q&A slide, or the old flyer slide). */
 export const STORY_END_RE = /ASK ANYTHING|FLYER CHALLENGE/i;
+/** PDF text can come out letter-spaced ("A S K  A N Y T H I N G"): test with all spaces removed. */
+export const isStoryEnd = (text: string) => /ASKANYTHING|FLYERCHALLENGE/i.test(String(text || "").replace(/\s+/g, ""));
 
 /** Documents Shree can push to phones. The [SHARE PDF] tag in a slide's notes shares SHARED_DOCS[0]. */
 export const SHARED_DOCS = [

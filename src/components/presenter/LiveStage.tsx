@@ -19,13 +19,13 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import HubScreen, { type Board } from "@/components/presenter/HubScreen";
 import Montage from "@/components/presenter/Montage";
 import { cue, duck, getSoundState, initSound, setBed, setMuted, setVolume } from "@/lib/presenter/sound";
-import { DEFAULT_HUB, FLYER_PRESETS, QUIZ, SHARED_DOCS, SHOW_STEPS, STORY_END_RE, backupFlyerUrl, pollByKey, quizClock, type HubState } from "@/lib/presenter/content";
+import { DEFAULT_HUB, FLYER_PRESETS, QUIZ, SHARED_DOCS, SHOW_STEPS, isStoryEnd, backupFlyerUrl, pollByKey, quizClock, type HubState } from "@/lib/presenter/content";
 
 type Session = { id: string; code: string; title: string; state: Record<string, unknown> };
 type Line = { role: "room" | "shree" | "shreesha"; text: string };
 
 const INTROS_GUIDE =
-  " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name, team and designation). React like you're finally meeting someone you've heard a lot about: warm and natural. If someone gives only their name (or misses their team or designation), that is perfectly fine: never ask them for the rest, just welcome them warmly; use Shreesha's note about them if there is one. Vary it every time (\"Nice to meet you, X, I've heard a lot about you\" is one option, never the same phrase twice in a row). If Shreesha's note about them has a MUST SAY part, you MUST cover EVERY one of those points now (all of them, none skipped), naturally and in your own words, in the tone the note asks for; never anything marked INFO ONLY. If there's no note, react to their team or role, or to ONE light detail from what the room has said today, and have fun with it gently (never personal, never a score). Up to 5 short spoken sentences. Use their name only if they said it or it matches someone signed in; if unsure who spoke, react without a name. Then invite the next person.";
+  " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name, team and designation). React like you're finally meeting someone you've heard a lot about: warm and natural. If someone gives only their name (or misses their team or designation), that is perfectly fine: never ask them for the rest, just welcome them warmly; use Shreesha's note about them if there is one. Vary it every time (\"Nice to meet you, X, I've heard a lot about you\" is one option, never the same phrase twice in a row). If Shreesha's note about them has a MUST SAY part, you MUST cover EVERY one of those points now (all of them, none skipped), naturally and in your own words, in the tone the note asks for; never anything marked INFO ONLY. If there's no note about them, NEVER invent anything about them (no skills, habits, achievements or reputation): just welcome them warmly and, if they said it, say something kind about their team or role. Don't say 'good morning' (you already greeted the room). Up to 5 short spoken sentences. Use their name only if they said it or it matches someone signed in; if unsure who spoke, react without a name. Then invite the next person.";
 
 /** Shree's final line, said word for word (approved by Shreesha). */
 const CLOSING_LINE =
@@ -36,6 +36,9 @@ type Layout = PresenterStatus["layout"];
 const CALL = String.raw`(?:bro|brother|buddy|shree|shri|sree|sri|shre)`;
 const VOICE_HOLD = new RegExp(String.raw`\b${CALL}\b[ ,.!]*(?:please[ ,]+)?(?:hold on|hold|stop|wait|pause|one (?:sec|second|minute)|just a (?:sec|second|minute))\b|\b(?:hold on|stop|wait|pause)[ ,.!]+${CALL}\b`, "i");
 const VOICE_RESUME = new RegExp(String.raw`\b${CALL}\b[ ,.!]*(?:please[ ,]+)?(?:proceed|next|carry on|continue|go on|go ahead|resume|you (?:can|may) (?:continue|proceed|go on|carry on))\b|\b(?:please[ ,]+)?(?:proceed|carry on|continue|go on|resume)[ ,.!]+${CALL}\b`, "i");
+
+/** A greeting at the start of a line ("Good morning, everyone." / "Hello all!"), removed after the first one. */
+const GREETING_OPENER = /^\s*(?:good (?:morning|afternoon|evening)(?:,?\s*(?:everyone|everybody|all|team|folks|friends))?|(?:hello|hi)(?: again)?,?\s*(?:everyone|everybody|all|team|folks|friends))\s*[.!,]?\s*/i;
 
 /** Someone speaks straight to Shree ("Shree, can you hear me?"), not just about him. */
 const DIRECT_TO_SHREE = /\b(can|could|are|do) you (able to )?(hear|listen)|\b(hello|hi|hey)\b.{0,12}\b(shree|shri|sree|sri)\b|\b(shree|shri|sree|sri)\b[ ,?!.]*(can|are|do|did) you\b|\b(shree|shri|sree|sri)\s*\?/i;
@@ -114,6 +117,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     roomBusy: false,
     quietListen: false,
     welcomeWait: false,
+    greeted: false,
     lastVoiceCmd: 0,
     lastRoomAt: 0,
     userSpeechAt: 0,
@@ -270,8 +274,14 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   }, [pushStatus]);
 
   const speak = useCallback(
-    async (text: string, after?: () => void) => {
+    async (raw: string, after?: () => void) => {
       const client = anamRef.current;
+      // Shree greets the room once (his entrance line). Strip any later "Good morning, everyone." openers.
+      let text = raw;
+      if (s.current.greeted && text) {
+        const cut = text.replace(GREETING_OPENER, "");
+        if (cut !== text && cut.trim().length > 10) text = cut.charAt(0).toUpperCase() + cut.slice(1);
+      }
       if (!text || text.includes("[SILENT]")) {
         after?.();
         return;
@@ -1033,6 +1043,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           setLayoutBoth("twin");
           await new Promise((r) => setTimeout(r, 900));
           await say(await linePromise);
+          st.greeted = true;
           // Autopilot: the rest of the show runs by itself from here.
           if (st.ap.on && !st.ap.running) runShowRef.current(0);
           break;
@@ -1467,7 +1478,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           setLayoutBoth("twin");
           if (!ap.fresh) return;
           await line(
-            "Introduce yourself now, warmly, respectfully and with a gentle smile (not witty, not cheeky, never mention coffee), in 6 to 8 short spoken sentences: you're Shree, Shreesha's digital twin, and you're truly happy to be here with this team. Share a few of the things an AI like you can do once it is set up for the job: take interviews, run inductions, deliver product trainings, talk with customers, sell products, and check and validate things; and, with a gentle smile, that you never get tired, never take leave and are, in a way, immortal. Add, kindly, that you are here to help people, not to replace them. Today isn't a lecture, it's interactive, and their phones are the remote; a one-line taste of what's coming (a quick quiz, the story of AI agents, a quick poll, the Mirror, your questions, and the results). Then say you've heard a lot about this team and you'd love to meet them: ask each person, one at a time, to say their name, their team and their designation, and ask who would like to go first. Under 60 seconds."
+            "You have just said hello; do NOT greet again (no 'good morning'). Now introduce yourself, warmly and respectfully, with a light, gentle touch of humour (not witty, not cheeky, never mention coffee; never describe your own tone or smile out loud), in 6 to 8 short spoken sentences: you're Shree, Shreesha's digital twin, and you're truly happy to be here with this team. Share a few of the things an AI like you can do once it is set up for the job: take interviews, run inductions, deliver product trainings, talk with customers, sell products, and check and validate things; and, lightly, that you never get tired, never take leave and are, in a way, immortal. Add, kindly, that you are here to help people, not to replace them. Today isn't a lecture, it's interactive, and their phones are the remote; a one-line taste of what's coming (a quick quiz, the story of AI agents, a quick poll, the Mirror, your questions, and the results). Then say you've heard a lot about this team and you'd love to meet them: ask each person, one at a time, to say their name, their team and their designation, and ask who would like to go first. Under 60 seconds."
           );
           s.current.selfIntroDone = true;
         },
@@ -1551,7 +1562,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             // The marker is on the slide itself, so read the deck PDF (the notes PDF holds the slide as an image).
             const deck = deckRef.current;
             const face = deck && i < deck.numPages ? await pageText(deck, i + 1).catch(() => "") : "";
-            if (STORY_END_RE.test(face) || /FLYER CHALLENGE/i.test(await slideText(i))) {
+            if (isStoryEnd(face) || /FLYER CHALLENGE/i.test(await slideText(i))) {
               end = i;
               break;
             }
