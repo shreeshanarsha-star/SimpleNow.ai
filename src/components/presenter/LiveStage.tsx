@@ -116,6 +116,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     welcomeWait: false,
     lastVoiceCmd: 0,
     lastRoomAt: 0,
+    userSpeechAt: 0,
     expect: null as null | ((heard: string) => Promise<boolean>),
     preShow: true,
     autoDark: true,
@@ -316,6 +317,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     [markSpeechDone, pushStatus, applyMic]
   );
 
+  const speakRef = useRef(speak);
+  speakRef.current = speak;
+
   /** Speak and resolve when finished (or superseded). */
   const say = useCallback(
     (text: string) =>
@@ -337,7 +341,20 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       const words = st.speakText.split(/\s+/);
       const spoken = Math.floor(((Date.now() - st.speakStart) / 1000) * 2.5);
       const rest = words.slice(spoken).join(" ");
-      if (rest.split(/\s+/).length > 8) st.resume = { text: rest, after: st.pendingAfterSpeech };
+      if (rest.split(/\s+/).length > 8) {
+        const saved = { text: rest, after: st.pendingAfterSpeech };
+        st.resume = saved;
+        // If nobody actually said anything (echo, a cough, a door), carry on with the rest by itself.
+        const heardBefore = st.lastRoomAt;
+        const spokeBefore = st.userSpeechAt;
+        setTimeout(() => {
+          const now = s.current;
+          if (now.resume === saved && !now.speaking && !now.roomBusy && !now.paused && now.lastRoomAt === heardBefore && now.userSpeechAt === spokeBefore) {
+            now.resume = null;
+            speakRef.current(saved.text, saved.after || undefined);
+          }
+        }, 3500);
+      }
       st.pendingAfterSpeech = null;
     }
     markSpeechDone();
@@ -806,7 +823,28 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         if (!s.current.micOn) client.muteInputAudio();
       });
       client.addListener(AnamEvent.MESSAGE_STREAM_EVENT_RECEIVED, (ev) => {
-        if (isActive() && ev.role === "persona" && ev.endOfSpeech) markSpeechDone();
+        if (!isActive() || ev.role !== "persona" || !ev.endOfSpeech) return;
+        const st = s.current;
+        if (!st.speaking) return;
+        // Cut off (noise, echo, someone talking): never treat it as "finished", or the show jumps ahead.
+        if ((ev as { interrupted?: boolean }).interrupted) {
+          onTalkInterruptedRef.current();
+          return;
+        }
+        // An end-of-speech that comes far too early for the length of the line is not the real end:
+        // wait for the estimated end instead of moving on to the next slide.
+        const words = (st.speakText || "").split(/\s+/).length;
+        const estMs = (words / 2.7) * 1000;
+        const elapsed = Date.now() - st.speakStart;
+        if (elapsed < estMs * 0.6) {
+          clearTimeout(st.speakTimer);
+          st.speakTimer = setTimeout(markSpeechDone, estMs - elapsed + 600);
+          return;
+        }
+        markSpeechDone();
+      });
+      client.addListener(AnamEvent.USER_SPEECH_STARTED, () => {
+        if (isActive()) s.current.userSpeechAt = Date.now();
       });
       client.addListener(AnamEvent.TALK_STREAM_INTERRUPTED, () => {
         if (isActive()) onTalkInterruptedRef.current();
