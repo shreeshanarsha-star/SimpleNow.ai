@@ -2,7 +2,7 @@
 // Presenter.ai — the private "AI passport" each person keeps on their phone,
 // plus the take-home kit. Nothing here is shared with anyone else.
 import { useEffect, useRef, useState } from "react";
-import { HR_PROMPTS, LEVELS, NEXT_STEP, SAFETY, TOOL_BY_TASK } from "@/lib/presenter/content";
+import { HR_PROMPTS, LEVELS, NEXT_STEP, SAFETY, SHARED_DOCS, TOOL_BY_TASK } from "@/lib/presenter/content";
 
 type Props = {
   name: string;
@@ -241,6 +241,11 @@ function Kit({ deckUrl }: { deckUrl?: string | null }) {
           Download today&apos;s slides (PDF)
         </a>
       )}
+      {SHARED_DOCS.map((d) => (
+        <a key={d.key} href={d.url} target="_blank" rel="noreferrer" className="block rounded-2xl bg-white/10 py-3 text-center font-semibold">
+          📄 {d.title} (PDF)
+        </a>
+      ))}
       <p className="text-center text-sm text-white/50">Thank you for your time, your questions and your curiosity.</p>
     </div>
   );

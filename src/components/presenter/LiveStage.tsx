@@ -19,7 +19,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import HubScreen, { type Board } from "@/components/presenter/HubScreen";
 import Montage from "@/components/presenter/Montage";
 import { cue, duck, getSoundState, initSound, setBed, setMuted, setVolume } from "@/lib/presenter/sound";
-import { DEFAULT_HUB, FLYER_PRESETS, QUIZ, SHOW_STEPS, backupFlyerUrl, pollByKey, quizClock, type HubState } from "@/lib/presenter/content";
+import { DEFAULT_HUB, FLYER_PRESETS, QUIZ, SHARED_DOCS, SHOW_STEPS, backupFlyerUrl, pollByKey, quizClock, type HubState } from "@/lib/presenter/content";
 
 type Session = { id: string; code: string; title: string; state: Record<string, unknown> };
 type Line = { role: "room" | "shree" | "shreesha"; text: string };
@@ -385,6 +385,18 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       roomBuf.current.unshift(...lines); // retry next round
     });
   }, [session?.id]);
+  /** "Shree, remember that …": save a note to Shree's Library. Returns true if it was a remember request. */
+  const rememberNote = useCallback(async (text: string) => {
+    const m = text.match(/^\s*(?:(?:hey|ok|okay)[ ,]+)?(?:shree|shri|sree)?[ ,]*(?:please[ ,]+)?(?:remember|note down|make a note)(?: that)?[ ,:]+(.{6,})$/i);
+    if (!m) return false;
+    await api("/api/presenter/library", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "add-text", kind: "note", title: `Note from Shreesha: ${m[1].slice(0, 60)}`, text: m[1] }),
+    }).catch(() => {});
+    setNote("Saved to Shree's Library");
+    return true;
+  }, []);
   const flushRoomRef = useRef(flushRoom);
   flushRoomRef.current = flushRoom;
   useEffect(() => {
@@ -465,6 +477,10 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         return;
       }
       if (st.quietListen) return; // Shreesha (or a guest) has the floor: listen only
+      if (/^\s*(?:(?:hey|ok|okay)[ ,]+)?(?:shree|shri|sree)[ ,]+(?:please[ ,]+)?(?:remember|note down|make a note)\b/i.test(heard) && (await rememberNote(heard))) {
+        say("Noted. I'll remember that.");
+        return;
+      }
       if (st.expect) {
         const handled = await st.expect(heard).catch(() => false);
         if (handled) return;
@@ -519,7 +535,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         st.roomBusy = false;
       }
     },
-    [director, presentSlide, pushStatus, slideText, speak, say, session?.id, logRoom]
+    [director, presentSlide, pushStatus, slideText, speak, say, session?.id, logRoom, rememberNote]
   );
 
   /* ------------------------------ audience hub ------------------------------ */
@@ -1017,6 +1033,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           break;
         case "direct": {
           transcript.current.push({ role: "shreesha", text: `(private direction) ${cmd.text}` });
+          if (await rememberNote(cmd.text)) break; // private: saved silently
           const say = await director({ mode: "direct", instruction: cmd.text, slideIdx: st.slide, slideText: await slideText(st.slide) });
           if (!say.includes("[SILENT]")) {
             anamRef.current?.interruptPersona();
@@ -1206,7 +1223,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           break;
       }
     },
-    [connectTwin, director, disconnectTwin, drawSlide, markSpeechDone, presentSlide, pushStatus, refreshHub, setLayoutBoth, slideText, speak, session?.id]
+    [connectTwin, director, disconnectTwin, drawSlide, markSpeechDone, presentSlide, pushStatus, refreshHub, setLayoutBoth, slideText, speak, session?.id, rememberNote]
   );
 
   const handleRef = useRef(handle);
@@ -1467,6 +1484,10 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             setLayoutBoth("slides");
             await settle();
             presentSlide(i);
+            // [SHARE PDF] in this slide's notes: push the document to every phone as Shree presents it.
+            slideText(i).then((t) => {
+              if (/\[SHARE PDF\]/i.test(t) && !(H().hub.sharedDocs || []).includes(SHARED_DOCS[0].key)) adminAct({ action: "share-doc", key: SHARED_DOCS[0].key });
+            });
             await wait(150_000, () => s.current.slide === i && s.current.slideNarrated && quiet());
             const txt = await slideText(i);
             if (/POLL\s*1/i.test(txt)) await pollRun("poll1", 45_000, true, "Read the result in one sentence and connect it to the 3-check test.");
@@ -1646,6 +1667,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
               await adminAct({ action: "question-status", qid: q.id, status: "answered" });
               let ans = await director({
                 mode: "free",
+                lookup: q.text,
                 instruction: `Answer this audience question in about 30 seconds, plain spoken English: "${q.text}". If it's about building apps, tool setup or Shreesha's agent demo, don't answer it: say warmly that this one is for Shreesha, and end with the tag [SHREESHA].`,
               }).catch(() => "");
               const toShreesha = /\[SHREESHA\]/i.test(ans);

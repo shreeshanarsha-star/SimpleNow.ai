@@ -3,9 +3,9 @@
 // token kept on the phone identifies the person for this session.
 import { useCallback, useEffect, useRef, useState } from "react";
 import Passport from "@/components/presenter/Passport";
-import { ASSESSMENT, PHONE_TAKEAWAYS, QUIZ, pollByKey, quizClock, type HubPhase, type QuizState } from "@/lib/presenter/content";
+import { ASSESSMENT, PHONE_TAKEAWAYS, QUIZ, SHARED_DOCS, pollByKey, quizClock, type HubPhase, type QuizState } from "@/lib/presenter/content";
 
-type HubView = { phase: HubPhase; quiz: QuizState | null; poll: string | null; pollReveal: number | null; finaleStep: number; flyerUrl: string | null };
+type HubView = { phase: HubPhase; quiz: QuizState | null; poll: string | null; pollReveal: number | null; finaleStep: number; flyerUrl: string | null; sharedDocs?: string[] };
 type Me = { name: string; quiz: string[]; assess: Record<string, number>; polls: Record<string, number>; commit: string | null };
 type State = {
   session: { title: string; code: string };
@@ -115,6 +115,16 @@ export default function PhoneHub({ code }: { code: string }) {
       </div>
       {err && <div className="mb-3 rounded-xl bg-yellow-500/20 px-3 py-2 text-xs text-yellow-200">{err}</div>}
 
+      {(st.hub.sharedDocs || []).map((k) => {
+        const d = SHARED_DOCS.find((x) => x.key === k);
+        return d ? (
+          <a key={k} href={d.url} target="_blank" rel="noreferrer" className="mb-3 block rounded-2xl bg-sky-900/60 p-3 ring-1 ring-sky-500/40">
+            <div className="text-sm font-semibold">📄 {d.title}</div>
+            <div className="mt-0.5 text-xs text-white/60">{d.sub}</div>
+            <div className="mt-2 text-xs font-semibold text-sky-300 underline">Open / download the PDF</div>
+          </a>
+        ) : null;
+      })}
       {tab === "ask" ? (
         <Ask st={st} post={post} reload={load} />
       ) : (

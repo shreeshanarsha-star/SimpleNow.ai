@@ -145,6 +145,10 @@ export type DirectorInput = {
   brain?: string;
   /** What the room has said tonight (speech-to-text digest + latest lines). */
   room?: string;
+  /** Library passages relevant to what was just said/asked. */
+  library?: string;
+  /** Text to look up in the Library (e.g. an audience question in Q&A). */
+  lookup?: string;
 };
 
 function buildPrompt(i: DirectorInput) {
@@ -155,6 +159,10 @@ function buildPrompt(i: DirectorInput) {
   if (i.room)
     parts.push(
       `WHAT THE ROOM HAS SAID TODAY (overheard by speech-to-text since people walked in, including before you appeared; words may be misheard; the speaker is unknown unless a name is said with it):\n"""${i.room.slice(0, 4000)}"""\nUse it like a co-host who was in the room all along: natural callbacks to running jokes, nicknames and teasing, warmly and sparingly (at most one callback every few minutes, only when it fits the moment). Never mock or embarrass anyone, never pin a line on a named person unless the name was said with it, never repeat anything private, personal or sensitive, and skip it when the moment is serious.`
+    );
+  if (i.library)
+    parts.push(
+      `SHREE'S LIBRARY (verified documents and notes Shreesha loaded; the passages most relevant to what was just said):\n"""${i.library.slice(0, 5000)}"""\nFor facts, use these passages (and the slides). Answer briefly: 2 or 3 spoken sentences, then stop; give more only when asked ("tell me more", a follow-up). Never add details that aren't in these passages, the slides or the briefing: if they don't cover it, say you don't have verified details on that and Shreesha can follow up. Label company-reported numbers as company-reported.`
     );
   if (i.people) parts.push(`PEOPLE IN THE ROOM (certain names only):\n${i.people}`);
   if (i.slideText)

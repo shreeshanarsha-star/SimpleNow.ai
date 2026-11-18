@@ -61,6 +61,7 @@ export async function GET(req: Request) {
       pollReveal: typeof hub.pollReveal === "number" ? hub.pollReveal : null,
       finaleStep: hub.finaleStep || 0,
       flyerUrl: hub.flyerUrl || null,
+      sharedDocs: hub.sharedDocs || [],
     },
     me: me ? { name: me.display_name, ...mine } : null,
     badge,

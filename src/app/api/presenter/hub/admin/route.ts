@@ -1,11 +1,13 @@
 // Presenter.ai — owner-only hub controls (TV laptop + control phone).
 import { db, json, ownerGuard } from "@/lib/presenter/server";
 import { callTextModel } from "@/lib/aiClient";
-import { ASSESSMENT, POLLS, QUIZ_TIMING, levelFor, type HubPhase, type HubState } from "@/lib/presenter/content";
+import { ASSESSMENT, POLLS, QUIZ_TIMING, SHARED_DOCS, levelFor, type HubPhase, type HubState } from "@/lib/presenter/content";
 import { QUIZ_KEY, buildBoard, hubOf, patchHub, sessionById } from "@/lib/presenter/hub";
 import { ensureFlyerToken } from "@/lib/presenter/flyerKit";
+import { syncDeck } from "@/lib/presenter/library";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const PHASES: HubPhase[] = ["lobby", "wishwall", "quiz", "assessment", "poll", "questions", "build", "flyer", "commit", "finale", "closed"];
 
@@ -59,6 +61,13 @@ export async function POST(req: Request) {
   if (action === "quiz-stop") {
     return json({ hub: await patchHub(id, { quiz: hub.quiz ? { ...hub.quiz, stoppedAt: Date.now() } : null }) });
   }
+  if (action === "share-doc") {
+    const key = String(body.key || "");
+    if (!SHARED_DOCS.some((d) => d.key === key)) return json({ error: "Unknown doc" }, 400);
+    const cur = hub.sharedDocs || [];
+    return json({ hub: cur.includes(key) ? hub : await patchHub(id, { sharedDocs: [...cur, key] }) });
+  }
+
   if (action === "quiz-shift") {
     // B after A mid-quiz: push the clock forward by the time away, so nobody loses questions.
     const ms = Math.max(0, Math.min(3_600_000, Number(body.ms) || 0));
@@ -198,7 +207,7 @@ Write the updated memory in at most 150 words: running jokes and funny moments, 
     await sb.from("presenter_responses").delete().eq("session_id", id);
     await sb.from("presenter_attendees").delete().eq("session_id", id);
     await sb.from("presenter_events").delete().eq("session_id", id).in("kind", ["room.heard", "room.memory"]);
-    return json({ hub: await patchHub(id, { phase: "lobby", quiz: null, poll: null, finaleStep: 0, flyerUrl: null, flyerBuild: null }) });
+    return json({ hub: await patchHub(id, { phase: "lobby", quiz: null, poll: null, finaleStep: 0, flyerUrl: null, flyerBuild: null, sharedDocs: [] }) });
   }
 
   if (action === "slides") {
@@ -214,7 +223,9 @@ Write the updated memory in at most 150 words: running jokes and funny moments, 
     }));
     const { error } = await db().from("presenter_slides").upsert(rows, { onConflict: "session_id,idx" });
     if (error) return json({ error: error.message }, 500);
-    return json({ ok: true, count: rows.length });
+    // Keep the whole deck in Shree's Library (rebuilt only if the text changed).
+    const lib = await syncDeck(id).catch((e) => ({ error: e instanceof Error ? e.message : "sync failed" }));
+    return json({ ok: true, count: rows.length, library: lib });
   }
 
   return json({ error: "Unknown action" }, 400);

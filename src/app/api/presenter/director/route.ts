@@ -1,3 +1,4 @@
+import { searchLibrary } from "@/lib/presenter/library";
 import { db, json, loadBrain, loadRoom, ownerGuard, runDirector, type DirectorInput } from "@/lib/presenter/server";
 
 export const dynamic = "force-dynamic";
@@ -11,9 +12,18 @@ export async function POST(req: Request) {
   const started = Date.now();
   try {
     if (body.sessionId) {
-      const [brain, room] = await Promise.all([loadBrain(body.sessionId).catch(() => ""), loadRoom(body.sessionId).catch(() => "")]);
+      // Library lookup for questions and conversation (not for scripted lines): include the last few
+      // lines so follow-ups ("how did they do it?") find the same document.
+      const asked = body.lookup || (body.mode === "room" ? body.heard : body.mode === "direct" ? body.instruction : "");
+      const recent = (body.transcript || []).slice(-3).map((t) => t.text).join(" ");
+      const [brain, room, library] = await Promise.all([
+        loadBrain(body.sessionId).catch(() => ""),
+        loadRoom(body.sessionId).catch(() => ""),
+        asked ? searchLibrary(`${recent} ${asked}`) : Promise.resolve(""),
+      ]);
       body.brain = brain;
       body.room = room || undefined;
+      body.library = library || undefined;
     }
     const out = await runDirector(body);
     if (body.sessionId) {

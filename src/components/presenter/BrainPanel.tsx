@@ -2,6 +2,7 @@
 // Presenter.ai — Shree's brain: briefing text and the people he remembers.
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/presenter/client";
+import LibraryPanel from "@/components/presenter/LibraryPanel";
 
 type Brain = { vocab?: string; rules?: string; knowledge?: string };
 type Tonight = { name: string; matchedTo: string | null; phoneIntro: string | null; spokenIntro: string | null };
@@ -122,6 +123,7 @@ export default function BrainPanel({ sessionId }: { sessionId: string }) {
           ))}
         </div>
       </div>
+      <LibraryPanel sessionId={sessionId} />
       {msg && <div className="text-xs text-ink-muted">{msg}</div>}
     </div>
   );

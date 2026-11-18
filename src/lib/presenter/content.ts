@@ -173,6 +173,8 @@ export type HubState = {
   wishGroups?: Array<{ label: string; items: string[] }> | null;
   flyerUrl?: string | null;
   flyerBuild?: FlyerBuild | null;
+  /** Documents pushed to phones during the show (e.g. at the slide tagged [SHARE PDF]). */
+  sharedDocs?: string[];
   at?: number;
 };
 export type FlyerInputs = { name: string; date: string; venue: string; highlights: string[] };
@@ -268,4 +270,14 @@ export const SHOW_STEPS: Array<{ id: string; label: string; budget: number }> = 
   { id: "qa", label: "Act 8 · Ask anything", budget: 420 },
   { id: "finale", label: "Act 9 · Results", budget: 300 },
   { id: "close", label: "Act 9 · Close", budget: 90 },
+];
+
+/** Documents Shree can push to phones. The [SHARE PDF] tag in a slide's notes shares SHARED_DOCS[0]. */
+export const SHARED_DOCS = [
+  {
+    key: "hr-ai-use-cases",
+    title: "More AI ways for your HR function",
+    sub: "Use cases and tools by function (TA, L&D, HRBP, HR Ops, Total Rewards, Shared Services). Start with the 1,000-employee column: it's closest to our size.",
+    url: "/presenter/docs/hr-ai-use-cases-by-function.pdf",
+  },
 ];
