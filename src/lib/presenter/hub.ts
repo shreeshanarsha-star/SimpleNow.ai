@@ -1,5 +1,6 @@
 // Presenter.ai — server-only logic for the audience session hub (/p/<code>).
 import { db, loadBrain, runDirector } from "@/lib/presenter/server";
+import { searchLibrary } from "@/lib/presenter/library";
 import { ASSESSMENT, DEFAULT_HUB, LEVELS, POLLS, QUIZ, levelFor, type HubState } from "@/lib/presenter/content";
 
 // Correct option index per quiz question (A=0 … D=3). Server-only.
@@ -130,11 +131,13 @@ export async function phoneAnswer(sessionId: string, question: string) {
     .map((s) => `[Slide ${s.idx + 1}] ${s.notes || s.body || ""}`)
     .join("\n")
     .slice(0, 24000);
-  const brain = await loadBrain(sessionId, { people: false }).catch(() => ""); // never people notes on phones
+  // Never people notes on phones. From the Library, only the public sources (never work files or notes).
+  const [brain, library] = await Promise.all([loadBrain(sessionId, { people: false }).catch(() => ""), searchLibrary(question, 6, { phoneSafe: true })]);
   const out = await runDirector({
     mode: "free",
     brain,
-    instruction: `You are answering privately on an attendee's PHONE (text, not speech). The session deck and speaker notes:\n"""${deck || "(not loaded)"}"""\n\nTheir question: "${question}"\n\nAnswer in 2 to 4 short sentences, plain text. Use facts only from the deck; if it's not covered, give general good practice and say Shreesha can go deeper in Q&A. If it's a build or tool-setup question, say Shreesha will cover it live. Never reveal anyone's scores or personal details.`,
+    library,
+    instruction: `You are answering privately on an attendee's PHONE (text, not speech). The session deck and speaker notes:\n"""${deck || "(not loaded)"}"""\n\nTheir question: "${question}"\n\nAnswer in 2 to 4 short sentences, plain text. Use facts only from the deck and Shree's Library passages; if they don't cover it, give general good practice and say Shreesha can go deeper in Q&A. If it's a build or tool-setup question, say Shreesha will cover it live. Never reveal anyone's scores or personal details.`,
   });
   return out.say;
 }

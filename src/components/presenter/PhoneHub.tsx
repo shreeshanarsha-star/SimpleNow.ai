@@ -224,7 +224,7 @@ function Now({ st, serverNow, post, reload, pending, goAsk }: { st: State; serve
   if (hub.phase === "questions")
     return (
       <Card title="Ask anything">
-        <p className="text-white/60">No question is too basic. Ask here and get an instant answer; the best ones go to Shree and Shreesha.</p>
+        <p className="text-white/60">No question is too basic. Ask here: you get an instant answer on your phone, and Shree answers some of them out loud.</p>
         <button onClick={goAsk} className="mt-4 w-full rounded-2xl bg-orange-600 py-4 text-lg font-semibold">Ask a question</button>
         {hub.flyerUrl && (
           <a href={hub.flyerUrl} target="_blank" rel="noreferrer" className="mt-3 block text-center text-sm text-orange-300 underline">
@@ -236,7 +236,7 @@ function Now({ st, serverNow, post, reload, pending, goAsk }: { st: State; serve
   if ((hub.phase === "finale" || hub.phase === "closed") && st.badge) return <Badge st={st} />;
   if (hub.phase === "closed") return <Takeaways />;
   return (
-    <Card title={hub.phase === "finale" ? "Finale" : "You're in"}>
+    <Card title={hub.phase === "finale" ? "Results" : "You're in"}>
       <p className="text-white/60">{hub.phase === "finale" ? "Eyes on the screen: the winners are coming." : "Keep this page open. Things will appear here as the session moves."}</p>
     </Card>
   );
@@ -265,7 +265,7 @@ function Quiz({ hub, me, serverNow, post, pending }: { hub: HubView; me: Me; ser
   if (clock.status === "done")
     return (
       <Card title="That's the quiz">
-        <p className="text-white/60">Scores are locked. The winner is revealed at the finale. Stay sharp.</p>
+        <p className="text-white/60">Scores are locked. The winners are revealed in the results at the end.</p>
       </Card>
     );
   const q = QUIZ[clock.idx];
@@ -322,7 +322,7 @@ function Assessment({ me, post, reload }: { me: Me; post: PostFn; reload: () => 
   if (idx >= ASSESSMENT.length || (count >= ASSESSMENT.length && idx >= ASSESSMENT.length))
     return (
       <Card title="Done. Thank you">
-        <p className="text-white/60">Your AI level is revealed at the finale, privately, on this phone. Nobody else sees your answers.</p>
+        <p className="text-white/60">Your AI level appears privately on this phone in the results at the end. Nobody else sees your answers.</p>
         <button onClick={() => setIdx(0)} className="mt-4 text-sm text-orange-400 underline">Review my answers</button>
       </Card>
     );

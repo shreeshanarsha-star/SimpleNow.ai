@@ -145,13 +145,16 @@ export async function syncDeck(sessionId: string) {
 }
 
 /** Most relevant passages for what was just said. Never throws: returns "" on any problem. */
-export async function searchLibrary(query: string, n = 6) {
+/** Library documents that are safe to use for answers on audience phones (public sources only, never work files or notes). */
+const PHONE_SAFE = /^(Source summary:|HR AI use cases|Competitors and AI|The Rise of AI Agents)/i;
+
+export async function searchLibrary(query: string, n = 6, opts: { phoneSafe?: boolean } = {}) {
   const q = query.replace(/\s+/g, " ").trim().slice(0, 1500);
   if (q.length < 8) return "";
   try {
     const [vec] = await embed([q], 4000);
     const { data } = await db().rpc("presenter_library_match", { query_embedding: JSON.stringify(vec), match_count: n });
-    const hits = ((data || []) as Array<{ title: string; content: string; similarity: number }>).filter((h) => h.similarity > 0.25);
+    const hits = ((data || []) as Array<{ title: string; content: string; similarity: number }>).filter((h) => h.similarity > 0.25 && (!opts.phoneSafe || PHONE_SAFE.test(h.title)));
     let out = "";
     for (const h of hits) {
       const piece = `[${h.title}]\n${h.content}\n\n`;
