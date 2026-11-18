@@ -634,25 +634,11 @@ function Autopilot({ status, send, sessionId }: { status: PresenterStatus | null
           <div className="text-xs font-normal text-white/80">Stops everything and shows the lobby. Then this becomes B to come back.</div>
         </button>
       )}
-      <div className="text-lg font-bold leading-tight">{ap?.label || "Ready. Runs by itself after Shree's opening."}</div>
+      <div className="text-lg font-bold leading-tight">{ap?.label || "Ready. Snap (or say “Hey Shree”) and Shree comes in."}</div>
       {!ap?.running && status?.layout !== "montage" && (
-        <div className="grid grid-cols-2 gap-2">
-          <button className={`${btn} ${status?.layout === "standby" ? "bg-neutral-600" : "bg-neutral-700"}`} onClick={() => send({ type: "standby" })}>
-            1 · Dark screen
-            <div className="text-[10px] font-normal text-white/60">{status?.autoDark === false ? "tap when you start" : "auto after you talk ~10 s"}</div>
-          </button>
-          <button className={`${btn} bg-orange-600`} onClick={() => send({ type: "start" })}>
-            2 · Bring Shree in
-            <div className="text-[10px] font-normal text-white/80">if snap/voice didn&apos;t work</div>
-          </button>
-        </div>
-      )}
-      {status?.preShow && status?.layout === "hub" && (
-        <button
-          className={`w-full rounded-lg py-2 text-xs ${status?.autoDark === false ? "bg-neutral-700" : "bg-green-800"}`}
-          onClick={() => send({ type: "autodark", on: status?.autoDark === false })}
-        >
-          Auto-dark when I open (“good morning everyone…” + ~10 s): {status?.autoDark === false ? "OFF" : "ON"}
+        <button className={`${btn} w-full bg-orange-600`} onClick={() => send({ type: "start" })}>
+          Bring Shree in
+          <div className="text-[10px] font-normal text-white/80">if the snap or “Hey Shree” didn&apos;t work</div>
         </button>
       )}
       {status?.ears && (status.ears.on || status.ears.lines > 0) && (

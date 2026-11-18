@@ -1859,6 +1859,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     e.stream = null;
     e.ctx?.close().catch(() => {});
     e.ctx = null;
+    if (s.current.ears.on) s.current.ears = { ...s.current.ears, on: false };
     if (s.current.listening) {
       s.current.listening = null;
       pushStatus();
@@ -1879,7 +1880,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         handleRef.current({ type: "resume" });
         return;
       }
-      if (st.layout !== "standby" || anamRef.current) return;
+      if (!(st.layout === "standby" || (st.layout === "hub" && st.preShow)) || anamRef.current) return;
       st.entrance = how;
       stopEntrance();
       handleRef.current({ type: "start" });
@@ -1984,6 +1985,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       voice = true;
     }
     s.current.listening = { snap, voice, test: s.current.entranceTest, sens: s.current.sens };
+    if (voice) s.current.ears = { ...s.current.ears, on: true };
     pushStatus();
   }, [fireEntrance, pushStatus, logRoom]);
 
@@ -1995,7 +1997,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   // Listen only while the screen is dark and Shree isn't on yet (or in test mode).
   useEffect(() => {
     if (!armed) return;
-    if (layout === "standby" && !connected) {
+    // No dark screen any more: the lobby (first screen) listens for the snap / "Hey Shree" directly.
+    if ((layout === "standby" || (layout === "hub" && preShow)) && !connected) {
       s.current.entrance = "";
       startEntrance();
     } else if (layout === "handover" && s.current.ap.running) {
@@ -2003,7 +2006,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       const t = setTimeout(() => startEntranceRef.current(), 6000);
       return () => clearTimeout(t);
     } else if (!s.current.entranceTest) stopEntrance();
-  }, [armed, layout, connected, startEntrance, stopEntrance]);
+  }, [armed, layout, connected, preShow, startEntrance, stopEntrance]);
 
   useEffect(() => () => stopEntranceRef.current(), []);
 
@@ -2071,7 +2074,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   const stopEarsRef = useRef(stopEars);
   stopEarsRef.current = stopEars;
   useEffect(() => {
-    const inLobby = armed && preShow && !connected && layout === "hub" && hub.phase === "lobby";
+    // Dark screen removed: the entrance listener (snap + "Hey Shree") now also keeps the room's words
+    // in the lobby, so these separate lobby ears (and auto-dark) are off.
+    const inLobby = false && armed && preShow && !connected && layout === "hub" && hub.phase === "lobby";
     if (!inLobby) {
       stopEars();
       return;
