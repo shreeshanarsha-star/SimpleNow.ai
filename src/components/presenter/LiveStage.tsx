@@ -19,7 +19,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import HubScreen, { type Board } from "@/components/presenter/HubScreen";
 import Montage from "@/components/presenter/Montage";
 import { cue, duck, getSoundState, initSound, setBed, setMuted, setVolume } from "@/lib/presenter/sound";
-import { DEFAULT_HUB, FLYER_PRESETS, QUIZ, SHARED_DOCS, SHOW_STEPS, backupFlyerUrl, pollByKey, quizClock, type HubState } from "@/lib/presenter/content";
+import { DEFAULT_HUB, FLYER_PRESETS, QUIZ, SHARED_DOCS, SHOW_STEPS, STORY_END_RE, backupFlyerUrl, pollByKey, quizClock, type HubState } from "@/lib/presenter/content";
 
 type Session = { id: string; code: string; title: string; state: Record<string, unknown> };
 type Line = { role: "room" | "shree" | "shreesha"; text: string };
@@ -205,8 +205,12 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   const slideText = useCallback(async (idx: number) => {
     if (textCache.current.has(idx)) return textCache.current.get(idx)!;
     let t = "";
-    const src = notesRef.current || deckRef.current;
-    if (src && idx < src.numPages) t = await pageText(src, idx + 1).catch(() => "");
+    // What's on the slide (deck PDF) + the speaker notes, so Shree can explain every item on screen.
+    const deck = deckRef.current;
+    const notes = notesRef.current;
+    const face = deck && idx < deck.numPages ? await pageText(deck, idx + 1).catch(() => "") : "";
+    const nt = notes && idx < notes.numPages ? await pageText(notes, idx + 1).catch(() => "") : "";
+    t = nt ? (face ? `ON THE SLIDE:\n${face}\n\nSPEAKER NOTES:\n${nt}` : nt) : face;
     textCache.current.set(idx, t);
     return t;
   }, []);
@@ -1484,7 +1488,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           pushStatus();
           if (!alive()) return;
           await line(
-            "Shreesha has just introduced you to the team and handed you the floor (his words are in the recent conversation). Introduce yourself naturally in 4 to 6 short spoken sentences: react warmly or wittily to something specific Shreesha just said about you; you're Shree, Shreesha's digital twin; today isn't a lecture, it's interactive, and their phones are the remote; a one-line taste of what's coming (a quiz, a mirror, the story of AI agents, a quick poll, an app built live, and the results). Then turn it around: you've heard a lot about this team and now you'd love to meet them. Invite each person, one at a time, to say their name and the one task they repeat most at work, the one that eats their time, and ask who wants to go first. Under 45 seconds."
+            "Shreesha has just introduced you to the team and handed you the floor (his words are in the recent conversation). Introduce yourself naturally in 4 to 6 short spoken sentences: react warmly or wittily to something specific Shreesha just said about you; you're Shree, Shreesha's digital twin; today isn't a lecture, it's interactive, and their phones are the remote; a one-line taste of what's coming (a quick quiz, the story of AI agents, a quick poll, the Mirror, your questions, and the results). Then turn it around: you've heard a lot about this team and now you'd love to meet them. Invite each person, one at a time, to say their name and the one task they repeat most at work, the one that eats their time, and ask who wants to go first. Under 45 seconds."
           );
           s.current.selfIntroDone = true;
         },
@@ -1559,14 +1563,16 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             await line("One short, friendly sentence: one more minute for the self-assessment.");
             await wait(50_000, done);
           }
-          await line("Thank everyone in one sentence; levels are revealed at the finale. Then say: now, the story.");
+          await line("Thank everyone in one sentence; their levels are revealed in the results in a few minutes. Then say: first, your questions.");
         },
         story: async () => {
-          // Present every Story slide up to the live-build slide; open Polls 1 and 2 where the deck says so.
-          // (Slide 1's agenda mentions the build, so search from slide 2 for the build slide.)
+          // Present every Story slide up to the Q&A ("ASK ANYTHING") slide; open Polls 1 and 2 where the deck says so.
           let end = Math.min(16, s.current.slideCount || 16);
           for (let i = 1; i < (s.current.slideCount || 0); i++) {
-            if (/FLYER CHALLENGE/i.test(await slideText(i))) {
+            // The marker is on the slide itself, so read the deck PDF (the notes PDF holds the slide as an image).
+            const deck = deckRef.current;
+            const face = deck && i < deck.numPages ? await pageText(deck, i + 1).catch(() => "") : "";
+            if (STORY_END_RE.test(face) || /FLYER CHALLENGE/i.test(await slideText(i))) {
               end = i;
               break;
             }
@@ -1598,7 +1604,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           await pollRun(
             "debate",
             45_000,
-            "In 2 short sentences, set up a quick poll on their phones (not a debate): imagine NRPL, 300 people, each builds 3 AI agents for their own work: 900 agents. What happens: productivity shoots up, management gets more problems, or both? Vote now."
+            "In 2 short sentences, set up a quick poll on their phones (not a debate), bridging from what we just said about using AI safely: now imagine NRPL, 300 people, each builds 3 AI agents for their own work: 900 agents. What happens: productivity shoots up, management gets more problems, or both? Vote now."
           );
           if (!alive()) return;
           const c = H().board?.polls["debate"] || [];
@@ -1734,7 +1740,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
               let ans = await director({
                 mode: "free",
                 lookup: q.text,
-                instruction: `Answer this audience question in about 30 seconds, plain spoken English: "${q.text}". If it's about building apps, tool setup or Shreesha's agent demo, don't answer it: say warmly that this one is for Shreesha, and end with the tag [SHREESHA].`,
+                instruction: `Answer this audience question in about 30 seconds, plain spoken English: "${q.text}". If it's about building apps or tool setup in detail, don't answer it: say warmly that this one is for Shreesha, and end with the tag [SHREESHA].`,
               }).catch(() => "");
               const toShreesha = /\[SHREESHA\]/i.test(ans);
               ans = ans.replace(/\[SHREESHA\]/gi, "").trim();
@@ -1782,9 +1788,13 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           await wait(30_000, () => H().lastFinale === 5 && quiet());
         },
         close: async () => {
-          // No commitments: a short thank-you, the closing line word for word, then Shreesha's last word.
+          // Thank-you, a few shared commitments (improvised), the closing line word for word, then Shreesha's last word.
           setLayoutBoth("twin");
-          if (ap.fresh) await line("In one or two warm sentences, thank the team for their energy, their honesty and their laughs today. Don't say goodbye yet.");
+          if (ap.fresh) {
+            await line("In one or two warm sentences, thank the team for their time, their questions and their curiosity today. Don't say goodbye yet.");
+            if (!alive()) return;
+            await line("Improvise, in 3 or 4 short spoken sentences, a few commitments we make together as a team (say \"we will\", not \"you must\"; no actions for the audience): we will use AI responsibly; we will check the facts and the ROI before any subscription; we will use it only if it reduces our effort; and only if it adds real value. Natural and warm, not a list read out.");
+          }
           if (!alive()) return;
           await settle();
           await say(CLOSING_LINE);

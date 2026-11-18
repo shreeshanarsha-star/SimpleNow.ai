@@ -1,7 +1,7 @@
 // Presenter.ai — owner-only hub controls (TV laptop + control phone).
 import { db, json, ownerGuard } from "@/lib/presenter/server";
 import { callTextModel } from "@/lib/aiClient";
-import { ASSESSMENT, POLLS, QUIZ_TIMING, SHARED_DOCS, levelFor, type HubPhase, type HubState } from "@/lib/presenter/content";
+import { ASSESSMENT, POLLS, QUIZ_TIMING, SHARED_DOCS, STORY_END_RE, levelFor, type HubPhase, type HubState } from "@/lib/presenter/content";
 import { QUIZ_KEY, buildBoard, hubOf, patchHub, sessionById } from "@/lib/presenter/hub";
 import { ensureFlyerToken } from "@/lib/presenter/flyerKit";
 import { syncDeck } from "@/lib/presenter/library";
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     return { idx: r.idx, title: t.slice(0, 60) };
   });
   // The Story runs until the build slide (searched from slide 2: slide 1's agenda mentions the build).
-  const se = (sl || []).find((r) => r.idx >= 1 && /FLYER CHALLENGE/i.test(String(r.body || "")));
+  const se = (sl || []).find((r) => r.idx >= 1 && STORY_END_RE.test(String(r.body || "")));
   const storyEnd = se ? se.idx : Math.min(16, slides.length);
   return json({ hub: hubOf(session), code: session.code, title: session.title, board, quizKey: QUIZ_KEY, slides, storyEnd });
 }

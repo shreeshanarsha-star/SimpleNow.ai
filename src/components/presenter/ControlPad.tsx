@@ -266,7 +266,6 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
   const phase = (p: string, extra: Record<string, unknown> = {}) => act({ action: "phase", phase: p, ...extra });
   const ACTS: Array<{ label: string; hint: string; run: () => Promise<void> | void }> = [
     { label: "Lobby", hint: "Title + QR on TV. People join on phones.", run: () => phase("lobby") },
-    { label: "Act 1 · Dark for the snap", hint: "You open (60–90 s), then snap.", run: () => send({ type: "standby" }) },
     { label: "Act 1 · Shree enters", hint: "Twin appears and opens the show.", run: () => send({ type: "start" }) },
     {
       label: "Act 2 · Meet the team",
@@ -286,20 +285,15 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
         return phase("quiz");
       },
     },
-    { label: "Act 4 · The Mirror", hint: "20-question self-assessment on phones.", run: () => phase("assessment") },
-    { label: "Act 5 · The Story (slides)", hint: "Shree presents. Polls 1 and 2 buttons below.", run: () => send({ type: "present" }) },
-    { label: "Act 5 · 900-agents poll", hint: "Straight to the phone vote, then Shree reads the result.", run: () => phase("poll", { poll: "debate" }) },
-    { label: "Act 6 · The Build", hint: "Fill the flyer inputs below, tap Start build.", run: () => send({ type: "layout", layout: "twin" }) },
-    { label: "Act 7 · Prediction poll", hint: "Phones predict your agent demo. Then Next act.", run: () => phase("poll", { poll: "predict" }) },
-    { label: "Act 7 · Over to you", hint: "Shree pauses; switch HDMI.", run: () => send({ type: "layout", layout: "handover" }) },
-    { label: "Act 7 · Welcome back + reveal", hint: "Shree returns; tap Reveal app below.", run: () => send({ type: "resume" }) },
-    { label: "Act 7 · Prediction result", hint: "Tap what actually happened (buttons below).", run: () => phase("poll", { poll: "predict" }) },
-    { label: "Act 8 · Ask anything", hint: "Q&A list on TV; 'Shree answers' below.", run: () => phase("questions") },
-    { label: "Act 9 · Results", hint: "Tap 'Finale next' for 3rd, 2nd, winner, AI scores.", run: () => phase("finale") },
-    { label: "Act 9 · AI confidence check (end)", hint: "Same question as the start.", run: () => phase("poll", { poll: "after" }) },
+    { label: "Act 4 · The Story (slides 1–13)", hint: "Shree presents. Polls 1 and 2 buttons below.", run: () => send({ type: "present" }) },
+    { label: "Act 4 · 900-agents poll", hint: "Straight to the phone vote, then Shree reads the result.", run: () => phase("poll", { poll: "debate" }) },
+    { label: "Act 5 · The Mirror", hint: "20-question self-assessment on phones.", run: () => phase("assessment") },
+    { label: "Act 6 · Ask anything", hint: "Q&A list on TV; 'Shree answers' below.", run: () => phase("questions") },
+    { label: "Act 7 · Results", hint: "Tap 'Finale next' for 3rd, 2nd, winner, AI scores.", run: () => phase("finale") },
+    { label: "Act 7 · AI confidence check (end)", hint: "Same question as the start.", run: () => phase("poll", { poll: "after" }) },
     {
-      label: "Act 9 · Close",
-      hint: "Shree's closing line, then your last word.",
+      label: "Act 7 · Close",
+      hint: "Thank-you, commitments, the closing line, then your last word.",
       run: () => {
         send({ type: "layout", layout: "twin" });
         send({

@@ -259,18 +259,16 @@ export const SHOW_STEPS: Array<{ id: string; label: string; budget: number }> = 
   { id: "intros", label: "Act 2 · Meet the team", budget: 480 },
   { id: "before", label: "Act 2 · AI confidence check (start)", budget: 60 },
   { id: "quiz", label: "Act 3 · Quiz", budget: 480 },
-  { id: "mirror", label: "Act 4 · The Mirror", budget: 330 },
-  { id: "story", label: "Act 5 · The Story", budget: 900 },
-  { id: "debate", label: "Act 5 · Poll: 900 agents", budget: 120 },
-  { id: "build", label: "Act 6 · The Build", budget: 300 },
-  { id: "predict", label: "Act 7 · Prediction poll", budget: 45 },
-  { id: "handover", label: "Act 7 · Shreesha's demo", budget: 690 },
-  { id: "back", label: "Act 7 · Welcome back + result", budget: 90 },
-  { id: "reveal", label: "Act 7 · App reveal", budget: 90 },
-  { id: "qa", label: "Act 8 · Ask anything", budget: 420 },
-  { id: "finale", label: "Act 9 · Results", budget: 300 },
-  { id: "close", label: "Act 9 · Close", budget: 90 },
+  { id: "story", label: "Act 4 · The Story", budget: 1080 },
+  { id: "debate", label: "Act 4 · Poll: 900 agents", budget: 120 },
+  { id: "mirror", label: "Act 5 · The Mirror", budget: 330 },
+  { id: "qa", label: "Act 6 · Ask anything", budget: 420 },
+  { id: "finale", label: "Act 7 · Results", budget: 300 },
+  { id: "close", label: "Act 7 · Close", budget: 120 },
 ];
+
+/** The Story ends just before the first slide that matches this (the Q&A slide, or the old flyer slide). */
+export const STORY_END_RE = /ASK ANYTHING|FLYER CHALLENGE/i;
 
 /** Documents Shree can push to phones. The [SHARE PDF] tag in a slide's notes shares SHARED_DOCS[0]. */
 export const SHARED_DOCS = [
