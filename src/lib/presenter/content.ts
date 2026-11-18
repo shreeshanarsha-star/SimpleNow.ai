@@ -117,8 +117,23 @@ export type Poll = {
 };
 export const POLLS: Poll[] = [
   { key: "before", label: "AI confidence check · start", q: "How confident are you using AI in your daily work?", options: ["Not yet", "A little", "Fairly", "Very"] },
-  { key: "poll1", label: "Poll 1 · Reality check", q: "Has AI saved you real time this month, after checking its work?", options: ["Yes, a lot", "A little", "Not really", "I don't use it yet"] },
-  { key: "poll2", label: "Poll 2 · Tool by task", q: "Which task will you try with AI first?", options: ["Writing & emails", "Excel & data", "Policy answers", "Presentations & flyers", "Meeting notes"] },
+  // Polls 1 and 2: word for word from the deck's speaker notes (slides 6 and 10), with the deck's takeaway.
+  {
+    key: "poll1",
+    label: "Poll 1 · Reality check",
+    q: "AI drafts an HR announcement in 2 minutes, but you spend 15 minutes checking and fixing it. What do you do?",
+    options: ["Keep using it, AI is faster", "Stop, it creates extra work", "Improve the prompt, then compare total time and quality again", "Switch to another AI tool"],
+    best: 2,
+    explain: "Measure total effort and apply the 3 checks. If a notepad is better, use a notepad.",
+  },
+  {
+    key: "poll2",
+    label: "Poll 2 · Tool by task",
+    q: "You need a professional townhall flyer by tomorrow. What do you try first?",
+    options: ["An approved design tool with a company template", "A general chatbot, expecting final artwork", "An autonomous agent with access to employee records", "Subscribe to three paid design platforms"],
+    best: 0,
+    explain: "Choose the simplest approved tool. You don't need an agent for every flyer.",
+  },
   { key: "debate", label: "Poll · 900 agents", q: "300 people build 3 AI agents each: 900 agents. What happens?", options: ["Productivity shoots up", "Management gets more problems", "Both: big gains, only if managed well"] },
   { key: "check-fact", label: "App check · Fact", q: "Fact check: are the event details, logo and colours right?", options: ["👍 Yes", "👌 Mostly", "👎 No"] },
   { key: "check-value", label: "App check · Value", q: "Value: is it better than what we'd make in Canva or Word?", options: ["👍 Yes", "👌 About the same", "👎 No"] },

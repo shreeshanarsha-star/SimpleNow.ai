@@ -25,7 +25,7 @@ type Session = { id: string; code: string; title: string; state: Record<string, 
 type Line = { role: "room" | "shree" | "shreesha"; text: string };
 
 const INTROS_GUIDE =
-  " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name, team and designation). React like you're finally meeting someone you've heard a lot about: warm and natural. Vary it every time (\"Nice to meet you, X, I've heard a lot about you\" is one option, never the same phrase twice in a row). If Shreesha's note about them has a MUST SAY part, you MUST cover EVERY one of those points now (all of them, none skipped), naturally and in your own words, in the tone the note asks for; never anything marked INFO ONLY. If there's no note, react to their team or role, or to ONE light detail from what the room has said today, and have fun with it gently (never personal, never a score). Up to 5 short spoken sentences. Use their name only if they said it or it matches someone signed in; if unsure who spoke, react without a name. Then invite the next person.";
+  " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name, team and designation). React like you're finally meeting someone you've heard a lot about: warm and natural. If someone gives only their name (or misses their team or designation), that is perfectly fine: never ask them for the rest, just welcome them warmly; use Shreesha's note about them if there is one. Vary it every time (\"Nice to meet you, X, I've heard a lot about you\" is one option, never the same phrase twice in a row). If Shreesha's note about them has a MUST SAY part, you MUST cover EVERY one of those points now (all of them, none skipped), naturally and in your own words, in the tone the note asks for; never anything marked INFO ONLY. If there's no note, react to their team or role, or to ONE light detail from what the room has said today, and have fun with it gently (never personal, never a score). Up to 5 short spoken sentences. Use their name only if they said it or it matches someone signed in; if unsure who spoke, react without a name. Then invite the next person.";
 
 /** Shree's final line, said word for word (approved by Shreesha). */
 const CLOSING_LINE =
@@ -673,7 +673,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         const votes = p.options.map((o, i) => `${o} = ${counts[i] || 0}`).join("; ");
         const instruction = p.liveResult
           ? `Reveal the prediction result. The room predicted: ${votes}. What actually happened in Shreesha's demo: "${p.options[h.hub.pollReveal]}". In 2 or 3 sentences, react to how the room guessed, then land the lesson: an agent can only act within the information, tools, access and permissions it has; intelligence doesn't grant access. Name nobody.`
-          : `Reveal the answer to "${p.q}". Votes: ${votes}. Best answer: "${p.options[h.hub.pollReveal]}". Why: ${p.explain}. In 2 short sentences, react to the vote with light humour and explain why, ending with the idea that AI, HI or notepad: what matters is ROI. Name nobody.`;
+          : `Reveal the answer to "${p.q}". Votes: ${votes}. Best answer: "${p.options[h.hub.pollReveal]}". Why: ${p.explain}. In 2 short sentences, react to the vote warmly (a gentle smile is fine, never teasing) and explain why. Name nobody.`;
         cue("correct");
         await line(director({ mode: "free", instruction }).catch(() => "[SILENT]"));
         return;

@@ -124,7 +124,7 @@ export default function HubScreen({
     if (clock.status === "off")
       return (
         <Center>
-          <div className="text-[1.4vw] uppercase tracking-[0.3em] text-orange-400">Act 3 · The Challenge</div>
+          <div className="text-[1.4vw] uppercase tracking-[0.3em] text-orange-400">Act 3 · The Quiz</div>
           <div className="text-[5vw] font-black">AI Quickfire</div>
           <div className="text-[1.8vw] text-white/60">30 questions · about 12 seconds each · no going back</div>
           {joinBox(true)}
@@ -181,7 +181,7 @@ export default function HubScreen({
     return (
       <div className="flex h-full items-center gap-[4vw] px-[3vw]">
         <div className="flex-1">
-          <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Act 4 · The Mirror</div>
+          <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Act 5 · The Mirror</div>
           <div className="mt-2 text-[4.5vw] font-black leading-none">How do you use AI today?</div>
           <ul className="mt-6 space-y-2 text-[1.6vw] text-white/70">
             <li>{ASSESSMENT.length} questions on your phone, about 5 minutes</li>
@@ -244,7 +244,7 @@ export default function HubScreen({
     const open = (board?.questions || []).filter((q) => q.status !== "hidden").slice(0, 6);
     return (
       <div className="flex h-full flex-col px-[3vw] py-[2.5vw]">
-        <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Act 8 · Ask anything</div>
+        <div className="text-[1.3vw] uppercase tracking-[0.3em] text-orange-400">Act 6 · Ask anything</div>
         <div className="mt-2 text-[3.6vw] font-black">Your questions</div>
         <div className="mt-[2vw] flex-1 space-y-[1vw]">
           {open.length === 0 && <div className="text-[1.8vw] text-white/50">Ask on your phone: no question is too basic.</div>}
@@ -484,7 +484,7 @@ function buildMilestones(code: string, status?: string) {
 const TEASERS = [
   "Scan the code. Your phone is the remote.",
   "30 quickfire questions. One champion.",
-  "We'll build a real app, live, from your ideas.",
+  "How AI agents are changing work, and what HR can start tomorrow.",
   "Find out your AI level (privately).",
 ];
 function Teaser() {

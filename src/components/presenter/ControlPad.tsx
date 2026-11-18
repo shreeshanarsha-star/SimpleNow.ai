@@ -378,7 +378,7 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
         {hub?.phase === "poll" && ` · ${hub.poll}`}
         {clock && clock.status !== "off" && ` · quiz ${clock.status === "done" ? "done" : clock.status === "leadin" ? "starting" : `Q${clock.idx + 1}`}`}
         {hub?.phase === "assessment" && ` · ${board?.assessment.completed || 0} done`}
-        {hub?.phase === "finale" && ` · step ${hub.finaleStep || 0}/5`}
+        {hub?.phase === "finale" && ` · step ${hub.finaleStep || 0}/4`}
       </div>
 
       <div className="grid grid-cols-3 gap-2">
@@ -387,7 +387,7 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
         <button className={`${b} bg-green-700`} onClick={() => confirm("Start the 30-question quiz now?") && act({ action: "quiz-start" })}>Quiz ▶ GO</button>
         <button className={`${b} ${on(hub?.phase === "assessment")}`} onClick={() => act({ action: "phase", phase: "assessment" })}>Assessment</button>
         <button className={`${b} ${on(hub?.phase === "questions")}`} onClick={() => act({ action: "phase", phase: "questions" })}>Q&A list</button>
-        <button className={`${b} ${on(hub?.phase === "commit")}`} onClick={() => act({ action: "phase", phase: "commit" })}>Commit</button>
+        <button className={`${b} ${on(hub?.phase === "finale")}`} onClick={() => act({ action: "phase", phase: "finale" })}>Results</button>
       </div>
 
       {hub?.phase === "poll" && pollByKey(hub.poll)?.best !== undefined && (
@@ -408,10 +408,10 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-2">
-        {POLLS.map((p) => (
+      <div className="grid grid-cols-3 gap-2">
+        {POLLS.filter((p) => ["poll1", "poll2", "debate"].includes(p.key)).map((p) => (
           <button key={p.key} className={`${b} py-2 text-xs ${on(hub?.phase === "poll" && hub.poll === p.key)}`} onClick={() => act({ action: "phase", phase: "poll", poll: p.key })}>
-            {p.key}
+            {p.key === "debate" ? "900 agents" : p.key === "poll1" ? "Poll 1" : "Poll 2"}
             <div className="text-[10px] font-normal text-white/60">{(board?.polls[p.key] || []).reduce((a, c) => a + c, 0)} votes</div>
           </button>
         ))}
@@ -422,8 +422,10 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
         <button className={`${b} bg-neutral-800`} onClick={() => act({ action: "finale-step", step: Math.max(0, (hub?.finaleStep || 0) - 1) })}>◀ Finale back</button>
         <button className={`${b} ${on(hub?.phase === "closed")}`} onClick={() => act({ action: "phase", phase: "closed" })}>Thank you</button>
       </div>
-      <div className="text-[11px] text-white/40">Finale steps: 1 third · 2 second · 3 winner · 4 levels · 5 before/after. Shree announces each one.</div>
+      <div className="text-[11px] text-white/40">Results steps: 1 third · 2 second · 3 winner · 4 team AI levels. Shree announces each one.</div>
 
+      {/* Flyer build is a separate session now (18 Nov): controls hidden from the show remote. */}
+      {false && (
       <FlyerControls
         fi={fi}
         setFi={setFi}
@@ -458,6 +460,7 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
           await act({ action: "phase", phase: "flyer" });
         }}
       />
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <button className={`${b} bg-neutral-800`} onClick={() => send({ type: "hub" })}>Show hub on TV</button>
