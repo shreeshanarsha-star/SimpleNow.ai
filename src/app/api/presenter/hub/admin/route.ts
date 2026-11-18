@@ -133,7 +133,7 @@ Return ONLY JSON: {"groups":[{"label":"...","items":["..."]}]}`,
   }
 
   if (action === "finale-step") {
-    const step = Math.max(0, Math.min(5, Number(body.step ?? (hub.finaleStep || 0) + 1)));
+    const step = Math.max(0, Math.min(4, Number(body.step ?? (hub.finaleStep || 0) + 1))); // step 5 (confidence start vs end) dropped
     return json({ hub: await patchHub(id, { phase: "finale", finaleStep: step }) });
   }
 

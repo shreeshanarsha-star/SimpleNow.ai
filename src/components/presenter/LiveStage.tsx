@@ -25,7 +25,7 @@ type Session = { id: string; code: string; title: string; state: Record<string, 
 type Line = { role: "room" | "shree" | "shreesha"; text: string };
 
 const INTROS_GUIDE =
-  " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name + the one task they repeat most at work). React like you're finally meeting someone you've heard a lot about: warm and natural. Vary it every time (\"Nice to meet you, X, I've heard a lot about you\" is one option, never the same phrase twice in a row). If Shreesha's note about them has a MUST SAY part, you MUST cover EVERY one of those points now (all of them, none skipped), naturally and in your own words, in the tone the note asks for; never anything marked INFO ONLY. If there's no note, pick ONE light, specific detail from what the room has said today or from what they just said, and have fun with it gently (never personal, never a score). Up to 5 short spoken sentences. Use their name only if they said it or it matches someone signed in; if unsure who spoke, react without a name. Then invite the next person.";
+  " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name, team and designation). React like you're finally meeting someone you've heard a lot about: warm and natural. Vary it every time (\"Nice to meet you, X, I've heard a lot about you\" is one option, never the same phrase twice in a row). If Shreesha's note about them has a MUST SAY part, you MUST cover EVERY one of those points now (all of them, none skipped), naturally and in your own words, in the tone the note asks for; never anything marked INFO ONLY. If there's no note, react to their team or role, or to ONE light detail from what the room has said today, and have fun with it gently (never personal, never a score). Up to 5 short spoken sentences. Use their name only if they said it or it matches someone signed in; if unsure who spoke, react without a name. Then invite the next person.";
 
 /** Shree's final line, said word for word (approved by Shreesha). */
 const CLOSING_LINE =
@@ -1021,7 +1021,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           const linePromise = flushRoomRef.current().then(() => director({
             mode: "free",
             instruction:
-              "You have just appeared on screen after a cinematic montage: Shreesha snapped his fingers and you arrived. Say hello in ONE or TWO short, natural sentences, like a friend walking into the room: a warm, witty line to Shreesha or the room. If something funny or notable was said before you appeared (see WHAT THE ROOM HAS SAID), make it a light callback to that, especially anything Shreesha said about you; otherwise a light comeback (for example, that unlike him you didn't need three cups of filter coffee to get here). Do NOT introduce yourself, do NOT give an agenda, do NOT mention votes or phones: Shreesha is about to introduce you. Under 12 seconds.",
+              "You have just appeared on screen after a cinematic montage: Shreesha snapped his fingers and you arrived. Say hello in ONE or TWO short, natural sentences, like a friend walking into the room: a warm, witty line to Shreesha or the room. If something funny or notable was said before you appeared (see WHAT THE ROOM HAS SAID), make it a light callback to that, especially anything Shreesha said about you; otherwise a light comeback (for example, that unlike him you didn't need three cups of filter coffee to get here). Don't give an agenda or mention phones yet: you'll introduce yourself properly right after this line. Under 12 seconds.",
           })).catch(() => "Good morning, everyone! Shreesha, that was quite the entrance.");
           const connecting = connectTwin();
           await new Promise<void>((r) => (montageDone.current = r));
@@ -1461,34 +1461,12 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       };
 
       const STEP: Record<string, (budget: number) => Promise<void>> = {
-        welcome: async (b) => {
-          // Shreesha introduces Shree to the team; Shree only listens until he's handed the floor.
+        welcome: async () => {
+          // Shree introduces himself straight after his entrance line (Shreesha doesn't introduce him).
           setLayoutBoth("twin");
-          ap.waiting = "Introduce Shree, then say “introduce yourself” / “over to you” (or tap ⏭ Next)";
-          pushStatus();
-          s.current.quietListen = true;
-          s.current.welcomeWait = true;
-          await new Promise<void>((resolve) => {
-            s.current.cue = {
-              re: /introduc(e|ing) yourself|over to you|take it (away|over)|(you )?(can|may) (start|begin|go ahead)|go ahead|floor is yours|all yours|your turn|stage is yours/i,
-              done: resolve,
-            };
-            const iv = setInterval(() => {
-              // No time limit: Shree waits for Shreesha's handover words (or Next).
-              if (!alive() || ap.skip) {
-                clearInterval(iv);
-                resolve();
-              }
-            }, 300);
-          });
-          s.current.cue = null;
-          s.current.quietListen = false;
-          s.current.welcomeWait = false;
-          ap.waiting = "";
-          pushStatus();
-          if (!alive()) return;
+          if (!ap.fresh) return;
           await line(
-            "Shreesha has just introduced you to the team and handed you the floor (his words are in the recent conversation). Introduce yourself naturally in 4 to 6 short spoken sentences: react warmly or wittily to something specific Shreesha just said about you; you're Shree, Shreesha's digital twin; today isn't a lecture, it's interactive, and their phones are the remote; a one-line taste of what's coming (a quick quiz, the story of AI agents, a quick poll, the Mirror, your questions, and the results). Then turn it around: you've heard a lot about this team and now you'd love to meet them. Invite each person, one at a time, to say their name and the one task they repeat most at work, the one that eats their time, and ask who wants to go first. Under 45 seconds."
+            "Introduce yourself now, naturally, in 4 to 6 short spoken sentences: you're Shree, Shreesha's digital twin; today isn't a lecture, it's interactive, and their phones are the remote; a one-line taste of what's coming (a quick quiz, the story of AI agents, a quick poll, the Mirror, your questions, and the results). Then turn it around: you've heard a lot about this team and now you'd love to meet them. Ask each person, one at a time, to say their name, their team and their designation, and ask who wants to go first. Under 45 seconds."
           );
           s.current.selfIntroDone = true;
         },
@@ -1496,8 +1474,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           await pollRun(
             "before",
             Math.min(b - 10_000, 50_000),
-            "One or two short sentences: before we start, a quick, honest check on their phones: how confident are you using AI in your daily work today? We'll ask the same question at the very end.",
-            `Read the result of "${pollByKey("before")?.q}" in one light sentence and say we'll see if it moves by the end.`
+            "One or two short sentences: before we start, a quick, honest check on their phones: how confident are you using AI in your daily work today?",
+            `Read the result of "${pollByKey("before")?.q}" in one light, encouraging sentence.`
           );
         },
         intros: async (b) => {
@@ -1505,7 +1483,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           s.current.intros = true;
           if (!ap.fresh) await line("We're back after a short break. In one warm sentence, invite the next person who hasn't introduced themselves yet to carry on with the introductions.");
           else if (!s.current.selfIntroDone)
-            await line("Start the introductions now: invite each person, one at a time, to say their name and the one task they repeat most at work, the one that eats their time, in about 20 seconds. Ask for the first volunteer.");
+            await line("Start the introductions now: invite each person, one at a time, to say their name, their team and their designation. Ask for the first volunteer.");
           s.current.selfIntroDone = false;
           let lastNudge = Date.now();
           let moveOn = false;
@@ -1530,7 +1508,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           ap.waiting = "";
           pushStatus();
           s.current.intros = false;
-          await line("Wrap up the introductions in one warm sentence: notice how many of those repetitive tasks sound alike across the team, and that's exactly where AI should start helping.");
+          await line("Wrap up the introductions in one warm sentence: what a mix of teams and roles, and AI has something useful for every one of them.");
         },
         wishwall: async () => {
           H().lastWish = "";
@@ -1781,11 +1759,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             await wait(30_000, () => H().lastFinale === step && quiet());
             await wait(1500);
           }
-          await pollRun("after", 40_000, "One sentence: last vote, the same question as the start. How confident are you using AI in your daily work now?");
-          await adminAct({ action: "phase", phase: "finale" });
-          await adminAct({ action: "finale-step", step: 5 });
-          hubView();
-          await wait(30_000, () => H().lastFinale === 5 && quiet());
+          // No confidence check at the end (Shreesha, 18 Nov).
         },
         close: async () => {
           // Thank-you, a few shared commitments (improvised), the closing line word for word, then Shreesha's last word.
@@ -2268,7 +2242,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
 /* Context for the Director: phone-tagged names are certain, so Shree may use them. */
 function peopleContext(board: Board | null) {
   if (!board?.attendees.length) return undefined;
-  return board.attendees.map((a) => `- ${a.name}${a.intro ? ` (most repetitive task: ${a.intro})` : ""}`).join("\n");
+  return board.attendees.map((a) => `- ${a.name}${a.intro ? ` (team / role: ${a.intro})` : ""}`).join("\n");
 }
 
 function hubContext(hub: HubState, board: Board | null) {

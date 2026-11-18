@@ -170,8 +170,8 @@ function Join({ title, onJoin }: { title: string; onJoin: (b: { name: string; in
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} autoComplete="given-name" className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 text-lg outline-none focus:ring-2 focus:ring-orange-500" placeholder="e.g. Priya" />
         </label>
         <label className="block">
-          <span className="text-sm text-white/70">Your most repetitive task at work (optional)</span>
-          <input value={intro} onChange={(e) => setIntro(e.target.value)} maxLength={160} className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500" placeholder="e.g. chasing interview feedback" />
+          <span className="text-sm text-white/70">Your team and designation (optional)</span>
+          <input value={intro} onChange={(e) => setIntro(e.target.value)} maxLength={160} className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500" placeholder="e.g. Talent Acquisition, Manager" />
         </label>
         <div className="rounded-xl bg-white/5 p-3 text-xs leading-relaxed text-white/60">
           We&apos;ll remember your name and your intro for future sessions. Quiz and assessment scores are never shown to anyone else; only the top 3 quiz names appear on screen.

@@ -255,7 +255,7 @@ export const HR_PROMPTS = [
 // Budgets in seconds; they add up to the 75-minute plan. Each step ends when it's
 // done or its budget runs out. Shreesha can pause, skip or go back at any time.
 export const SHOW_STEPS: Array<{ id: string; label: string; budget: number }> = [
-  { id: "welcome", label: "Act 1 · You introduce Shree", budget: 180 },
+  { id: "welcome", label: "Act 1 · Shree introduces himself", budget: 90 },
   { id: "intros", label: "Act 2 · Meet the team", budget: 480 },
   { id: "before", label: "Act 2 · AI confidence check (start)", budget: 60 },
   { id: "quiz", label: "Act 3 · Quiz", budget: 480 },

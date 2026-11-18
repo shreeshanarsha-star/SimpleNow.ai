@@ -269,11 +269,11 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
     { label: "Act 1 · Shree enters", hint: "Twin appears and opens the show.", run: () => send({ type: "start" }) },
     {
       label: "Act 2 · Meet the team",
-      hint: "Intros, 30 s each. Shree reacts by name.",
+      hint: "Name, team and designation. Shree reacts to each person.",
       run: () => {
         send({ type: "layout", layout: "twin" });
         send({ type: "intros", on: true });
-        send({ type: "direct", text: "Start the introductions: invite each person, one at a time, to say their name and the one task they repeat most at work, in about 20 seconds. React in ONE short, warm, witty sentence (light office humour is welcome, like 'ah, the 49-tab Excel of doom'), by name. Begin now by inviting the first volunteer." });
+        send({ type: "direct", text: "Start the introductions: invite each person, one at a time, to say their name, their team and their designation. React in ONE short, warm, witty sentence (light office humour is welcome, like 'ah, the 49-tab Excel of doom'), by name. Begin now by inviting the first volunteer." });
       },
     },
     { label: "Act 2 · AI confidence check (start)", hint: "Confidence poll on phones.", run: () => phase("poll", { poll: "before" }) },
@@ -289,8 +289,7 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
     { label: "Act 4 · 900-agents poll", hint: "Straight to the phone vote, then Shree reads the result.", run: () => phase("poll", { poll: "debate" }) },
     { label: "Act 5 · The Mirror", hint: "20-question self-assessment on phones.", run: () => phase("assessment") },
     { label: "Act 6 · Ask anything", hint: "Q&A list on TV; 'Shree answers' below.", run: () => phase("questions") },
-    { label: "Act 7 · Results", hint: "Tap 'Finale next' for 3rd, 2nd, winner, AI scores.", run: () => phase("finale") },
-    { label: "Act 7 · AI confidence check (end)", hint: "Same question as the start.", run: () => phase("poll", { poll: "after" }) },
+    { label: "Act 7 · Results", hint: "Tap 'Finale next' for 3rd, 2nd, winner, then team AI levels.", run: () => phase("finale") },
     {
       label: "Act 7 · Close",
       hint: "Thank-you, commitments, the closing line, then your last word.",

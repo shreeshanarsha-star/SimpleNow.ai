@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     const out = await callTextModel(
       `A person in a meeting room just introduced themselves (speech-to-text, may contain errors). Names of people signed in today: ${attendees.map((a) => a.display_name).join(", ") || "(none)"}.
 Transcript: "${heard}"
-Return ONLY JSON: {"name": the speaker's own name as they said it (correct obvious speech-to-text errors using the list), or null if they did not clearly say their name; "task": the task they repeat most at work (their most repetitive task), in under 12 words, or null}.
+Return ONLY JSON: {"name": the speaker's own name as they said it (correct obvious speech-to-text errors using the list), or null if they did not clearly say their name; "task": their team and designation as they said them, in under 12 words, or null}.
 If this is not a self-introduction, return {"name": null, "task": null}.`,
       120,
       12_000,

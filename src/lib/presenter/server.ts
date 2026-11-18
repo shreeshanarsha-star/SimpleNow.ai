@@ -280,7 +280,7 @@ export async function loadBrain(sessionId: string, opts: { people?: boolean } = 
       const bits = [
         p?.role ? `role: ${p.role}` : "",
         sayableNote(pr.notes) ? `Shreesha's note: ${sayableNote(pr.notes)}` : "",
-        a.intro ? `most repetitive task (phone): ${a.intro}` : "",
+        a.intro ? `team / role (phone): ${a.intro}` : "",
         spoken ? `said in their intro: ${spoken}` : "",
         asked.length ? `asked on phone: ${asked.join("; ")}` : "",
         commit?.text ? `today's commitment: ${commit.text}` : pr.lastCommitment ? `last session's commitment: ${pr.lastCommitment}` : "",
