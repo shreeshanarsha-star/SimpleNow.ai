@@ -310,7 +310,7 @@ function HubControls({ sessionId, send, status }: { sessionId: string; send: (c:
     const how = status?.entrance || "";
     if (how && how !== lastEntrance.current) {
       lastEntrance.current = how;
-      if (ACTS[actIdx]?.label === "Act 1 · Dark for the snap") {
+      if (ACTS[actIdx]?.label === "Lobby") {
         const n = actIdx + 1;
         setActIdx(n);
         try {
