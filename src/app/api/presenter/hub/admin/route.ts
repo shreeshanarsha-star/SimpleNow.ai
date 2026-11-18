@@ -223,6 +223,8 @@ Write the updated memory in at most 150 words: running jokes and funny moments, 
     }));
     const { error } = await db().from("presenter_slides").upsert(rows, { onConflict: "session_id,idx" });
     if (error) return json({ error: error.message }, 500);
+    // A shorter deck replaced a longer one: drop the old extra slides.
+    await db().from("presenter_slides").delete().eq("session_id", id).gte("idx", rows.length);
     // Keep the whole deck in Shree's Library (rebuilt only if the text changed).
     const lib = await syncDeck(id).catch((e) => ({ error: e instanceof Error ? e.message : "sync failed" }));
     return json({ ok: true, count: rows.length, library: lib });

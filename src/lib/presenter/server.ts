@@ -162,7 +162,7 @@ function buildPrompt(i: DirectorInput) {
     );
   if (i.library)
     parts.push(
-      `SHREE'S LIBRARY (verified documents and notes Shreesha loaded; the passages most relevant to what was just said):\n"""${i.library.slice(0, 5000)}"""\nFor facts, use these passages (and the slides). Answer briefly: 2 or 3 spoken sentences, then stop; give more only when asked ("tell me more", a follow-up). Never add details that aren't in these passages, the slides or the briefing: if they don't cover it, say you don't have verified details on that and Shreesha can follow up. Label company-reported numbers as company-reported.`
+      `SHREE'S LIBRARY (verified documents and notes Shreesha loaded; the passages most relevant to what was just said):\n"""${i.library.slice(0, 5000)}"""\nFor facts, use these passages (and the slides). Answer briefly: 2 or 3 spoken sentences, then stop; give more only when asked ("tell me more", a follow-up). Never add details that aren't in these passages, the slides or the briefing: if they don't cover it, say you don't have verified details on that and Shreesha can follow up. Label company-reported numbers as company-reported. If you answered the question now, do NOT add a [QA: …] tag. For the HR use-cases document, use the 1,000-employee rows unless asked about bigger companies: they are closest to NRPL's size.`
     );
   if (i.people) parts.push(`PEOPLE IN THE ROOM (certain names only):\n${i.people}`);
   if (i.slideText)
