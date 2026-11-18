@@ -207,7 +207,7 @@ Write the updated memory in at most 150 words: running jokes and funny moments, 
     await sb.from("presenter_responses").delete().eq("session_id", id);
     await sb.from("presenter_attendees").delete().eq("session_id", id);
     await sb.from("presenter_events").delete().eq("session_id", id).in("kind", ["room.heard", "room.memory"]);
-    return json({ hub: await patchHub(id, { phase: "lobby", quiz: null, poll: null, finaleStep: 0, flyerUrl: null, flyerBuild: null, sharedDocs: [] }) });
+    return json({ hub: await patchHub(id, { phase: "lobby", quiz: null, poll: null, pollReveal: null, finaleStep: 0, flyerUrl: null, flyerBuild: null, sharedDocs: [] }) });
   }
 
   if (action === "slides") {
