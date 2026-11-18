@@ -652,7 +652,7 @@ function Autopilot({ status, send, sessionId }: { status: PresenterStatus | null
           className={`w-full rounded-lg py-2 text-xs ${status?.autoDark === false ? "bg-neutral-700" : "bg-green-800"}`}
           onClick={() => send({ type: "autodark", on: status?.autoDark === false })}
         >
-          Auto-dark when I open (“good evening everyone…” + ~10 s): {status?.autoDark === false ? "OFF" : "ON"}
+          Auto-dark when I open (“good morning everyone…” + ~10 s): {status?.autoDark === false ? "OFF" : "ON"}
         </button>
       )}
       {status?.ears && (status.ears.on || status.ears.lines > 0) && (

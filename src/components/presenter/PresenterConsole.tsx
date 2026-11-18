@@ -42,11 +42,22 @@ export default function PresenterConsole() {
     setBusy(kind);
     setMsg("");
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("kind", kind);
-      fd.append("sessionId", session.id);
-      await api("/api/presenter/deck", { method: "POST", body: fd });
+      if (file.size > 4_000_000) {
+        // Too big to pass through the server: upload straight to storage with a signed URL.
+        const jsonPost = (body: Record<string, unknown>) =>
+          api<{ signedUrl?: string }>("/api/presenter/deck", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const { signedUrl } = await jsonPost({ action: "sign", kind, sessionId: session.id });
+        if (!signedUrl) throw new Error("Could not prepare the upload");
+        const r = await fetch(signedUrl, { method: "PUT", headers: { "Content-Type": "application/pdf", "x-upsert": "true" }, body: file });
+        if (!r.ok) throw new Error(`Upload failed (${r.status})`);
+        await jsonPost({ action: "done", kind, sessionId: session.id, name: file.name });
+      } else {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("kind", kind);
+        fd.append("sessionId", session.id);
+        await api("/api/presenter/deck", { method: "POST", body: fd });
+      }
       await load();
       setMsg(`${file.name} uploaded.`);
     } catch (e) {

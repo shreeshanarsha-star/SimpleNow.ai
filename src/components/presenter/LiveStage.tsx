@@ -926,7 +926,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             mode: "free",
             instruction:
               "You have just appeared on screen after a cinematic montage: Shreesha snapped his fingers and you arrived. Say hello in ONE or TWO short, natural sentences, like a friend walking into the room: a warm, witty line to Shreesha or the room. If something funny or notable was said before you appeared (see WHAT THE ROOM HAS SAID), make it a light callback to that, especially anything Shreesha said about you; otherwise a light comeback (for example, that unlike him you didn't need three cups of filter coffee to get here). Do NOT introduce yourself, do NOT give an agenda, do NOT mention votes or phones: Shreesha is about to introduce you. Under 12 seconds.",
-          })).catch(() => "Good evening, everyone! Shreesha, that was quite the entrance.");
+          })).catch(() => "Good morning, everyone! Shreesha, that was quite the entrance.");
           const connecting = connectTwin();
           await new Promise<void>((r) => (montageDone.current = r));
           setMontage(false);
@@ -1942,7 +1942,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   useEffect(() => () => stopEntranceRef.current(), []);
 
   // Lobby ears: from "Click to start" until the screen goes dark, Shree quietly listens and keeps
-  // what's said. When Shreesha opens ("good evening everyone…") and keeps talking ~10 s, fade to dark.
+  // what's said. When Shreesha opens ("good morning everyone…") and keeps talking ~10 s, fade to dark.
   const earsRef = useRef<{ rec: any; iv: ReturnType<typeof setInterval> | null; active: boolean }>({ rec: null, iv: null, active: false });
   const stopEars = useCallback(() => {
     const e = earsRef.current;
