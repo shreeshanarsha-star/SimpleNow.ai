@@ -1992,7 +1992,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     if (!Rec) return;
     const e = earsRef.current;
     e.active = true;
-    const OPENING = /\b(good (evening|afternoon|morning)[ ,]+(everyone|everybody|all|team|folks|guys|friends)|welcome (everyone|everybody|all|to)|let'?s (start|begin|get started|kick off)|shall we (start|begin|get started)|(hello|hi) (everyone|everybody|all)|can i (have|get) your attention|namaskara|thank you (all |everyone )?for (coming|joining))\b/i;
+    const OPENING = /\b((good )?(evening|afternoon|morning)(?:[ ,]+\w+){0,2}?[ ,]+(everyone|everybody|all|team|folks|guys|friends|people)|welcome (everyone|everybody|all|to)|let'?s (start|begin|get started|kick off)|shall we (start|begin|get started)|(hello|hi|hey)(?:[ ,]+\w+){0,2}?[ ,]+(everyone|everybody|all|team|folks|guys)|can i (have|get) your attention|namaskara|namaste|thank you (all |everyone )?for (coming|joining))\b/i;
     let openedAt = 0;
     let lastVoice = 0;
     const begin = () => {
