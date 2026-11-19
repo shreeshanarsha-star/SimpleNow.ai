@@ -841,6 +841,11 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     reconnecting: false,
   });
   const videoEl = (slot: number) => document.getElementById(`twin-video-${slot}`) as HTMLVideoElement | null;
+  /** Hold: silence Shree on the TV at once (even if the avatar service is slow to stop), and give his voice back after. */
+  const holdAudio = (on: boolean) => {
+    const v = videoEl(slotRef.current);
+    if (v) v.muted = on;
+  };
 
   const openClient = useCallback(
     async (slot: number, asStandby: boolean) => {
@@ -1088,6 +1093,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         case "present":
           setLayoutBoth("slides");
           st.paused = false;
+          holdAudio(false);
           presentSlide(st.slide);
           break;
         case "next":
@@ -1113,13 +1119,19 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           st.manualInterrupt = Date.now();
           st.pendingAfterSpeech = null;
           st.resume = null;
-          anamRef.current?.interruptPersona();
+          holdAudio(true);
+          window.speechSynthesis?.cancel();
+          try {
+            anamRef.current?.interruptPersona();
+          } catch {}
+          markSpeechDone();
           pushStatus();
           break;
         case "resume": {
           if (st.paused && st.ap.pausedAt) st.ap.pausedMs += Date.now() - st.ap.pausedAt;
           st.ap.pausedAt = 0;
           st.paused = false;
+          holdAudio(false);
           pushStatus();
           const back = st.layout === "handover";
           if (back) setLayoutBoth("twin");
@@ -1229,6 +1241,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             };
           }
           st.paused = false;
+          holdAudio(false);
           st.ap.pausedAt = 0;
           st.cue = null;
           st.quietListen = false;
