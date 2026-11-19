@@ -1890,6 +1890,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     e.active = true;
     let snap = false;
     let voice = false;
+    // Last time speech recognition heard anything. A real snap has no words around it;
+    // a sharp sound inside speech ("good morning everyone") must not count as a snap.
+    let lastSpeechAt = 0;
     // (1) Snap: short, sharp, high-frequency burst that dies away fast.
     // Not after the demo: applause would trigger it. Voice or button only there.
     if (s.current.layout !== "handover") try {
@@ -1927,7 +1930,19 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             cand = null;
             if (now - lastFire > 1500) {
               lastFire = now;
-              fireEntrance("snap", `(strength ${strength.toFixed(2)})`);
+              const at = Date.now();
+              // Wait 1.5 s: if the speech recogniser heard words around this moment, it was speech, not a snap.
+              setTimeout(() => {
+                if (!e.active) return;
+                if (lastSpeechAt > at - 1500) {
+                  if (s.current.entranceTest) {
+                    s.current.testHit = `Ignored: that was speech, not a snap (strength ${strength.toFixed(2)})`;
+                    pushStatus();
+                  }
+                  return;
+                }
+                fireEntrance("snap", `(strength ${strength.toFixed(2)})`);
+              }, 1500);
             }
           }
           return;
@@ -1951,6 +1966,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         rec.continuous = true;
         rec.interimResults = true;
         rec.onresult = (ev: any) => {
+          lastSpeechAt = Date.now();
           for (let i = ev.resultIndex; i < ev.results.length; i++) {
             const text = String(ev.results[i][0].transcript || "");
             if (ev.results[i].isFinal && !WAKE.test(text)) logRoom(text);
