@@ -677,12 +677,12 @@ function Autopilot({ status, send, sessionId }: { status: PresenterStatus | null
         </button>
         <button disabled={!live} className={`${btn} bg-neutral-700 disabled:opacity-30`} onClick={() => send({ type: "ap", action: "skip" })}>
           ⏭ Next
-          <div className="text-[10px] font-normal text-white/60">screen</div>
+          <div className="text-[10px] font-normal text-white/60">{status?.layout === "slides" && /Story/i.test(ap?.label || "") ? "slide" : "screen"}</div>
         </button>
       </div>
       {!live && <div className="text-center text-[10px] text-white/40">Previous / Next work after Shree enters. Hold works once Shree is on.</div>}
       <div className="rounded-lg bg-black/30 px-2 py-1.5 text-[11px] leading-relaxed text-white/60">
-        <b className="text-white/80">Voice:</b> snap or “Hey Shree” = Shree comes in · “Bro hold on” / “Shree stop” = hold · “Shree carry on” / “Shree continue” = resume · “Shree, let&apos;s move on” = end the intros · “Shree, remember that…” = save a note
+        <b className="text-white/80">Voice:</b> snap or “Hey Shree” = Shree comes in · “Bro hold on” / “Shree stop” = hold · “Shree carry on” / “Shree continue” = resume · “Shree, let&apos;s move on” = end the intros · “Shree, next slide” = next slide · “Shree, remember that…” = save a note
       </div>
       {ap?.running && status?.layout !== "handover" && (
         <button className={`${btn} w-full bg-neutral-700`} onClick={() => send({ type: "layout", layout: "handover" })}>

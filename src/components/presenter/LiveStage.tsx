@@ -159,6 +159,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       waiting: "",
       waitResume: null as null | (() => void),
       storyFrom: 0,
+      storyLast: false,
       resumed: false,
       fresh: true,
       finaleFrom: 0,
@@ -381,6 +382,19 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             speakRef.current(saved.text, saved.after || undefined);
           }
         }, 3500);
+        // Safety net: if nothing picked it up (room chatter with no clear question), carry on once the room is quiet.
+        let tries = 0;
+        const watch = setInterval(() => {
+          const now = s.current;
+          tries++;
+          if (now.resume !== saved || tries > 15) return clearInterval(watch);
+          const quietFor = Date.now() - Math.max(now.lastRoomAt, now.userSpeechAt);
+          if (!now.speaking && !now.roomBusy && !now.paused && quietFor > 4000) {
+            clearInterval(watch);
+            now.resume = null;
+            speakRef.current(`Where was I? Right. ${saved.text}`, saved.after || undefined);
+          }
+        }, 2000);
       }
       st.pendingAfterSpeech = null;
     }
@@ -519,6 +533,13 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       if (now - st.lastVoiceCmd > 2500) {
         st.lastVoiceCmd = now;
         handleRef.current({ type: "pause" });
+      }
+      return true;
+    }
+    if (/\bnext slide\b/i.test(heard) && st.ap.running && SHOW_STEPS[st.ap.idx]?.id === "story") {
+      if (now - st.lastVoiceCmd > 2500) {
+        st.lastVoiceCmd = now;
+        handleRef.current({ type: "ap", action: "skip" });
       }
       return true;
     }
@@ -1202,9 +1223,19 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             }
           }
           else if (cmd.action === "skip") {
-            st.ap.skip = true;
-            dropCarryOver();
-            st.ap.waitResume?.();
+            const inStory = st.ap.running && SHOW_STEPS[st.ap.idx]?.id === "story" && st.layout === "slides";
+            if (inStory && !st.ap.storyLast) {
+              // During the Story, Next = the next slide (the Story itself is never skipped by accident).
+              dropCarryOver();
+              st.gen++; // discard a narration that is still being written for this slide
+              st.busy = false;
+              st.slideNarrated = true;
+              markSpeechDone();
+            } else {
+              st.ap.skip = true;
+              dropCarryOver();
+              st.ap.waitResume?.();
+            }
           } else if (cmd.action === "stop") {
             st.ap.gen++;
             st.ap.running = false;
@@ -1662,6 +1693,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           const from = Math.max(0, Math.min(end - 1, ap.storyFrom || 0));
           ap.storyFrom = 0;
           for (let i = from; i < end && alive(); i++) {
+            ap.storyLast = i === end - 1;
             setLayoutBoth("slides");
             await settle();
             presentSlide(i);
@@ -1669,7 +1701,9 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             slideText(i).then((t) => {
               if (/\[SHARE PDF\]/i.test(t) && !(H().hub.sharedDocs || []).includes(SHARED_DOCS[0].key)) adminAct({ action: "share-doc", key: SHARED_DOCS[0].key });
             });
+            // Never wait forever on one slide: at most its narration time plus a minute, then carry on.
             await wait(150_000, () => s.current.slide === i && s.current.slideNarrated && quiet());
+            if (s.current.slide === i && !s.current.slideNarrated) s.current.resume = null;
             const txt = await slideText(i);
             if (/POLL\s*1/i.test(txt)) await pollRun("poll1", 45_000, true, "Read the result in one sentence and connect it to the 3-check test.");
             if (/POLL\s*2/i.test(txt)) await pollRun("poll2", 45_000, true, "Read the result in one sentence: the most popular first task.");
