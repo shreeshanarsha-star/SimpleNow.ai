@@ -37,6 +37,19 @@ const CALL = String.raw`(?:bro|brother|buddy|shree|shri|sree|sri|shre)`;
 const VOICE_HOLD = new RegExp(String.raw`\b${CALL}\b[ ,.!]*(?:please[ ,]+)?(?:hold on|hold|stop|wait|pause|one (?:sec|second|minute)|just a (?:sec|second|minute))\b|\b(?:hold on|stop|wait|pause)[ ,.!]+${CALL}\b`, "i");
 const VOICE_RESUME = new RegExp(String.raw`\b${CALL}\b[ ,.!]*(?:please[ ,]+)?(?:proceed|next|carry on|continue|go on|go ahead|resume|you (?:can|may) (?:continue|proceed|go on|carry on))\b|\b(?:please[ ,]+)?(?:proceed|carry on|continue|go on|resume)[ ,.!]+${CALL}\b`, "i");
 
+/** What Shree had not said yet when he was cut off, from the start of the sentence he was in (so it sounds natural). */
+function restOfLine(text: string, startedAt: number) {
+  const spokenWords = Math.floor(((Date.now() - startedAt) / 1000) * 2.5);
+  const words = text.split(/\s+/);
+  if (spokenWords >= words.length - 2) return "";
+  // Character position of the cut, then back to the start of that sentence.
+  const cutAt = words.slice(0, spokenWords).join(" ").length;
+  const before = text.slice(0, cutAt);
+  const m = before.match(/^[\s\S]*[.!?]\s+/);
+  const from = m ? m[0].length : 0;
+  return text.slice(from).trim();
+}
+
 /** A greeting at the start of a line ("Good morning, everyone." / "Hello all!"), removed after the first one. */
 const GREETING_OPENER = /^\s*(?:good (?:morning|afternoon|evening)(?:,?\s*(?:everyone|everybody|all|team|folks|friends))?|(?:hello|hi)(?: again)?,?\s*(?:everyone|everybody|all|team|folks|friends))\s*[.!,]?\s*/i;
 
@@ -115,6 +128,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     resume: null as null | { text: string; after: (() => void) | null },
     manualInterrupt: 0,
     roomBusy: false,
+    holdResume: null as null | { text: string; after: (() => void) | null },
     busyHeard: "",
     quietListen: false,
     welcomeWait: false,
@@ -353,9 +367,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
   const onTalkInterrupted = useCallback(() => {
     const st = s.current;
     if (st.speaking && Date.now() - st.manualInterrupt > 1500 && st.speakText) {
-      const words = st.speakText.split(/\s+/);
-      const spoken = Math.floor(((Date.now() - st.speakStart) / 1000) * 2.5);
-      const rest = words.slice(spoken).join(" ");
+      const rest = restOfLine(st.speakText, st.speakStart);
       if (rest.split(/\s+/).length > 8) {
         const saved = { text: rest, after: st.pendingAfterSpeech };
         st.resume = saved;
@@ -601,7 +613,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         anamRef.current?.talk(bridgePhrase()).catch(() => {});
       }, 1500);
       try {
-        let reply = await director({ mode: "room", heard, slideIdx: wasSlide, slideText: await slideText(wasSlide), nextSlidesText: await slideText(wasSlide + 1) });
+        let reply = await director({ mode: "room", heard, interrupted: resume?.text?.slice(0, 400) || undefined, slideIdx: wasSlide, slideText: await slideText(wasSlide), nextSlidesText: await slideText(wasSlide + 1) });
         clearTimeout(t);
         // Parked for Q&A: add it to the question list.
         const qa = reply.match(/\[QA:\s*([^\]]+)\]/i);
@@ -1092,8 +1104,15 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         }
         case "pause":
           if (!st.paused) st.ap.pausedAt = Date.now();
+          // Remember exactly where he stopped, so "carry on" finishes the same point (never a new one).
+          if (!st.paused && st.speaking && st.speakText) {
+            const rest = restOfLine(st.speakText, st.speakStart);
+            st.holdResume = rest ? { text: rest, after: st.pendingAfterSpeech } : null;
+          }
           st.paused = true;
+          st.manualInterrupt = Date.now();
           st.pendingAfterSpeech = null;
+          st.resume = null;
           anamRef.current?.interruptPersona();
           pushStatus();
           break;
@@ -1106,7 +1125,12 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           if (back) setLayoutBoth("twin");
           if (!anamRef.current) await connectTwin();
           if (back && st.ap.waitResume) st.ap.waitResume();
-          else if (st.layout === "slides" && !st.slideNarrated) presentSlide(st.slide);
+          else if (st.holdResume) {
+            // Carry on with the same sentence he was in when you held him.
+            const h = st.holdResume;
+            st.holdResume = null;
+            speak(h.text, h.after || undefined);
+          } else if (st.layout === "slides" && !st.slideNarrated) presentSlide(st.slide);
           break;
         }
         case "echo":

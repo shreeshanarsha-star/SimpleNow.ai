@@ -151,6 +151,8 @@ export type DirectorInput = {
   room?: string;
   /** Library passages relevant to what was just said/asked. */
   library?: string;
+  /** What Shree was in the middle of saying when someone cut in (he carries on with it after replying). */
+  interrupted?: string;
   /** Text to look up in the Library (e.g. an audience question in Q&A). */
   lookup?: string;
 };
@@ -186,7 +188,7 @@ function buildPrompt(i: DirectorInput) {
   if (i.mode === "slide")
     task = `TASK: Present this slide now, in your own words, as a co-host. Land the INTENT. Use the EXAMPLE if it helps. Do NOT ask the audience questions while presenting (ignore ENGAGE lines) and do NOT call out people in the room by name: just present clearly and simply. Explain EVERY item and number shown on the slide simply, the way you would to someone with no tech background: what it is and why it matters to us. Don't greet (no 'good morning'). Aim for 45 to 75 seconds of speech (about 110 to 180 words). If the slide has a POLL, end with one short line that a quick poll is coming up on their phones (the poll opens right after you finish; don't read its question or reveal its answer). Text in round brackets that reads like an instruction (on the slide or in the notes) is Shreesha's direction to YOU: follow it, never read it out. Don't read the slide word for word. Don't say "slide". Flow naturally from what was said before.`;
   else if (i.mode === "room")
-    task = `TASK: Someone in the room just said: "${i.heard}". Respond naturally and briefly (1 to 3 sentences; during the introductions, follow the introductions guidance in the session phase instead, including its length), like a human co-host:
+    task = `${i.interrupted ? `YOU WERE INTERRUPTED in the middle of saying: "${i.interrupted}". Right after your reply you will automatically carry on from there, so: keep your reply to 1 or 2 short sentences, do NOT start a new topic, do NOT summarise or continue the point yourself, and do NOT ask the room a question. ` : ""}TASK: Someone in the room just said: "${i.heard}". Respond naturally and briefly (1 to 3 sentences; during the introductions, follow the introductions guidance in the session phase instead, including its length), like a human co-host:
 - A quick question you can answer from the material: answer it now.
 - Covered by a later slide: say you're covering it shortly.
 - A bigger question better for Q&A: say you've noted it for Q&A, and END your reply with the tag [QA: the question in under 15 words].
