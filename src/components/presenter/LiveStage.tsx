@@ -33,7 +33,7 @@ const CLOSING_LINE =
 type Layout = PresenterStatus["layout"];
 
 /** Voice hold / resume: "Bro, hold on" · "Shree, stop" · "Bro wait" → hold; "Shree, proceed / next / carry on / continue" → resume. */
-const CALL = String.raw`(?:bro|brother|buddy|shree|shri|sree|sri|shre)`;
+const CALL = String.raw`(?:bro|brother|buddy|shree|shri|sree|sri|shre|she|shiri|siri)`;
 const VOICE_HOLD = new RegExp(String.raw`\b${CALL}\b[ ,.!]*(?:please[ ,]+)?(?:hold on|hold|stop|wait|pause|one (?:sec|second|minute)|just a (?:sec|second|minute))\b|\b(?:hold on|stop|wait|pause)[ ,.!]+${CALL}\b`, "i");
 const VOICE_RESUME = new RegExp(String.raw`\b${CALL}\b[ ,.!]*(?:please[ ,]+)?(?:proceed|next|carry on|continue|go on|go ahead|resume|you (?:can|may) (?:continue|proceed|go on|carry on))\b|\b(?:please[ ,]+)?(?:proceed|carry on|continue|go on|resume)[ ,.!]+${CALL}\b`, "i");
 
@@ -522,10 +522,22 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       }
       return true;
     }
-    if (st.paused && VOICE_RESUME.test(heard)) {
+    if (VOICE_RESUME.test(heard)) {
       if (now - st.lastVoiceCmd > 2500) {
         st.lastVoiceCmd = now;
-        handleRef.current({ type: "resume" });
+        if (st.paused) handleRef.current({ type: "resume" });
+        else if (st.resume && !st.speaking) {
+          // He was cut off and is waiting: carry on with what he was saying.
+          const r = st.resume;
+          st.resume = null;
+          speakRef.current(r.text, r.after || undefined);
+        } else if (st.cue) {
+          // Waiting for a cue (e.g. "let's move on" in the introductions): "proceed" counts as it.
+          const c = st.cue;
+          st.cue = null;
+          c.done();
+        }
+        // Otherwise nothing to resume: ignore quietly (never treat "proceed" as a question).
       }
       return true;
     }
@@ -559,6 +571,8 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         done();
         return;
       }
+      // The room answering his "good morning" while he is already talking: let him carry on.
+      if ((st.speaking || Date.now() - st.lastSpeechEnd < 1500) && /^\W*(?:a\s+)?(?:very\s+)?(?:good\s+morning|morning|hello|hi|hey|namaste|namaskara)\b[\w\s,!.']{0,30}$/i.test(heard)) return;
       if (st.quietListen && st.welcomeWait && !st.roomBusy && DIRECT_TO_SHREE.test(heard)) {
         // Before the handover Shree only listens, but a direct question ("Shree, can you hear me?")
         // gets one short answer so Shreesha knows he's live.
@@ -607,8 +621,20 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
       }
       const wasSlide = st.slide;
       st.roomBusy = true;
-      const resume = st.resume;
+      let resume = st.resume;
       st.resume = null;
+      if (!resume && st.speaking && st.speakText) {
+        const rest = restOfLine(st.speakText, st.speakStart);
+        if (rest.split(/\s+/).length > 8) {
+          resume = { text: rest, after: st.pendingAfterSpeech };
+          st.pendingAfterSpeech = null;
+          st.manualInterrupt = Date.now();
+          try {
+            anamRef.current?.interruptPersona();
+          } catch {}
+          markSpeechDone();
+        }
+      }
       const t = setTimeout(() => {
         anamRef.current?.talk(bridgePhrase()).catch(() => {});
       }, 1500);
@@ -644,7 +670,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         }
       }
     },
-    [director, presentSlide, pushStatus, slideText, speak, say, session?.id, logRoom, rememberNote, voiceCommand]
+    [director, presentSlide, pushStatus, slideText, speak, say, session?.id, logRoom, rememberNote, voiceCommand, markSpeechDone]
   );
   const onRoomSpeechRef = useRef(onRoomSpeech);
   onRoomSpeechRef.current = onRoomSpeech;
