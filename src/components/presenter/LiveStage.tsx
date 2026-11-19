@@ -872,6 +872,22 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     const v = videoEl(slotRef.current);
     if (v) v.muted = on;
   };
+  /** You jumped somewhere else: drop whatever he was in the middle of saying, so he never carries on with the old point. */
+  const dropCarryOver = () => {
+    const st = s.current;
+    st.manualInterrupt = Date.now();
+    st.resume = null;
+    st.holdResume = null;
+    st.pendingAfterSpeech = null;
+    st.busyHeard = "";
+    st.paused = false;
+    st.ap.pausedAt = 0;
+    holdAudio(false);
+    window.speechSynthesis?.cancel();
+    try {
+      anamRef.current?.interruptPersona();
+    } catch {}
+  };
 
   const openClient = useCallback(
     async (slot: number, asStandby: boolean) => {
@@ -1125,8 +1141,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         case "next":
         case "prev":
         case "goto": {
-          anamRef.current?.interruptPersona();
-          st.pendingAfterSpeech = null;
+          dropCarryOver();
           const n = cmd.type === "goto" ? cmd.idx : st.slide + (cmd.type === "next" ? 1 : -1);
           const idx = Math.max(0, Math.min(st.slideCount - 1, n));
           setLayoutBoth("slides");
@@ -1188,7 +1203,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           }
           else if (cmd.action === "skip") {
             st.ap.skip = true;
-            anamRef.current?.interruptPersona();
+            dropCarryOver();
             st.ap.waitResume?.();
           } else if (cmd.action === "stop") {
             st.ap.gen++;
@@ -1199,7 +1214,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
             const target = cmd.action === "back" ? Math.max(0, st.ap.idx - 1) : cmd.idx ?? Math.max(0, st.ap.idx);
             st.ap.storyFrom = typeof cmd.slide === "number" ? cmd.slide : 0;
             st.ap.gen++;
-            anamRef.current?.interruptPersona();
+            dropCarryOver();
             st.ap.waitResume?.();
             st.ap.on = true;
             setTimeout(() => runShowRef.current(target), 300);
@@ -1283,8 +1298,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           st.ap.running = false;
           st.ap.label = "";
           st.ap.idx = -1;
-          st.pendingAfterSpeech = null;
-          anamRef.current?.interruptPersona();
+          dropCarryOver();
           if (!anamRef.current) {
             st.preShow = true;
             setPreShow(true);
