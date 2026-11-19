@@ -25,7 +25,7 @@ type Session = { id: string; code: string; title: string; state: Record<string, 
 type Line = { role: "room" | "shree" | "shreesha"; text: string };
 
 const INTROS_GUIDE =
-  " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name, team and designation). React like you're finally meeting someone you've heard a lot about: warm and natural. If someone gives only their name (or misses their team or designation), that is perfectly fine: never ask them for the rest, just welcome them warmly; use Shreesha's note about them if there is one. Vary it every time (\"Nice to meet you, X, I've heard a lot about you\" is one option, never the same phrase twice in a row). If Shreesha's note about them has a MUST SAY part, you MUST cover EVERY one of those points now (all of them, none skipped), naturally and in your own words, in the tone the note asks for; never anything marked INFO ONLY. If there's no note about them, NEVER invent anything about them (no skills, habits, achievements or reputation): just welcome them warmly and, if they said it, say something kind about their team or role. Don't say 'good morning' (you already greeted the room). Up to 5 short spoken sentences. Use their name only if they said it or it matches someone signed in; if unsure who spoke, react without a name. Then invite the next person.";
+  " ACT 2 INTRODUCTIONS IN PROGRESS: people are introducing themselves one by one (name, team and designation). React like you're finally meeting someone you've heard a lot about: warm and natural. If what you hear has no new name and just continues what the previous person said (for example only their role, 'I'm a CHRO', or anything marked 'said while you were answering' that belongs to them), do NOT welcome anyone again: at most one short, warm acknowledgement (or [SILENT]), then invite the next person. Never welcome the same person twice. If someone gives only their name (or misses their team or designation), that is perfectly fine: never ask them for the rest, just welcome them warmly; use Shreesha's note about them if there is one. Vary it every time (\"Nice to meet you, X, I've heard a lot about you\" is one option, never the same phrase twice in a row). If Shreesha's note about them has a MUST SAY part, you MUST cover EVERY one of those points now (all of them, none skipped), naturally and in your own words, in the tone the note asks for; never anything marked INFO ONLY. If there's no note about them, NEVER invent anything about them (no skills, habits, achievements or reputation): just welcome them warmly and, if they said it, say something kind about their team or role. Don't say 'good morning' (you already greeted the room). Up to 5 short spoken sentences. Use their name only if they said it or it matches someone signed in; if unsure who spoke, react without a name. Then invite the next person.";
 
 /** Shree's final line, said word for word (approved by Shreesha). */
 const CLOSING_LINE =
@@ -115,6 +115,7 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
     resume: null as null | { text: string; after: (() => void) | null },
     manualInterrupt: 0,
     roomBusy: false,
+    busyHeard: "",
     quietListen: false,
     welcomeWait: false,
     greeted: false,
@@ -586,6 +587,12 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
           })
           .catch(() => {});
       }
+      // Shree is already answering: one person's sentence often arrives in two pieces
+      // ("This is Bhaskar, I'm from HR." … "I'm a CHRO."). Hold the extra piece and handle it once, after.
+      if (st.roomBusy) {
+        st.busyHeard = `${st.busyHeard} ${heard}`.trim().slice(0, 400);
+        return;
+      }
       const wasSlide = st.slide;
       st.roomBusy = true;
       const resume = st.resume;
@@ -618,10 +625,17 @@ export default function LiveStage({ sessionId }: { sessionId?: string }) {
         clearTimeout(t);
       } finally {
         st.roomBusy = false;
+        if (st.busyHeard) {
+          const extra = st.busyHeard;
+          st.busyHeard = "";
+          setTimeout(() => onRoomSpeechRef.current(`(said while you were answering) ${extra}`), 300);
+        }
       }
     },
     [director, presentSlide, pushStatus, slideText, speak, say, session?.id, logRoom, rememberNote, voiceCommand]
   );
+  const onRoomSpeechRef = useRef(onRoomSpeech);
+  onRoomSpeechRef.current = onRoomSpeech;
 
   /* ------------------------------ audience hub ------------------------------ */
   const refreshHub = useCallback(async () => {
