@@ -204,6 +204,9 @@ export function scriptCheck(plan: Plan): Issue[] {
     const ph = text.match(physical);
     if (ph) out.push({ level: "error", where, msg: `Asks the audience to do something physical ("${ph[0]}").` });
     if (slideN !== null) {
+      const pn = (plan.presenter.name || "").trim();
+      const greet = text.match(/\b(good (morning|afternoon|evening)|hello everyone|welcome everyone|welcome, everyone)\b/i) || (pn && new RegExp(`\\b(i'm|i am) ${pn.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").exec(text));
+      if (greet) out.push({ level: "error", where, msg: `Greets or re-introduces again ("${greet[0]}"); the opening already did that.` });
       for (const n of names) if (new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text)) out.push({ level: "warn", where, msg: `Names a person (${n}) during the slides.` });
       const w = words(text);
       if (w < 15) out.push({ level: "warn", where, msg: `Very short (${w} words).` });

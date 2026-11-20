@@ -150,3 +150,18 @@ test("normalizePlan fills missing fields", () => {
   assert.equal(p.mode, "manual");
   assert.deepEqual(p.polls.items, []);
 });
+
+test("script check: a slide that greets or re-introduces the presenter is flagged", () => {
+  const p = plan();
+  p.script.slides["1"] = "Welcome everyone, I'm Shree, your co-presenter. " + p.script.slides["1"];
+  p.script.slides["2"] = "Good morning! " + p.script.slides["2"];
+  const w = scriptCheck(p).filter((i) => /Greets/.test(i.msg)).map((i) => i.where);
+  assert.deepEqual(w, ["Slide 1", "Slide 2"]);
+});
+
+test("letter-spaced headings are joined", () => {
+  const re = /(?:^|(?<= ))(?:[A-Z0-9'’&·] ){3,}[A-Z0-9'’&·](?= |$)/gm;
+  const t = "0 1 · W H A T ' S H A P P E N I N G I N A I · R E A L I T Y Productivity is easy".replace(re, (m) => m.replace(/ /g, ""));
+  assert.match(t, /WHAT'SHAPPENINGINAI/);
+  assert.match(t, /Productivity is easy/);
+});

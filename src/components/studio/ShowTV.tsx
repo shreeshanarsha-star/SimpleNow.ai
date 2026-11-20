@@ -122,9 +122,13 @@ export default function ShowTV({ id }: { id: string }) {
     if (spokenKey.current === key) return;
     spokenKey.current = key;
     const stepNo = live.step;
+    // Stop the old line at once; only result steps wait for fresh answer counts.
+    p.stop();
+    setCaption("");
+    const kind = steps[stepNo]?.kind;
     (async () => {
-      const fresh = (await load()) || d;
-      if (fresh.live.step !== stepNo || fresh.live.held) return;
+      const fresh = kind === "poll_result" || kind === "results" ? (await load()) || d : d;
+      if ((latest.current?.live.step ?? fresh.live.step) !== stepNo || fresh.live.held) return;
       const text = lineFor(fresh, stepNo);
       setCaption(text);
       await p.speak(text);

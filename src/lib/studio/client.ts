@@ -16,7 +16,7 @@ export async function extractPages(doc: any): Promise<string[]> {
   const out: string[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     // Letter-spaced headings ("A S K  A N Y T H I N G") are joined back up.
-    const t = (await pageText(doc, i)).replace(/\b(?:[A-Z] ){3,}[A-Z]\b/g, (m: string) => m.replace(/ /g, ""));
+    const t = (await pageText(doc, i)).replace(/(?:^|(?<= ))(?:[A-Z0-9'’&·] ){3,}[A-Z0-9'’&·](?= |$)/gm, (m: string) => m.replace(/ /g, ""));
     out.push(t.slice(0, 4000));
   }
   return out;
