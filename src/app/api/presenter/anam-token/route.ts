@@ -2,11 +2,13 @@ import { json, mintAnamToken, ownerGuard } from "@/lib/presenter/server";
 
 export const dynamic = "force-dynamic";
 
-export async function POST() {
+export async function POST(req: Request) {
   const g = await ownerGuard();
   if (g instanceof Response) return g;
+  const body = (await req.json().catch(() => ({}))) as { personaId?: string };
+  const personaId = typeof body?.personaId === "string" && /^[0-9a-f-]{36}$/i.test(body.personaId) ? body.personaId : undefined;
   try {
-    const sessionToken = await mintAnamToken();
+    const sessionToken = await mintAnamToken(personaId);
     return json({ sessionToken });
   } catch (err) {
     return json({ error: err instanceof Error ? err.message : "Anam token failed" }, 502);

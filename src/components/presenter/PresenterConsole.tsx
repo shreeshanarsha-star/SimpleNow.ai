@@ -1,6 +1,7 @@
 "use client";
 // Presenter.ai — owner console: session, uploads, and the links to open on
 // the TV laptop and on the control phone.
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/presenter/client";
 import BrainPanel from "@/components/presenter/BrainPanel";
@@ -84,6 +85,9 @@ export default function PresenterConsole() {
 
   return (
     <div className="space-y-6 p-1">
+      <Link href="/tools/presenter/studio" className="block rounded-2xl border border-brand bg-brand-wash p-4 text-sm">
+        <b>New: Presenter Studio</b>: upload any deck, choose polls, quiz and Q&amp;A, approve the script, and present. Your 19 Nov session is saved there as a past event. →
+      </Link>
       <div className="rounded-2xl border border-border bg-surface p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

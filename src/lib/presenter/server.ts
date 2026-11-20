@@ -89,18 +89,26 @@ export async function getTwinPersona() {
   return personaCache;
 }
 
-/** Short-lived session token with Anam's own brain switched off. */
-export async function mintAnamToken() {
-  const persona = await getTwinPersona();
+/** Short-lived session token with Anam's own brain switched off. A personaId picks another Anam persona (Presenter Studio). */
+export async function mintAnamToken(personaId?: string) {
+  const persona: { avatarId: string; voiceId: string; name: string } = await (async () => {
+    if (!personaId) return getTwinPersona();
+    type P = { name: string; avatar?: { id: string } | null; voice?: { id: string } | null; avatarId?: string; voiceId?: string };
+    const p: P = await anamFetch(`/personas/${encodeURIComponent(personaId)}`);
+    const avatarId = p?.avatar?.id || p?.avatarId;
+    const voiceId = p?.voice?.id || p?.voiceId;
+    if (!avatarId || !voiceId) throw new Error("That Anam persona has no avatar or voice.");
+    return { avatarId, voiceId, name: p.name };
+  })();
   const data = await anamFetch(`/auth/session-token`, {
     method: "POST",
     body: JSON.stringify({
       personaConfig: {
-        name: "Shree",
+        name: personaId ? persona.name || "Presenter" : "Shree",
         avatarId: persona.avatarId,
         voiceId: persona.voiceId,
         llmId: "CUSTOMER_CLIENT_V1",
-        systemPrompt: "You are Shree. Speak only the text you are given.",
+        systemPrompt: "Speak only the text you are given.",
       },
     }),
   });
