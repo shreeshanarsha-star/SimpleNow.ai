@@ -98,6 +98,24 @@ export default function ShowTV({ id }: { id: string }) {
     load();
   }, [id, load]);
 
+  /** Auto-advance from a step: fresh version first, one retry if someone else moved at the same moment. */
+  const advanceFrom = useCallback(
+    async (stepNo: number) => {
+      for (let i = 0; i < 2; i++) {
+        const z = await load();
+        if (!z || z.live.step !== stepNo || z.live.held || z.live.ended) return;
+        try {
+          await api(`/api/studio/live/${id}`, jsonInit("POST", { action: { type: "next" }, v: z.live.v }));
+          load();
+          return;
+        } catch {
+          /* stale: reload and try once more */
+        }
+      }
+    },
+    [id, load]
+  );
+
   /** What to say for a step (poll/quiz results are worked out from the latest answers). */
   const lineFor = (x: Data, idx: number) => {
     const s = buildRunOfShow(x.plan)[idx];
@@ -152,12 +170,10 @@ export default function ShowTV({ id }: { id: string }) {
       if (!r.completed || !cur || cur.live.step !== stepNo || `${cur.live.step}:${cur.live.take}` !== key || cur.live.held) return;
       setCaption("");
       await command({ type: "spoken", step: stepNo });
-      const after = latest.current;
+      // Assisted: move on by itself between slides. Always use a FRESH version, or the server rejects the move as stale.
+      const after = (await load()) || latest.current;
       if (after && after.live.step === stepNo && !after.live.held && shouldAutoAdvance(buildRunOfShow(after.plan), stepNo, after.plan.mode)) {
-        setTimeout(() => {
-          const z = latest.current;
-          if (z && z.live.step === stepNo && !z.live.held) command({ type: "next" }, z.live.v);
-        }, 900);
+        setTimeout(() => advanceFrom(stepNo), 900);
       }
     })();
   }, [armed, live?.step, live?.take, live?.held, live?.started, live?.ended]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -202,10 +218,7 @@ export default function ShowTV({ id }: { id: string }) {
   useEffect(() => {
     if (!armed || !d || !live || !step || step.kind !== "quiz_q" || d.plan.mode !== "assisted" || live.held) return;
     const left = live.stepAt + d.plan.quiz.seconds * 1000 + 3500 - (Date.now() + offset.current);
-    const t = setTimeout(() => {
-      const z = latest.current;
-      if (z && z.live.step === live.step && !z.live.held) command({ type: "next" }, z.live.v);
-    }, Math.max(500, left));
+    const t = setTimeout(() => advanceFrom(live.step), Math.max(500, left));
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [armed, live?.step, live?.held, step?.kind]);
