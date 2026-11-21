@@ -296,6 +296,7 @@ export class Presenter {
     if (!beats.length) return Promise.resolve({ completed: true, beat: 0 });
     const from = Math.min(Math.max(0, fromBeat), beats.length - 1);
     this.speakCalledAt = Date.now();
+    this.lastLatencyMs = null;
     return new Promise<SpeakResult>((resolve) => {
       this.speaking = true;
       this.turn = { beats, ids: [], idx: from, from, resolve, timer: setTimeout(() => {}, 0), started: Date.now(), firstHeard: false, correlationId: "", viaBrowser: false };

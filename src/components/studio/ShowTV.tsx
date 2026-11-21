@@ -56,15 +56,32 @@ export default function ShowTV({ id }: { id: string }) {
     }
   }, [id]);
 
+  // Fast, light poll of the live state only (keeps approve → first word near a second); full results every 2 s.
+  const loadLive = useCallback(async () => {
+    const prev = latest.current;
+    if (!prev) return;
+    try {
+      const t0 = Date.now();
+      const x = await api<Data>(`/api/studio/live/${id}?light=1`);
+      offset.current = x.serverNow - (t0 + Date.now()) / 2;
+      if (latest.current && x.live.v === latest.current.live.v) return;
+      const merged = { ...x, results: latest.current?.results || prev.results };
+      latest.current = merged;
+      setD(merged);
+    } catch {}
+  }, [id]);
+
   useEffect(() => {
     load();
-    const t = setInterval(load, 700);
+    const t = setInterval(load, 2000);
+    const f = setInterval(loadLive, 400);
     const c = setInterval(() => setNow(Date.now() + offset.current), 250);
     return () => {
       clearInterval(t);
+      clearInterval(f);
       clearInterval(c);
     };
-  }, [load]);
+  }, [load, loadLive]);
 
   // QR + deck once.
   useEffect(() => {
@@ -195,7 +212,7 @@ export default function ShowTV({ id }: { id: string }) {
       // Measure when the first word arrives (lastLatencyMs is set by then).
       const started = Date.now();
       const poll = setInterval(() => {
-        if (p.lastLatencyMs !== null && Date.now() - started >= p.lastLatencyMs) {
+        if (p.lastLatencyMs !== null) {
           clearInterval(poll);
           const firstWordAt = started + p.lastLatencyMs + offset.current;
           setMetrics((m) => ({ ...m, sayLatencyMs: Math.max(0, Math.round(firstWordAt - at)) }));

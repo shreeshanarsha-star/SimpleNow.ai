@@ -154,7 +154,7 @@ export default function ShowRemote({ id }: { id: string }) {
                         <button
                           className="flex-1 rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white"
                           onClick={async () => {
-                            await send({ type: "say", text: `Here's a question from the room: ${q.text} ${draft}` });
+                            await send({ type: "say", text: draft });
                             qOp(q.id, "answered");
                           }}
                         >
