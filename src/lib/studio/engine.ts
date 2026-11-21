@@ -2,8 +2,57 @@
 // every rule here is unit-tested in tests/studio-engine.test.ts.
 import type { Action, Live, Plan, Poll, Step } from "./types";
 
+/* ------------------------------ Speech -------------------------------- */
+
+/** Anam Director Notes cues the voice/avatar understand. Anything else in [brackets] would be read aloud. */
+export const CUES = ["happy", "warm", "playful", "curious", "supportive", "concerned", "sad", "surprised", "angry", "distressed", "laughter"] as const;
+const CUE_SET = new Set<string>(CUES);
+const TAG_RE = /\[([a-zA-Z0-9 _-]{1,30})\]/g;
+
+/** Remove every cue tag (for captions, rehearsal text and the browser backup voice). */
+export function stripCues(text: string) {
+  return text.replace(TAG_RE, "").replace(/\s{2,}/g, " ").replace(/\s+([,.!?])/g, "$1").trim();
+}
+
+/** Keep known cues (lower-cased), drop unknown [tags] so they can never be spoken. */
+export function sanitizeCues(text: string) {
+  return text
+    .replace(TAG_RE, (_m, t: string) => (CUE_SET.has(t.trim().toLowerCase()) ? `[${t.trim().toLowerCase()}]` : ""))
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+export function unknownCues(text: string) {
+  return [...text.matchAll(TAG_RE)].map((m) => m[1].trim().toLowerCase()).filter((t) => !CUE_SET.has(t));
+}
+
+/**
+ * Split a script into short beats of 1–3 sentences (max ~45 words) for natural delivery
+ * and per-beat Hold/Resume. Cue tags stay with the sentence that follows them.
+ */
+export function splitBeats(text: string, maxWords = 45): string[] {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  const sentences = clean.split(/(?<=[.!?…])\s+(?=[\["“'A-Z0-9])/).map((x) => x.trim()).filter(Boolean);
+  const beats: string[] = [];
+  let cur: string[] = [];
+  let curWords = 0;
+  for (const sen of sentences) {
+    const w = words(stripCues(sen));
+    if (cur.length && (cur.length >= 3 || curWords + w > maxWords || /^\[/.test(sen))) {
+      beats.push(cur.join(" "));
+      cur = [];
+      curWords = 0;
+    }
+    cur.push(sen);
+    curWords += w;
+  }
+  if (cur.length) beats.push(cur.join(" "));
+  return beats;
+}
+
 const words = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
-const secFor = (s: string) => Math.max(4, Math.round(words(s) / 2.4));
+const secFor = (s: string) => Math.max(4, Math.round(words(stripCues(s)) / 2.4));
 
 export function defaultOpening(plan: Plan) {
   const p = plan.purpose;
@@ -12,7 +61,7 @@ export function defaultOpening(plan: Plan) {
 }
 
 export function qaLine() {
-  return "Now it's your turn. Ask me anything on your phones, and I'll answer what I can from today's material.";
+  return "[warm] Now it's your turn. Ask me anything on your phones, and I'll answer what I can from today's material.";
 }
 
 export function quizIntroLine(plan: Plan) {
@@ -25,7 +74,7 @@ export function quizEndLine(plan: Plan) {
 }
 
 export function pollIntroLine(poll: Poll) {
-  return `Quick poll on your phones: ${poll.question}`;
+  return `[curious] Quick poll on your phones: ${poll.question}`;
 }
 
 /** The closing always ends with the closing line, word for word. */
@@ -33,7 +82,7 @@ export function closingText(plan: Plan) {
   const body = (plan.script.closing || "").trim();
   const line = plan.purpose.closingLine.trim();
   if (!line) return body || "Thank you all for your time today.";
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+  const norm = (s: string) => stripCues(s).toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
   if (norm(body).includes(norm(line))) return body;
   return `${body}${body ? " " : ""}${line}`.trim();
 }
@@ -107,7 +156,7 @@ export function reduce(live: Live, a: Action, stepCount: number, now: number): L
       // Repeat the current step from the start (never carry on mid-sentence).
       return { ...live, v: live.v + 1, held: false, take: live.take + 1, spoken: -1 };
     case "say":
-      return { ...live, v: live.v + 1, held: false, say: { id: live.v + 1, text: a.text.slice(0, 1200) } };
+      return { ...live, v: live.v + 1, held: false, say: { id: live.v + 1, text: a.text.slice(0, 1200), at: now } };
     case "spoken":
       return a.step === live.step ? { ...live, v: live.v + 1, spoken: a.step } : live;
     case "avatar":
@@ -174,7 +223,7 @@ export function winnersLine(ranking: ReturnType<typeof quizRanking>, quizCount: 
   if (top[2]) parts.push(`In third place, ${top[2].name}.`);
   if (top[1]) parts.push(`In second place, ${top[1].name}.`);
   parts.push(`And today's quiz champion, with ${top[0].correct} out of ${quizCount}, is ${top[0].name}! Congratulations.`);
-  return `Here are the quiz results. ${parts.join(" ")}`;
+  return `[happy] Here are the quiz results. ${parts.join(" ")}`;
 }
 
 /* ------------------------------ Script check ------------------------------ */
@@ -190,11 +239,17 @@ export function scriptCheck(plan: Plan): Issue[] {
   const wrongTime = tod === "morning" ? /\b(tonight|good evening|this evening)\b/i : tod === "evening" ? /\b(good morning|this morning)\b/i : /\b(tonight|good morning|good evening)\b/i;
   const physical = /\b(hands? up|raise (your|a) hand|stand up|clap|write (this|it|that) down|shout)\b/i;
 
-  const check = (where: string, text: string, slideN: number | null, sourceText: string) => {
+  const check = (where: string, rawText: string, slideN: number | null, sourceText: string) => {
+    let text = rawText;
     if (!text.trim()) {
       out.push({ level: "error", where, msg: "No script yet." });
       return;
     }
+    const bad = unknownCues(text);
+    if (bad.length) out.push({ level: "error", where, msg: `Unknown cue tag${bad.length > 1 ? "s" : ""} [${[...new Set(bad)].join("], [")}] would be read aloud. Use only: ${CUES.join(", ")}.` });
+    const cueCount = (text.match(TAG_RE) || []).length;
+    if (slideN !== null && cueCount > 3) out.push({ level: "warn", where, msg: `${cueCount} cue tags: use them sparingly (1–2 per slide).` });
+    text = stripCues(text);
     const lc = text.toLowerCase();
     if (slideN !== null && !pollSlides.has(slideN) && /\b(poll|vote|voting)\b/i.test(text)) out.push({ level: "error", where, msg: "Mentions a poll, but there is no poll on this slide." });
     if (slideN !== null && (!plan.quiz.enabled || !plan.quiz.items.length) && /\bquiz\b/i.test(text)) out.push({ level: "warn", where, msg: "Mentions a quiz, but the quiz is off." });
@@ -223,7 +278,7 @@ export function scriptCheck(plan: Plan): Issue[] {
   check("Closing", plan.script.closing, null, "");
 
   if (plan.purpose.closingLine.trim()) {
-    const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+    const norm = (x: string) => stripCues(x).toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
     if (!norm(plan.script.closing).includes(norm(plan.purpose.closingLine))) out.push({ level: "warn", where: "Closing", msg: "The closing line isn't in the closing script; it will be added at the end, word for word." });
   }
   if (plan.purpose.message.trim()) {

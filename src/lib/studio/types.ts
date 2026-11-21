@@ -114,7 +114,7 @@ export type Live = {
   held: boolean;
   spoken: number; // last step the TV finished speaking (-1 = none)
   stepAt: number; // ms when the current step began
-  say: { id: number; text: string } | null; // operator-injected line
+  say: { id: number; text: string; at?: number } | null; // operator-injected line
   ended: boolean;
   avatar: "starting" | "ok" | "voice" | "off";
   take: number; // bumps whenever the TV must (re)speak the current step from the start

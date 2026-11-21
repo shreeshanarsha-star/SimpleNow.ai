@@ -3,7 +3,7 @@
 // what's next, the next line, the audience, and the Q&A queue with approval.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, jsonInit } from "@/lib/studio/client";
-import { buildRunOfShow } from "@/lib/studio/engine";
+import { buildRunOfShow, stripCues } from "@/lib/studio/engine";
 import type { Action, Live, Plan } from "@/lib/studio/types";
 
 type Results = {
@@ -113,7 +113,7 @@ export default function ShowRemote({ id }: { id: string }) {
         {next && !live.ended && (
           <div className="mt-3 rounded-xl bg-page p-3 text-sm">
             <div className="text-xs text-ink-muted">Next: {next.label}</div>
-            {next.say && <div className="mt-1 line-clamp-3 text-ink-2">“{next.say}”</div>}
+            {next.say && <div className="mt-1 line-clamp-3 text-ink-2">“{stripCues(next.say)}”</div>}
           </div>
         )}
       </div>

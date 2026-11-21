@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 type Body = {
-  task: "purpose" | "polls" | "quiz" | "script" | "line" | "answer";
+  task: "purpose" | "polls" | "quiz" | "script" | "line" | "answer" | "pronounce";
   showId: string;
   plan?: Plan; // the wizard's unsaved plan (preferred over the stored one)
   from?: number;
@@ -91,13 +91,20 @@ export async function POST(req: Request) {
         const q = (b.question || "").trim().slice(0, 500);
         if (!q) return json({ error: "Empty question" }, 400);
         const out = await studioAI(
-          `${briefing(plan)}\n\nDECK (your only source of facts):\n${deckText(plan, 16000)}\n\nAn audience member asks: "${q}"\nAnswer out loud in 2-4 short sentences (about 20-30 seconds). Use ONLY facts in the deck. If the deck doesn't cover it, say honestly that you don't have verified details on that today and offer the closest related point from the session, or suggest following up with the presenter. Never guess numbers or company facts. Return ONLY the spoken answer.`,
+          `${briefing(plan)}\n\nDECK (your only source of facts):\n${deckText(plan, 16000)}\n\nAn audience member asks (typed on a phone or transcribed, so silently correct likely typos or mishearing and answer what they meant): "${q}"\nAnswer out loud in 2-4 short sentences (about 20-30 seconds). Use ONLY facts in the deck. If the deck doesn't cover it, say honestly that you don't have verified details on that today and offer the closest related point from the session, or suggest following up with the presenter. Never guess numbers or company facts. You may start with one cue tag such as [warm] or [curious]. Return ONLY the spoken answer.`,
           400,
           25_000
         );
         const text = out.replace(/^["']|["']$/g, "").trim();
         if (b.questionId) await db().from("presenter_show_answers").update({ draft: text, status: "drafted" }).eq("id", b.questionId).eq("show_id", b.showId);
         return json({ text });
+      }
+      case "pronounce": {
+        const out = await studioAI(
+          `List words in this deck that a text-to-speech voice is likely to mispronounce: brand and product names, company names, people's names, acronyms that should be spelled out letter by letter, and Indian or other non-English terms. Skip ordinary English words and well-known brands (Google, Microsoft, OpenAI). For each, give a simple English "sounds like" respelling using hyphens between syllables (no IPA, no brackets), or for an acronym the letters separated by dots and spaces (for example "N. R. P. L."). Only include words actually in the deck. At most 25.\n\nDECK:\n${deckText(plan, 12000)}\n\nReturn ONLY JSON: [{"text": "word as written", "pronunciation": "sounds-like respelling", "why": "short reason"}]`,
+          1200
+        );
+        return json({ terms: parseJSON(out) });
       }
     }
     return json({ error: "Unknown task" }, 400);

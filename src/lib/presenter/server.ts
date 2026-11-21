@@ -35,7 +35,7 @@ export function db() {
 const ANAM_API = "https://api.anam.ai/v1";
 let personaCache: { avatarId: string; voiceId: string; name: string; at: number } | null = null;
 
-async function anamFetch(path: string, init?: RequestInit) {
+export async function anamFetch(path: string, init?: RequestInit) {
   const key = process.env.ANAM_API_KEY;
   if (!key) throw new Error("ANAM_API_KEY is not set on the server.");
   const res = await fetch(`${ANAM_API}${path}`, {
@@ -66,7 +66,7 @@ export async function getTwinPersona() {
   };
   let chosen: P | undefined;
   // Shreesha's "Shree" Digital Clone persona in Anam Lab (not a secret).
-  const personaId = process.env.ANAM_PERSONA_ID || "41f8a8e5-65f8-4485-b2cf-735affc15477";
+  const personaId = process.env.ANAM_PERSONA_ID || "ff104236-7c5e-4ed1-bc60-5d76b545d713";
   try {
     chosen = await anamFetch(`/personas/${personaId}`);
   } catch (err) {
@@ -114,6 +114,76 @@ export async function mintAnamToken(personaId?: string) {
   });
   if (!data?.sessionToken) throw new Error("Anam did not return a session token.");
   return data.sessionToken as string;
+}
+
+/** Presenter Studio dictionary (Anam pronunciation dictionary; not a secret). */
+export const STUDIO_DICTIONARY_ID = process.env.ANAM_DICTIONARY_ID || "2f73b5a0-bba9-40c4-bbc5-301303fe4263";
+
+const STUDIO_STYLE: Record<string, string> = {
+  warm: "Warm, composed, confident presenter. Natural head movement, gentle smiles, looking at the camera.",
+  formal: "Composed, confident, professional presenter. Measured natural head movement, steady eye contact with the camera.",
+  energetic: "Upbeat, confident presenter with lively but natural head movement and expressive face, looking at the camera.",
+  calm: "Calm, composed, reassuring presenter. Slow natural head movement, soft steady gaze at the camera.",
+};
+
+/**
+ * Presenter Studio session token: Cara-4.1 Express, Director Notes, explicit session length,
+ * pronunciation dictionary, portrait video, no silence auto-end. Each optional upgrade is dropped
+ * automatically if Anam rejects it, so a show always gets an avatar.
+ */
+export async function mintStudioToken(opts: { personaId?: string; preset?: string }) {
+  const id = opts.personaId || process.env.ANAM_PERSONA_ID || "ff104236-7c5e-4ed1-bc60-5d76b545d713";
+  type P = { name: string; avatar?: { id: string } | null; voice?: { id: string } | null; avatarId?: string; voiceId?: string };
+  let p: P | null = null;
+  try {
+    p = await anamFetch(`/personas/${encodeURIComponent(id)}`);
+  } catch {
+    p = null;
+  }
+  const persona = p && (p.avatar?.id || p.avatarId) && (p.voice?.id || p.voiceId) ? { avatarId: (p.avatar?.id || p.avatarId)!, voiceId: (p.voice?.id || p.voiceId)!, name: p.name } : await getTwinPersona();
+  const base: Record<string, unknown> = {
+    name: persona.name || "Presenter",
+    avatarId: persona.avatarId,
+    voiceId: persona.voiceId,
+    llmId: "CUSTOMER_CLIENT_V1",
+    systemPrompt: "Speak only the text you are given.",
+    maxSessionLengthSeconds: 570,
+    voiceDetectionOptions: { silenceBeforeSessionEndSeconds: 0, silenceBeforeSkipTurnSeconds: 0 },
+  };
+  const upgrades: Record<string, unknown> = {
+    avatarModel: "cara-4.1-express",
+    directorNotes: {
+      customStylePrompt: STUDIO_STYLE[opts.preset || "warm"] || STUDIO_STYLE.warm,
+      customIdlingStylePrompt: "Attentive, slow gentle nods, relaxed soft gaze at the camera.",
+      expressivity: 0.5,
+    },
+    voiceGenerationOptions: { pronunciationDictionaryId: STUDIO_DICTIONARY_ID },
+  };
+  const attempts: Array<[Record<string, unknown>, Record<string, unknown> | undefined, string]> = [
+    [{ ...base, ...upgrades }, { videoWidth: 768, videoHeight: 1152 }, "full"],
+    [{ ...base, ...upgrades }, undefined, "landscape"],
+    [{ ...base, avatarModel: "cara-4.1-express" }, undefined, "no-notes"],
+    [base, undefined, "basic"],
+  ];
+  let lastErr: unknown = null;
+  for (const [personaConfig, sessionOptions, level] of attempts) {
+    try {
+      const data = await anamFetch(`/auth/session-token`, { method: "POST", body: JSON.stringify(sessionOptions ? { personaConfig, sessionOptions } : { personaConfig }) });
+      if (data?.sessionToken) return { sessionToken: data.sessionToken as string, level };
+    } catch (err) {
+      lastErr = err;
+      console.error(`[studio] token (${level}) failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Anam did not return a session token.");
+}
+
+export async function getDictionary() {
+  return anamFetch(`/pronunciation-dictionaries/${STUDIO_DICTIONARY_ID}`) as Promise<{ revision: number; entries: Array<{ text: string; pronunciation: string; kind?: string; soundsLike?: string; caseSensitive?: boolean }> }>;
+}
+
+export async function saveDictionary(entries: Array<{ text: string; pronunciation: string; kind?: string; soundsLike?: string; caseSensitive?: boolean }>, expectedRevision?: number) {
+  return anamFetch(`/pronunciation-dictionaries/${STUDIO_DICTIONARY_ID}`, { method: "PUT", body: JSON.stringify({ name: "Presenter Studio – Shree", entries, ...(expectedRevision ? { expectedRevision } : {}) }) });
 }
 
 /* ------------------------------------------------------------------ */

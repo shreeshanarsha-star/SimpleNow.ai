@@ -123,6 +123,8 @@ export function briefing(plan: Plan) {
     plan.personality.rules ? `RULES FROM THE PRESENTER: ${plan.personality.rules}` : "",
     plan.personality.mustSay ? `MUST SAY (somewhere appropriate, in your own words): ${plan.personality.mustSay}` : "",
     plan.personality.avoid ? `NEVER USE these words or topics: ${plan.personality.avoid}` : "",
+    `HOW YOU SPEAK: You are a live avatar: your face, voice and expressions are generated from your words, so let your words carry the emotion and never describe your own actions or expressions. Use contractions and vary sentence length, short and longer. Now and then (not every sentence) a natural "..." pause or a "so..." is fine, but never inside facts, numbers or names, and never "um" or "erm" in scripted slides.`,
+    `EMOTION CUES: You may put an inline cue tag directly before a sentence to guide your delivery, using ONLY these: [happy] [warm] [playful] [curious] [supportive] [concerned] [surprised]. Use them sparingly: at most one or two per slide, none on most sentences. For example [curious] before a question or a poll, [warm] for thanks and the close, [happy] for good news. Never invent other tags and never put anything else in square brackets.`,
     `HARD RULES: Speak for the ear: short spoken sentences, no lists, no markdown, no emojis, no stage directions. Facts and numbers ONLY from the slide text and notes given; never invent facts, names, numbers or examples about real companies. Never ask the audience to do anything physical (hands up, stand, clap). Do not ask the audience questions while presenting slides. Do not name people from the audience. Mention a poll only where you are told there is one.`,
   ];
   return lines.filter(Boolean).join("\n");

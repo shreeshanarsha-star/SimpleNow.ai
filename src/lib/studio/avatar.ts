@@ -1,12 +1,39 @@
 "use client";
 // Presenter Studio — the presenter's face and voice on the TV.
-// Anam avatar (its own brain off: it only speaks the text we give it), with
-// - a relay that swaps to a fresh session between lines before the 10-minute cap,
-// - an automatic fallback to the browser's voice if the avatar can't start or drops.
+// - Anam avatar with its own brain off: it speaks only the text we give it.
+// - Each line is split into short beats, sent as ordered utterances in ONE talk stream
+//   (Cara 4 multi-utterance), so delivery is natural and Hold/Resume works per beat.
+// - Relay: a fresh Anam session is warmed before the plan's 10-minute cap and swapped in
+//   between lines (or, at the hard limit, mid-line, carrying on from the current beat).
+// - Backup: if the avatar can't start or drops, the browser voice carries on from the same beat.
 import { createClient, AnamEvent } from "@anam-ai/js-sdk";
 import type { AnamClient } from "@anam-ai/js-sdk";
+import { sanitizeCues, splitBeats, stripCues } from "./engine";
 
 type Status = "starting" | "ok" | "voice" | "off";
+export type SpeakResult = { completed: boolean; beat: number };
+
+// Session plan: Anam ends the session at MAX_S (set on the token, under Explorer's 10 min).
+export const MAX_SESSION_S = 570;
+const PREWARM_MS = 495_000; // 8:15 — start the standby session
+const SWAP_IDLE_MS = 525_000; // 8:45 — swap at the next pause between lines
+const SWAP_FORCE_MS = 555_000; // 9:15 — swap even mid-line (continue from the current beat)
+
+type Turn = {
+  beats: string[];
+  ids: string[];
+  idx: number; // beat currently playing
+  from: number; // first beat sent in the current stream
+  resolve: (r: SpeakResult) => void;
+  timer: ReturnType<typeof setTimeout>;
+  started: number;
+  firstHeard: boolean;
+  correlationId: string;
+  viaBrowser: boolean;
+};
+
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (Number(c) ^ (Math.random() * 16) >> (Number(c) / 4)).toString(16))).toLowerCase();
+const wordCount = (s: string) => (s.trim() ? stripCues(s).split(/\s+/).length : 0);
 
 export class Presenter {
   private client: AnamClient | null = null;
@@ -15,17 +42,21 @@ export class Presenter {
   private slot = 0;
   private startedAt = 0;
   private retiring = new WeakSet<AnamClient>();
-  private pending: { resolve: () => void; timer: ReturnType<typeof setTimeout>; started: number; words: number } | null = null;
+  private turn: Turn | null = null;
   private relayTimer: ReturnType<typeof setInterval> | null = null;
+  private speakCalledAt = 0;
   speaking = false;
   status: Status = "off";
+  /** ms from speak() to the first word arriving (last line). */
+  lastLatencyMs: number | null = null;
 
   constructor(
     private opts: {
       videoId: (slot: number) => string;
       onStatus: (s: Status, note?: string) => void;
       onSlot: (slot: number) => void;
-      personaId?: string;
+      onBeat?: (beat: number, of: number) => void;
+      token: () => Promise<string>;
       voiceOnly?: boolean;
     }
   ) {}
@@ -48,35 +79,57 @@ export class Presenter {
     } catch (err) {
       this.client = null;
       this.setStatus("voice", err instanceof Error ? err.message : "Avatar failed to start");
+      setTimeout(() => this.reconnect(), 5000);
     }
-    this.relayTimer = setInterval(() => this.relayTick(), 5000);
+    this.relayTimer = setInterval(() => this.relayTick(), 2000);
+  }
+
+  /** Session age in seconds (for the remote). */
+  sessionAge() {
+    return this.client ? Math.round((Date.now() - this.startedAt) / 1000) : 0;
   }
 
   private async open(slot: number, standby = false): Promise<AnamClient> {
-    const res = await fetch("/api/presenter/anam-token", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ personaId: this.opts.personaId || undefined }) });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.sessionToken) throw new Error(data.error || "No avatar token");
-    const c = createClient(data.sessionToken);
+    const sessionToken = await this.opts.token();
+    // No microphone at all in scripted shows: no echo, no permission prompt.
+    const c = createClient(sessionToken, { disableInputAudio: true });
     c.addListener(AnamEvent.SESSION_READY, () => {
-      try {
-        c.muteInputAudio(); // no room listening in Studio v1
-      } catch {}
       if (this.standby === c) this.standbyReady = true;
     });
     c.addListener(AnamEvent.MESSAGE_STREAM_EVENT_RECEIVED, (ev) => {
-      if (c !== this.client || ev.role !== "persona" || !ev.endOfSpeech) return;
-      if ((ev as { interrupted?: boolean }).interrupted) return; // a cut-off is never "finished"
-      const p = this.pending;
-      if (!p) return;
-      // An end that arrives far too early for the length of the line is not the real end.
-      const est = (p.words / 2.7) * 1000;
-      const elapsed = Date.now() - p.started;
-      if (elapsed < est * 0.6) {
-        clearTimeout(p.timer);
-        p.timer = setTimeout(() => this.finish(), est - elapsed + 500);
+      if (c !== this.client || ev.role !== "persona") return;
+      const t = this.turn;
+      if (!t || t.viaBrowser) return;
+      if (!t.firstHeard) {
+        t.firstHeard = true;
+        this.lastLatencyMs = Date.now() - this.speakCalledAt;
+      }
+      const uid = (ev as { utteranceId?: string }).utteranceId;
+      if (uid) {
+        const i = t.ids.indexOf(uid);
+        if (i > t.idx) {
+          t.idx = i;
+          this.opts.onBeat?.(i, t.beats.length);
+        }
+      }
+      if (!ev.endOfSpeech || (ev as { interrupted?: boolean }).interrupted) return; // a cut-off is never "finished"
+      if (uid && uid !== t.ids[t.ids.length - 1]) return; // end of an earlier beat
+      // An end that comes far too early for the words left is not the real end.
+      const est = (t.beats.slice(t.idx).reduce((a, b) => a + wordCount(b), 0) / 2.7) * 1000;
+      const elapsed = Date.now() - t.started;
+      const total = (t.beats.slice(t.from).reduce((a, b) => a + wordCount(b), 0) / 2.7) * 1000;
+      if (elapsed < total * 0.55) {
+        clearTimeout(t.timer);
+        t.timer = setTimeout(() => this.finish(true), Math.max(500, Math.min(est, total - elapsed) + 500));
         return;
       }
-      this.finish();
+      this.finish(true);
+    });
+    c.addListener(AnamEvent.MESSAGE_DELIVERY_FAILED, (f) => {
+      const t = this.turn;
+      if (c !== this.client || !t || t.viaBrowser || f.correlationId !== t.correlationId) return;
+      // The stream couldn't be confirmed: carry on from the current beat with the backup voice.
+      this.speakViaBrowser(t.idx);
     });
     c.addListener(AnamEvent.CONNECTION_CLOSED, () => {
       if (this.retiring.has(c)) return;
@@ -87,11 +140,11 @@ export class Presenter {
       }
       if (c !== this.client) return;
       this.client = null;
-      this.finish();
-      // Unplanned drop: use a warm standby, else reconnect; meanwhile the browser voice covers.
+      // Unplanned drop: use a warm standby if there is one, else the backup voice while we reconnect.
       if (this.standby && this.standbyReady) this.promote();
       else {
-        this.setStatus("voice", "Avatar dropped: reconnecting, using the backup voice meanwhile");
+        if (this.turn && !this.turn.viaBrowser) this.speakViaBrowser(this.turn.idx);
+        this.setStatus("voice", "Avatar dropped: reconnecting, backup voice meanwhile");
         setTimeout(() => this.reconnect(), 1000);
       }
     });
@@ -121,6 +174,7 @@ export class Presenter {
     if (!next || !this.standbyReady) return false;
     const old = this.client;
     if (old) this.retiring.add(old);
+    const t = this.turn;
     this.slot = 1 - this.slot;
     this.client = next;
     this.standby = null;
@@ -130,63 +184,128 @@ export class Presenter {
     if (v) v.muted = false;
     this.opts.onSlot(this.slot);
     this.setStatus("ok");
-    if (old) setTimeout(() => old.stopStreaming().catch(() => {}), 400);
+    if (old) {
+      try {
+        old.interruptPersona();
+      } catch {}
+      const ov = document.getElementById(this.opts.videoId(1 - this.slot)) as HTMLVideoElement | null;
+      if (ov) ov.muted = true;
+      setTimeout(() => old.stopStreaming().catch(() => {}), 400);
+    }
+    // Mid-line swap: the new session carries on from the beat that was playing.
+    if (t) this.sendBeats(t.idx);
     return true;
   }
 
-  /** Explorer caps a session at 10 min: warm a second one at 8 min, swap between lines after 9. */
   private relayTick() {
     if (!this.client) return;
     const age = Date.now() - this.startedAt;
-    if (age > 8 * 60_000 && !this.standby) this.open(1 - this.slot, true).catch(() => (this.standby = null));
-    if (age > 9 * 60_000 && this.standbyReady && !this.speaking) this.promote();
-  }
-
-  private finish() {
-    const p = this.pending;
-    this.pending = null;
-    this.speaking = false;
-    if (p) {
-      clearTimeout(p.timer);
-      p.resolve();
+    if (age > PREWARM_MS && !this.standby) {
+      this.open(1 - this.slot, true).catch(() => {
+        this.standby = null;
+        this.standbyReady = false;
+      });
     }
+    if (this.standbyReady && ((age > SWAP_IDLE_MS && !this.speaking) || age > SWAP_FORCE_MS)) this.promote();
   }
 
-  /** Speak a line; resolves when finished or stopped. */
-  speak(text: string): Promise<void> {
-    this.stop();
-    const t = text.trim();
-    if (!t) return Promise.resolve();
-    const words = t.split(/\s+/).length;
-    return new Promise<void>((resolve) => {
-      this.speaking = true;
-      // Safety net if the end-of-speech event never arrives.
-      const timer = setTimeout(() => this.finish(), (words / 2.3) * 1000 + 6000);
-      this.pending = { resolve, timer, started: Date.now(), words };
-      const v = document.getElementById(this.opts.videoId(this.slot)) as HTMLVideoElement | null;
-      if (v) v.muted = false;
-      if (this.client) {
-        this.client.talk(t).catch(() => this.browserVoice(t));
-      } else {
-        this.browserVoice(t);
+  private finish(completed: boolean) {
+    const t = this.turn;
+    this.turn = null;
+    this.speaking = false;
+    if (t) {
+      clearTimeout(t.timer);
+      t.resolve({ completed, beat: completed ? t.beats.length - 1 : t.idx });
+    }
+    // Planned swap at the first pause after 8:45.
+    if (this.client && this.standbyReady && Date.now() - this.startedAt > SWAP_IDLE_MS) setTimeout(() => !this.speaking && this.promote(), 200);
+  }
+
+  private armTimer(t: Turn, fromBeat: number) {
+    clearTimeout(t.timer);
+    const left = t.beats.slice(fromBeat).reduce((a, b) => a + wordCount(b), 0);
+    t.timer = setTimeout(() => this.finish(true), (left / 2.3) * 1000 + 6000); // safety net
+  }
+
+  /** Send beats [from..] to the avatar as ordered utterances in one talk stream. */
+  private sendBeats(from: number) {
+    const t = this.turn;
+    const c = this.client;
+    if (!t) return;
+    if (!c) return this.speakViaBrowser(from);
+    t.viaBrowser = false;
+    t.idx = from;
+    t.from = from;
+    t.ids = t.beats.map(() => uuid());
+    t.correlationId = uuid();
+    t.firstHeard = false;
+    t.started = Date.now();
+    this.armTimer(t, from);
+    const v = document.getElementById(this.opts.videoId(this.slot)) as HTMLVideoElement | null;
+    if (v) v.muted = false;
+    (async () => {
+      try {
+        const stream = c.createTalkMessageStream(t.correlationId);
+        // All beats go at once (no 15-second gaps between chunks); Anam plays them in order.
+        for (let i = from; i < t.beats.length; i++) {
+          if (this.turn !== t || !stream.isActive()) return;
+          await stream.streamMessageChunk(t.beats[i], i === t.beats.length - 1, t.ids[i]);
+        }
+      } catch {
+        if (this.turn === t && !t.firstHeard) {
+          // Streams unavailable: fall back to a plain talk() of the rest of the line.
+          c.talk(t.beats.slice(from).join(" ")).catch(() => this.speakViaBrowser(from));
+        }
       }
+    })();
+  }
+
+  private speakViaBrowser(from: number) {
+    const t = this.turn;
+    const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
+    if (!t) return;
+    t.viaBrowser = true;
+    t.idx = from;
+    this.armTimer(t, from);
+    if (!synth) return;
+    synth.cancel();
+    const voices = synth.getVoices();
+    const voice = voices.find((v) => /en-IN/i.test(v.lang)) || voices.find((v) => /^en/i.test(v.lang)) || null;
+    const say = (i: number) => {
+      if (this.turn !== t) return;
+      if (i >= t.beats.length) return this.finish(true);
+      t.idx = i;
+      this.opts.onBeat?.(i, t.beats.length);
+      const u = new SpeechSynthesisUtterance(stripCues(t.beats[i]));
+      u.voice = voice;
+      u.onend = () => say(i + 1);
+      u.onerror = () => say(i + 1);
+      if (!t.firstHeard) {
+        t.firstHeard = true;
+        this.lastLatencyMs = Date.now() - this.speakCalledAt;
+      }
+      synth.speak(u);
+    };
+    say(from);
+  }
+
+  /** Speak a line from a given beat; resolves when finished or stopped (with the beat it reached). */
+  speak(text: string, fromBeat = 0): Promise<SpeakResult> {
+    this.stop();
+    const beats = splitBeats(sanitizeCues(text));
+    if (!beats.length) return Promise.resolve({ completed: true, beat: 0 });
+    const from = Math.min(Math.max(0, fromBeat), beats.length - 1);
+    this.speakCalledAt = Date.now();
+    return new Promise<SpeakResult>((resolve) => {
+      this.speaking = true;
+      this.turn = { beats, ids: [], idx: from, from, resolve, timer: setTimeout(() => {}, 0), started: Date.now(), firstHeard: false, correlationId: "", viaBrowser: false };
+      this.opts.onBeat?.(from, beats.length);
+      if (this.client) this.sendBeats(from);
+      else this.speakViaBrowser(from);
     });
   }
 
-  private browserVoice(t: string) {
-    const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
-    if (!synth) return;
-    synth.cancel();
-    const u = new SpeechSynthesisUtterance(t);
-    const voices = synth.getVoices();
-    u.voice = voices.find((v) => /en-IN/i.test(v.lang)) || voices.find((v) => /^en/i.test(v.lang)) || null;
-    u.rate = 1.0;
-    u.onend = () => this.finish();
-    u.onerror = () => this.finish();
-    synth.speak(u);
-  }
-
-  /** Stop talking at once (Hold, jump, new line). */
+  /** Stop talking at once (Hold, jump, new line). Resolves the current line as not completed. */
   stop() {
     const v = document.getElementById(this.opts.videoId(this.slot)) as HTMLVideoElement | null;
     if (this.speaking && v) {
@@ -201,7 +320,7 @@ export class Presenter {
     try {
       window.speechSynthesis?.cancel();
     } catch {}
-    this.finish();
+    this.finish(false);
   }
 
   async close() {

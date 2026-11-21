@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { Presenter } from "@/lib/studio/avatar";
 import { api, drawPage, jsonInit, openPdfData } from "@/lib/studio/client";
-import { buildRunOfShow, pollResultLine, shouldAutoAdvance, winnersLine } from "@/lib/studio/engine";
+import { buildRunOfShow, pollResultLine, sanitizeCues, shouldAutoAdvance, splitBeats, stripCues, winnersLine } from "@/lib/studio/engine";
 import type { Action, Live, Plan } from "@/lib/studio/types";
 
 type Results = {
@@ -32,6 +32,11 @@ export default function ShowTV({ id }: { id: string }) {
   const latest = useRef<Data | null>(null);
   const offset = useRef(0);
   const spokenKey = useRef("");
+  const lineBeats = useRef<string[]>([]);
+  const beatAt = useRef<{ step: number; beat: number }>({ step: -1, beat: 0 });
+  const heldBeat = useRef<{ step: number; beat: number } | null>(null);
+  const [metrics, setMetrics] = useState<{ sayLatencyMs: number | null; lineLatencyMs: number | null; session: number }>({ sayLatencyMs: null, lineLatencyMs: null, session: 0 });
+  const [showMetrics, setShowMetrics] = useState(false);
   const sayId = useRef<number | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -53,7 +58,7 @@ export default function ShowTV({ id }: { id: string }) {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 1000);
+    const t = setInterval(load, 700);
     const c = setInterval(() => setNow(Date.now() + offset.current), 250);
     return () => {
       clearInterval(t);
@@ -108,11 +113,18 @@ export default function ShowTV({ id }: { id: string }) {
     return s.say;
   };
 
-  // The player: whenever the step or its "take" changes, speak it from the start.
+  /** Show a line as captions beat by beat (cues never shown). */
+  const showLine = (text: string) => {
+    lineBeats.current = splitBeats(sanitizeCues(text));
+    setCaption(lineBeats.current[0] ? stripCues(lineBeats.current[0]) : "");
+  };
+
+  // The player: whenever the step or its "take" changes, speak it. Resume after Hold continues from the held beat.
   useEffect(() => {
     if (!armed || !d || !live || !pres.current) return;
     const p = pres.current;
     if (live.held) {
+      if (beatAt.current.step === live.step) heldBeat.current = { ...beatAt.current };
       p.stop();
       setCaption("");
       return;
@@ -122,6 +134,8 @@ export default function ShowTV({ id }: { id: string }) {
     if (spokenKey.current === key) return;
     spokenKey.current = key;
     const stepNo = live.step;
+    const from = heldBeat.current && heldBeat.current.step === stepNo ? heldBeat.current.beat : 0;
+    heldBeat.current = null;
     // Stop the old line at once; only result steps wait for fresh answer counts.
     p.stop();
     setCaption("");
@@ -130,10 +144,12 @@ export default function ShowTV({ id }: { id: string }) {
       const fresh = kind === "poll_result" || kind === "results" ? (await load()) || d : d;
       if ((latest.current?.live.step ?? fresh.live.step) !== stepNo || fresh.live.held) return;
       const text = lineFor(fresh, stepNo);
-      setCaption(text);
-      await p.speak(text);
+      showLine(text);
+      beatAt.current = { step: stepNo, beat: from };
+      const r = await p.speak(text, from);
+      setMetrics((m) => ({ ...m, lineLatencyMs: p.lastLatencyMs }));
       const cur = latest.current;
-      if (!cur || cur.live.step !== stepNo || `${cur.live.step}:${cur.live.take}` !== key || cur.live.held) return;
+      if (!r.completed || !cur || cur.live.step !== stepNo || `${cur.live.step}:${cur.live.take}` !== key || cur.live.held) return;
       setCaption("");
       await command({ type: "spoken", step: stepNo });
       const after = latest.current;
@@ -146,7 +162,7 @@ export default function ShowTV({ id }: { id: string }) {
     })();
   }, [armed, live?.step, live?.take, live?.held, live?.started, live?.ended]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Operator "say this" lines (approved Q&A answers etc.).
+  // Operator "say this" lines (approved Q&A answers etc.), streamed in beats: first words in about a second.
   useEffect(() => {
     if (!armed || !live?.say || !pres.current) return;
     if (sayId.current === live.say.id) return;
@@ -154,9 +170,33 @@ export default function ShowTV({ id }: { id: string }) {
     sayId.current = live.say.id;
     if (first && Date.now() - (live.stepAt || 0) > 60_000) return; // don't replay an old line after a page reload
     const text = live.say.text;
-    setCaption(text);
-    pres.current.speak(text).then(() => setCaption((c) => (c === text ? "" : c)));
+    const at = live.say.at;
+    const p = pres.current;
+    showLine(text);
+    beatAt.current = { step: -2, beat: 0 };
+    p.speak(text).then(() => setCaption(""));
+    if (at) {
+      // Measure when the first word arrives (lastLatencyMs is set by then).
+      const started = Date.now();
+      const poll = setInterval(() => {
+        if (p.lastLatencyMs !== null && Date.now() - started >= p.lastLatencyMs) {
+          clearInterval(poll);
+          const firstWordAt = started + p.lastLatencyMs + offset.current;
+          setMetrics((m) => ({ ...m, sayLatencyMs: Math.max(0, Math.round(firstWordAt - at)) }));
+        }
+        if (Date.now() - started > 15000) clearInterval(poll);
+      }, 100);
+    }
   }, [armed, live?.say?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Metrics for testing (press D on the TV): approve → first word, line start latency, session age.
+  useEffect(() => {
+    const t = setInterval(() => setMetrics((m) => ({ ...m, session: pres.current?.sessionAge() || 0 })), 2000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    (window as unknown as { __studioMetrics?: unknown }).__studioMetrics = { ...metrics, avatar: avatar.s, slot };
+  }, [metrics, avatar.s, slot]);
 
   // Assisted mode: a quiz question moves on by itself when its time is up.
   useEffect(() => {
@@ -184,6 +224,7 @@ export default function ShowTV({ id }: { id: string }) {
       else if (e.key === "ArrowLeft" || e.key === "PageUp") command({ type: "prev" }, z.live.v);
       else if (e.key.toLowerCase() === "h") command({ type: z.live.held ? "resume" : "hold" }, z.live.v);
       else if (e.key.toLowerCase() === "f") document.documentElement.requestFullscreen?.().catch(() => {});
+      else if (e.key.toLowerCase() === "d") setShowMetrics((x) => !x);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -200,7 +241,16 @@ export default function ShowTV({ id }: { id: string }) {
       videoId: (s) => `studio-video-${s}`,
       onStatus: (s, note) => setAvatar({ s, note }),
       onSlot: setSlot,
-      personaId: plan?.presenter.kind === "anam" ? plan.presenter.personaId : undefined,
+      onBeat: (beat) => {
+        beatAt.current = { step: beatAt.current.step, beat };
+        const b = lineBeats.current[beat];
+        if (b) setCaption(stripCues(b));
+      },
+      token: async () => {
+        const r = await api<{ sessionToken: string; level: string }>("/api/studio/anam-token", jsonInit("POST", { showId: id }));
+        (window as unknown as { __studioTokenLevel?: string }).__studioTokenLevel = r.level;
+        return r.sessionToken;
+      },
       voiceOnly: plan?.presenter.kind === "voice",
     });
     pres.current = p;
@@ -272,6 +322,11 @@ export default function ShowTV({ id }: { id: string }) {
           )}
           {step?.kind === "opening" && !step.slide && <div className="text-6xl font-bold">{d.title}</div>}
 
+          {showMetrics && (
+            <div className="absolute right-4 top-4 rounded bg-black/80 px-3 py-2 font-mono text-xs">
+              approve→first word: {metrics.sayLatencyMs ?? "–"} ms · line start: {metrics.lineLatencyMs ?? "–"} ms · session {metrics.session}s · slot {slot} · {avatar.s}
+            </div>
+          )}
           {live?.held && <div className="absolute left-6 top-6 rounded-full bg-amber-500 px-4 py-1 text-sm font-semibold text-black">On hold</div>}
           {caption && <div className="absolute bottom-6 left-1/2 max-w-[80%] -translate-x-1/2 rounded-xl bg-black/70 px-5 py-3 text-center text-lg leading-snug">{caption}</div>}
         </div>

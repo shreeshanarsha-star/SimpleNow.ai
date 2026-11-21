@@ -1,7 +1,7 @@
 // Run: node --test tests/  (Node 22.18+ strips TypeScript types natively)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildRunOfShow, closingText, pollResultLine, pollTally, quizRanking, reduce, scriptCheck, shouldAutoAdvance, winnersLine } from "../src/lib/studio/engine.ts";
+import { buildRunOfShow, closingText, sanitizeCues, splitBeats, stripCues, unknownCues, pollResultLine, pollTally, quizRanking, reduce, scriptCheck, shouldAutoAdvance, winnersLine } from "../src/lib/studio/engine.ts";
 import { emptyLive, emptyPlan, normalizePlan, type Plan } from "../src/lib/studio/types.ts";
 
 function plan(): Plan {
@@ -164,4 +164,33 @@ test("letter-spaced headings are joined", () => {
   const t = "0 1 · W H A T ' S H A P P E N I N G I N A I · R E A L I T Y Productivity is easy".replace(re, (m) => m.replace(/ /g, ""));
   assert.match(t, /WHAT'SHAPPENINGINAI/);
   assert.match(t, /Productivity is easy/);
+});
+
+test("cues: strip for captions, sanitize unknown tags, flag them in the script check", () => {
+  assert.equal(stripCues("[warm] Thank you all. [happy] See you soon!"), "Thank you all. See you soon!");
+  assert.equal(sanitizeCues("[Warm] Hi. [whisper] Secret. [POLL 1] x"), "[warm] Hi. Secret. x");
+  assert.deepEqual(unknownCues("[warm] a [smiles] b"), ["smiles"]);
+  const p = plan();
+  p.script.slides["2"] = "[smiles] " + p.script.slides["2"];
+  p.script.slides["3"] = "[curious] " + p.script.slides["3"];
+  const cueIssues = scriptCheck(p).filter((i) => /cue/i.test(i.msg));
+  assert.deepEqual(cueIssues.map((i) => i.where), ["Slide 2"]);
+  assert.equal(cueIssues[0].level, "error");
+});
+
+test("closing line still matches when the closing has cues", () => {
+  const p = plan();
+  p.script.closing = "[warm] Thanks so much. Use whatever gets you there.";
+  assert.equal(closingText(p), p.script.closing);
+});
+
+test("beats: 1–3 sentences, ≤ ~45 words, cue stays with its sentence, nothing lost", () => {
+  const t = "One. Two two. Three three three. Four. [curious] Five is a question? Six.";
+  const b = splitBeats(t);
+  assert.deepEqual(b, ["One. Two two. Three three three.", "Four.", "[curious] Five is a question? Six."]);
+  assert.equal(b.join(" "), t);
+  const long = Array.from({ length: 12 }, (_, i) => `This is sentence number ${i} with a handful of extra words.`).join(" ");
+  for (const beat of splitBeats(long)) assert.ok(beat.split(/\s+/).length <= 45 + 12);
+  assert.deepEqual(splitBeats("  "), []);
+  assert.deepEqual(splitBeats("Dr. Rao met 3.5 crore users."), ["Dr. Rao met 3.5 crore users."]);
 });

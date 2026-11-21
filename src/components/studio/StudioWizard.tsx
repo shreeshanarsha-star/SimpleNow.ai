@@ -523,6 +523,8 @@ export default function StudioWizard({ id }: { id: string }) {
             </div>
           </div>
 
+          <PronunciationCard showId={id} plan={plan} hasSlides={plan.slides.length > 0} />
+
           <div className={card}>
             <div className="mb-3 font-semibold">Personality and rules</div>
             <div className="flex flex-wrap gap-2 text-sm">
@@ -920,6 +922,93 @@ function ScriptLine({ label: l, text, issues, onChange, onRewrite, busy, thumb }
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------ Pronunciation ------------------------------ */
+type Entry = { text: string; pronunciation: string };
+function PronunciationCard({ showId, plan, hasSlides }: { showId: string; plan: Plan; hasSlides: boolean }) {
+  const [entries, setEntries] = useState<Entry[] | null>(null);
+  const [sugg, setSugg] = useState<Array<Entry & { why?: string; on: boolean }>>([]);
+  const [busy, setBusy] = useState("");
+  const [msg, setMsg] = useState("");
+  const load = useCallback(async () => {
+    try {
+      const d = await api<{ entries: Entry[] }>("/api/studio/dictionary");
+      setEntries(d.entries);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Could not load");
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const suggest = async () => {
+    setBusy("Reading the deck for tricky words…");
+    try {
+      const { terms } = await api<{ terms: Array<Entry & { why?: string }> }>("/api/studio/ai", jsonInit("POST", { task: "pronounce", showId, plan }));
+      const have = new Set((entries || []).map((e) => e.text.toLowerCase()));
+      setSugg(terms.filter((t) => t.text && t.pronunciation && !have.has(t.text.toLowerCase())).map((t) => ({ ...t, on: true })));
+      setMsg(terms.length ? "" : "No tricky words found.");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy("");
+    }
+  };
+  const add = async () => {
+    const pick = sugg.filter((x) => x.on).map(({ text, pronunciation }) => ({ text, pronunciation }));
+    if (!pick.length) return;
+    setBusy("Saving…");
+    try {
+      await api("/api/studio/dictionary", jsonInit("POST", { add: pick }));
+      setSugg([]);
+      setMsg(`${pick.length} added. They apply from the next time the TV screen starts.`);
+      load();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy("");
+    }
+  };
+  return (
+    <div className={card}>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="font-semibold">Pronunciation</div>
+          <div className="text-xs text-ink-muted">How the presenter says names and terms. Captions keep the normal spelling.</div>
+        </div>
+        <button className={btn} disabled={!!busy || !hasSlides} onClick={suggest}>
+          ✨ Suggest from my deck
+        </button>
+      </div>
+      {entries && (
+        <div className="flex flex-wrap gap-2 text-xs">
+          {entries.map((e) => (
+            <span key={e.text} className="rounded-full border border-border px-2 py-1">
+              {e.text} → <i>{e.pronunciation}</i>
+            </span>
+          ))}
+        </div>
+      )}
+      {sugg.length > 0 && (
+        <div className="mt-3 space-y-1">
+          <div className="text-xs text-ink-muted">Tick the ones to add, and fix the respelling if needed:</div>
+          {sugg.map((x, i) => (
+            <div key={x.text} className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={x.on} onChange={() => setSugg((s) => s.map((y, j) => (j === i ? { ...y, on: !y.on } : y)))} />
+              <span className="w-40 shrink-0 truncate font-medium">{x.text}</span>
+              <input className="flex-1 rounded border border-border bg-page px-2 py-1" value={x.pronunciation} onChange={(e) => setSugg((s) => s.map((y, j) => (j === i ? { ...y, pronunciation: e.target.value } : y)))} />
+              {x.why && <span className="hidden text-xs text-ink-muted md:inline">{x.why}</span>}
+            </div>
+          ))}
+          <button className={primary} disabled={!!busy} onClick={add}>
+            Add selected
+          </button>
+        </div>
+      )}
+      {(busy || msg) && <div className="mt-2 text-xs text-ink-muted">{busy || msg}</div>}
     </div>
   );
 }
