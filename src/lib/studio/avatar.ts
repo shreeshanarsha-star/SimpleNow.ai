@@ -44,6 +44,11 @@ export class Presenter {
   private retiring = new WeakSet<AnamClient>();
   private turn: Turn | null = null;
   private relayTimer: ReturnType<typeof setInterval> | null = null;
+  // End-of-line detection from the actual audio: once the last beat is playing and the
+  // avatar has been silent for a moment, the line is finished (no dead air waiting for timers).
+  private audio: { ctx: AudioContext; an: AnalyserNode; src: MediaStreamAudioSourceNode | null; slot: number; buf: Float32Array } | null = null;
+  private heardAt = 0;
+  private silenceTimer: ReturnType<typeof setInterval> | null = null;
   private speakCalledAt = 0;
   speaking = false;
   status: Status = "off";
@@ -82,6 +87,53 @@ export class Presenter {
       setTimeout(() => this.reconnect(), 5000);
     }
     this.relayTimer = setInterval(() => this.relayTick(), 2000);
+    this.silenceTimer = setInterval(() => this.silenceTick(), 150);
+  }
+
+  private attachAudio() {
+    try {
+      const v = document.getElementById(this.opts.videoId(this.slot)) as HTMLVideoElement | null;
+      const stream = v?.srcObject as MediaStream | null;
+      if (!stream || !stream.getAudioTracks().length) return;
+      if (!this.audio) {
+        const ctx = new AudioContext();
+        const an = ctx.createAnalyser();
+        an.fftSize = 1024;
+        this.audio = { ctx, an, src: null, slot: -1, buf: new Float32Array(1024) };
+      }
+      if (this.audio.slot === this.slot && this.audio.src) return;
+      this.audio.src?.disconnect();
+      this.audio.src = this.audio.ctx.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));
+      this.audio.src.connect(this.audio.an);
+      this.audio.slot = this.slot;
+      this.audio.ctx.resume().catch(() => {});
+    } catch {
+      /* no Web Audio: timers and events still end the line */
+    }
+  }
+
+  private silenceTick() {
+    const t = this.turn;
+    if (!t || t.viaBrowser || !this.client) return;
+    this.attachAudio();
+    const a = this.audio;
+    if (!a || a.slot !== this.slot) return;
+    a.an.getFloatTimeDomainData(a.buf as Float32Array<ArrayBuffer>);
+    let sum = 0;
+    for (let i = 0; i < a.buf.length; i++) sum += a.buf[i] * a.buf[i];
+    const rms = Math.sqrt(sum / a.buf.length);
+    const now = Date.now();
+    if (rms > 0.012) {
+      this.heardAt = now;
+      if (!t.firstHeard) {
+        t.firstHeard = true;
+        this.lastLatencyMs = now - this.speakCalledAt;
+      }
+      return;
+    }
+    // Finished: the last beat has started, we heard it, and 1.5 s of silence since.
+    const lastStarted = t.idx >= t.beats.length - 1;
+    if (lastStarted && t.firstHeard && this.heardAt > t.started && now - this.heardAt > 1500) this.finish(true);
   }
 
   /** Session age in seconds (for the remote). */
@@ -326,6 +378,7 @@ export class Presenter {
 
   async close() {
     if (this.relayTimer) clearInterval(this.relayTimer);
+    if (this.silenceTimer) clearInterval(this.silenceTimer);
     this.stop();
     for (const c of [this.client, this.standby]) {
       if (!c) continue;
