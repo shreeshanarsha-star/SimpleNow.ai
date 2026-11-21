@@ -2,8 +2,6 @@ import { briefing, db, getShow, json, ownerGuard, parseJSON, studioAI } from "@/
 import type { Plan } from "@/lib/studio/types";
 
 export const dynamic = "force-dynamic";
-// Run next to the database (Supabase is in Singapore): live polling must be fast.
-export const preferredRegion = "sin1";
 export const maxDuration = 60;
 
 type Body = {

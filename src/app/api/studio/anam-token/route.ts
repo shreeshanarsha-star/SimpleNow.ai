@@ -2,8 +2,6 @@ import { json, mintStudioToken, ownerGuard } from "@/lib/presenter/server";
 import { getShow } from "@/lib/studio/server";
 
 export const dynamic = "force-dynamic";
-// Run next to the database (Supabase is in Singapore): live polling must be fast.
-export const preferredRegion = "sin1";
 
 // POST { showId } -> a Studio session token for that show's presenter and personality.
 export async function POST(req: Request) {

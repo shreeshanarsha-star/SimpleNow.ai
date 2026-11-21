@@ -6,6 +6,25 @@ import { buildRunOfShow, reduce } from "./engine";
 import { emptyLive, normalizePlan, type Action, type Live, type Plan } from "./types";
 
 export { db, json, ownerGuard } from "@/lib/presenter/server";
+import { ownerGuard as fullOwnerGuard } from "@/lib/presenter/server";
+import { createHash } from "node:crypto";
+
+// The live TV/remote poll several times a second. Re-checking the owner against Supabase
+// on every poll costs two database round trips, so a verified session cookie is trusted
+// for 60 seconds on this server instance.
+const guardCache = new Map<string, { userId: string; until: number }>();
+export async function fastOwnerGuard(req: Request): Promise<{ userId: string } | Response> {
+  const cookie = req.headers.get("cookie") || "";
+  const key = cookie ? createHash("sha256").update(cookie).digest("hex") : "";
+  const hit = key ? guardCache.get(key) : undefined;
+  if (hit && hit.until > Date.now()) return { userId: hit.userId };
+  const g = await fullOwnerGuard();
+  if (!(g instanceof Response) && key) {
+    if (guardCache.size > 200) guardCache.clear();
+    guardCache.set(key, { userId: g.userId, until: Date.now() + 60_000 });
+  }
+  return g;
+}
 
 export type ShowRow = {
   id: string;

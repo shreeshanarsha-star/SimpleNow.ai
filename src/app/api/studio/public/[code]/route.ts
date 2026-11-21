@@ -4,8 +4,6 @@ import { showResults } from "@/lib/studio/results";
 import { db, getShowByCode, json } from "@/lib/studio/server";
 
 export const dynamic = "force-dynamic";
-// Run next to the database (Supabase is in Singapore): live polling must be fast.
-export const preferredRegion = "sin1";
 
 type Ctx = { params: Promise<{ code: string }> };
 const GRACE_MS = 1500;

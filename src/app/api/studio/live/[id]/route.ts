@@ -1,16 +1,14 @@
-import { applyCommand, db, getShow, json, ownerGuard } from "@/lib/studio/server";
+import { applyCommand, db, fastOwnerGuard, getShow, json } from "@/lib/studio/server";
 import { showResults } from "@/lib/studio/results";
 import type { Action } from "@/lib/studio/types";
 
 export const dynamic = "force-dynamic";
-// Run next to the database (Supabase is in Singapore): live polling must be fast.
-export const preferredRegion = "sin1";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 // GET: everything the TV and the remote need (owner only).
 export async function GET(req: Request, ctx: Ctx) {
-  const g = await ownerGuard();
+  const g = await fastOwnerGuard(req);
   if (g instanceof Response) return g;
   const { id } = await ctx.params;
   const show = await getShow(id);
@@ -24,7 +22,7 @@ const ACTIONS = new Set(["start", "next", "prev", "goto", "hold", "resume", "say
 
 // POST { action, v } — versioned command; or { question: { id, op: "dismiss" | "answered" | "reopen" } }.
 export async function POST(req: Request, ctx: Ctx) {
-  const g = await ownerGuard();
+  const g = await fastOwnerGuard(req);
   if (g instanceof Response) return g;
   const { id } = await ctx.params;
   const b = (await req.json().catch(() => ({}))) as { action?: Action; v?: number | null; question?: { id: number; op: string; text?: string } };
