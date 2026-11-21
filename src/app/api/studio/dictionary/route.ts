@@ -1,6 +1,8 @@
 import { getDictionary, json, ownerGuard, saveDictionary } from "@/lib/presenter/server";
 
 export const dynamic = "force-dynamic";
+// Run next to the database (Supabase is in Singapore): live polling must be fast.
+export const preferredRegion = "sin1";
 
 // GET: the presenter's pronunciation dictionary. POST { add: [{text, pronunciation}] }: add/replace entries.
 export async function GET() {

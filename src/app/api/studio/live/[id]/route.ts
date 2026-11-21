@@ -3,6 +3,8 @@ import { showResults } from "@/lib/studio/results";
 import type { Action } from "@/lib/studio/types";
 
 export const dynamic = "force-dynamic";
+// Run next to the database (Supabase is in Singapore): live polling must be fast.
+export const preferredRegion = "sin1";
 
 type Ctx = { params: Promise<{ id: string }> };
 
