@@ -57,28 +57,38 @@ export default function ShowTV({ id }: { id: string }) {
   }, [id]);
 
   // Fast, light poll of the live state only (keeps approve → first word near a second); full results every 2 s.
-  const loadLive = useCallback(async () => {
+  // Each loop waits for its own request to finish, so requests never pile up on a slow network.
+  const loadLive = useCallback(async (): Promise<Data | null> => {
     const prev = latest.current;
-    if (!prev) return;
+    if (!prev) return null;
     try {
       const t0 = Date.now();
       const x = await api<Data>(`/api/studio/live/${id}?light=1`);
       offset.current = x.serverNow - (t0 + Date.now()) / 2;
-      if (latest.current && x.live.v === latest.current.live.v) return;
-      const merged = { ...x, results: latest.current?.results || prev.results };
+      const cur = latest.current || prev;
+      if (x.live.v === cur.live.v) return cur;
+      const merged = { ...x, results: cur.results };
       latest.current = merged;
       setD(merged);
-    } catch {}
+      return merged;
+    } catch {
+      return null;
+    }
   }, [id]);
 
   useEffect(() => {
-    load();
-    const t = setInterval(load, 2000);
-    const f = setInterval(loadLive, 400);
+    let alive = true;
+    const loop = async (fn: () => Promise<unknown>, gap: number) => {
+      while (alive) {
+        await fn();
+        await new Promise((r) => setTimeout(r, gap));
+      }
+    };
+    loop(load, 2000);
+    loop(loadLive, 250);
     const c = setInterval(() => setNow(Date.now() + offset.current), 250);
     return () => {
-      clearInterval(t);
-      clearInterval(f);
+      alive = false;
       clearInterval(c);
     };
   }, [load, loadLive]);
@@ -112,25 +122,25 @@ export default function ShowTV({ id }: { id: string }) {
     try {
       await api(`/api/studio/live/${id}`, jsonInit("POST", { action, v: v ?? null }));
     } catch {}
-    load();
-  }, [id, load]);
+    loadLive();
+  }, [id, loadLive]);
 
   /** Auto-advance from a step: fresh version first, one retry if someone else moved at the same moment. */
   const advanceFrom = useCallback(
     async (stepNo: number) => {
       for (let i = 0; i < 2; i++) {
-        const z = await load();
+        const z = await loadLive();
         if (!z || z.live.step !== stepNo || z.live.held || z.live.ended) return;
         try {
           await api(`/api/studio/live/${id}`, jsonInit("POST", { action: { type: "next" }, v: z.live.v }));
-          load();
+          loadLive();
           return;
         } catch {
           /* stale: reload and try once more */
         }
       }
     },
-    [id, load]
+    [id, loadLive]
   );
 
   /** What to say for a step (poll/quiz results are worked out from the latest answers). */
@@ -188,9 +198,9 @@ export default function ShowTV({ id }: { id: string }) {
       setCaption("");
       await command({ type: "spoken", step: stepNo });
       // Assisted: move on by itself between slides. Always use a FRESH version, or the server rejects the move as stale.
-      const after = (await load()) || latest.current;
+      const after = (await loadLive()) || latest.current;
       if (after && after.live.step === stepNo && !after.live.held && shouldAutoAdvance(buildRunOfShow(after.plan), stepNo, after.plan.mode)) {
-        setTimeout(() => advanceFrom(stepNo), 900);
+        setTimeout(() => advanceFrom(stepNo), 400);
       }
     })();
   }, [armed, live?.step, live?.take, live?.held, live?.started, live?.ended]); // eslint-disable-line react-hooks/exhaustive-deps

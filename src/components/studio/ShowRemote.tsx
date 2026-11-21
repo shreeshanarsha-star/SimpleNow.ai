@@ -37,9 +37,17 @@ export default function ShowRemote({ id }: { id: string }) {
     }
   }, [id]);
   useEffect(() => {
-    load();
-    const t = setInterval(load, 1000);
-    return () => clearInterval(t);
+    // One request at a time (never piles up on a slow phone network).
+    let alive = true;
+    (async () => {
+      while (alive) {
+        await load();
+        await new Promise((r) => setTimeout(r, 800));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
   }, [load]);
 
   const steps = useMemo(() => (d ? buildRunOfShow(d.plan) : []), [d?.plan]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -41,11 +41,16 @@ export default function JoinPhone({ code }: { code: string }) {
 
   useEffect(() => {
     token.current = deviceToken();
-    load();
-    const t = setInterval(load, 1500);
+    let alive = true;
+    (async () => {
+      while (alive) {
+        await load();
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+    })();
     const c = setInterval(() => setNow(Date.now() + offset.current), 250);
     return () => {
-      clearInterval(t);
+      alive = false;
       clearInterval(c);
     };
   }, [load]);
