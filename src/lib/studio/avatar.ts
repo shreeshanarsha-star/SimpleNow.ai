@@ -50,6 +50,7 @@ export class Presenter {
   private heardAt = 0;
   private silenceTimer: ReturnType<typeof setInterval> | null = null;
   private speakCalledAt = 0;
+  private lastInterruptAt = 0;
   speaking = false;
   status: Status = "off";
   /** ms from speak() to the first word arriving (last line). */
@@ -296,6 +297,10 @@ export class Presenter {
     const v = document.getElementById(this.opts.videoId(this.slot)) as HTMLVideoElement | null;
     if (v) v.muted = false;
     (async () => {
+      // Give a just-sent interrupt a moment to settle so it can't swallow this line.
+      const since = Date.now() - this.lastInterruptAt;
+      if (since < 450) await new Promise((r) => setTimeout(r, 450 - since));
+      if (this.turn !== t) return;
       try {
         const stream = c.createTalkMessageStream(t.correlationId);
         // All beats go at once (no 15-second gaps between chunks); Anam plays them in order.
@@ -367,9 +372,14 @@ export class Presenter {
         if (v) v.muted = false;
       }, 700);
     }
-    try {
-      this.client?.interruptPersona();
-    } catch {}
+    // Interrupt only when something is actually playing: an interrupt sent while the avatar is
+    // idle swallows the next line if it follows immediately (found in the 23 Nov re-test).
+    if (this.speaking && this.turn && !this.turn.viaBrowser) {
+      try {
+        this.client?.interruptPersona();
+        this.lastInterruptAt = Date.now();
+      } catch {}
+    }
     try {
       window.speechSynthesis?.cancel();
     } catch {}
