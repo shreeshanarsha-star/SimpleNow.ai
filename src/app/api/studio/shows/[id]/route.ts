@@ -1,24 +1,25 @@
-import { db, getShow, json, ownerGuard } from "@/lib/studio/server";
+import { canUse, db, getShow, json, studioGuard } from "@/lib/studio/server";
 import { emptyLive, normalizePlan, type Plan } from "@/lib/studio/types";
 
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export async function GET(_req: Request, ctx: Ctx) {
-  const g = await ownerGuard();
+export async function GET(req: Request, ctx: Ctx) {
+  const g = await studioGuard(req);
   if (g instanceof Response) return g;
   const { id } = await ctx.params;
   const show = await getShow(id);
-  if (!show) return json({ error: "Not found" }, 404);
-  return json({ show });
+  if (!canUse(show, g)) return json({ error: "Not found" }, 404);
+  return json({ show, isAdmin: g.isAdmin });
 }
 
 // PATCH { plan?, title?, event_date?, status?, resetLive? }
 export async function PATCH(req: Request, ctx: Ctx) {
-  const g = await ownerGuard();
+  const g = await studioGuard(req);
   if (g instanceof Response) return g;
   const { id } = await ctx.params;
+  if (!canUse(await getShow(id), g)) return json({ error: "Not found" }, 404);
   const b = (await req.json().catch(() => ({}))) as { plan?: Partial<Plan>; title?: string; event_date?: string | null; status?: string; resetLive?: boolean };
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (b.plan) patch.plan = normalizePlan(b.plan);
@@ -38,12 +39,12 @@ export async function PATCH(req: Request, ctx: Ctx) {
   return json({ ok: true });
 }
 
-export async function DELETE(_req: Request, ctx: Ctx) {
-  const g = await ownerGuard();
+export async function DELETE(req: Request, ctx: Ctx) {
+  const g = await studioGuard(req);
   if (g instanceof Response) return g;
   const { id } = await ctx.params;
   const show = await getShow(id);
-  if (!show) return json({ error: "Not found" }, 404);
+  if (!show || !canUse(show, g)) return json({ error: "Not found" }, 404);
   if (show.legacy_session_id) return json({ error: "Past events from the first Presenter can't be deleted here." }, 400);
   const sb = db();
   await sb.storage.from("presenter").remove([`shows/${id}/deck.pdf`]);

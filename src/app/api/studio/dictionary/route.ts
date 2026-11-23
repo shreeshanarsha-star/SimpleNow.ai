@@ -1,10 +1,11 @@
 import { getDictionary, json, ownerGuard, saveDictionary } from "@/lib/presenter/server";
+import { studioGuard } from "@/lib/studio/server";
 
 export const dynamic = "force-dynamic";
 
 // GET: the presenter's pronunciation dictionary. POST { add: [{text, pronunciation}] }: add/replace entries.
-export async function GET() {
-  const g = await ownerGuard();
+export async function GET(req: Request) {
+  const g = await studioGuard(req);
   if (g instanceof Response) return g;
   try {
     return json(await getDictionary());

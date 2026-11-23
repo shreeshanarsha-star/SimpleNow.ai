@@ -43,3 +43,13 @@ create unique index if not exists presenter_show_answers_once on presenter_show_
 alter table presenter_shows enable row level security;
 alter table presenter_show_people enable row level security;
 alter table presenter_show_answers enable row level security;
+
+-- 23 Nov: avatar per Studio user (set by the platform owner).
+create table if not exists presenter_studio_users (
+  user_id uuid primary key,
+  email text,
+  persona_id text,
+  presenter_name text,
+  updated_at timestamptz not null default now()
+);
+alter table presenter_studio_users enable row level security;

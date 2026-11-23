@@ -140,8 +140,64 @@ export default function ShowRemote({ id }: { id: string }) {
       </div>
       <div className="text-center text-xs text-ink-muted">Next always moves exactly one step. Resume repeats the current line from the start.</div>
 
-      {/* Q&A */}
-      {d.plan.qa.enabled && (
+      {/* Q&A: autonomous — the presenter answers by himself; you watch and can stop him with Hold. */}
+      {d.plan.qa.enabled && d.plan.qa.auto && (
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <div className="font-semibold">Questions</div>
+          <div className="mb-3 text-xs text-ink-muted">
+            {d.plan.presenter.name || "The presenter"} answers these by himself during Q&A{d.plan.qa.voice ? ", including questions asked out loud" : ""}. Hold stops him at once.
+          </div>
+          <div className="space-y-2">
+            {res.questions
+              .filter((q) => q.status !== "dismissed")
+              .slice()
+              .reverse()
+              .map((q) => (
+                <div key={q.id} className="rounded-xl border border-border p-3 text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <b>{q.name}:</b> {q.text}
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${q.status === "answering" ? "bg-warning-wash" : q.status === "answered" ? "bg-good-wash text-good-text" : q.status === "not_covered" ? "bg-critical-wash" : "bg-page"}`}>
+                      {{ new: "Waiting", drafted: "Waiting", answering: "Answering now", answered: "Answered", not_covered: "Not covered: follow up" }[q.status] || q.status}
+                    </span>
+                  </div>
+                  {q.draft && q.status !== "new" && <div className="mt-1 text-xs text-ink-muted">“{stripCues(q.draft)}”</div>}
+                  <div className="mt-2 flex gap-3 text-xs">
+                    {(q.status === "new" || q.status === "drafted") && (
+                      <button className="text-ink-muted underline" onClick={() => qOp(q.id, "dismiss")}>
+                        Skip
+                      </button>
+                    )}
+                    {(q.status === "answered" || q.status === "not_covered") && (
+                      <button className="text-ink-muted underline" onClick={() => qOp(q.id, "reopen")}>
+                        Answer again
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            {!res.questions.length && <div className="text-sm text-ink-muted">No questions yet. Phones can ask any time; they&apos;re answered when Q&A starts.</div>}
+          </div>
+          <div className="mt-4 flex gap-2 border-t border-border pt-3">
+            <input className="flex-1 rounded-lg border border-border bg-page px-3 py-2 text-sm" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Type a question from the room" />
+            <button
+              className="rounded-lg border border-border px-3 py-2 text-sm"
+              disabled={!typed.trim()}
+              onClick={async () => {
+                await api(`/api/studio/live/${id}`, jsonInit("POST", { ask: { text: typed, source: "remote" } })).catch(() => {});
+                setTyped("");
+                load();
+              }}
+            >
+              Ask
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Q&A: manual (auto answers off) — draft, edit, then say. */}
+      {d.plan.qa.enabled && !d.plan.qa.auto && (
         <div className="rounded-2xl border border-border bg-surface p-4">
           <div className="mb-2 flex items-center justify-between">
             <div className="font-semibold">Questions ({openQs.length} waiting)</div>

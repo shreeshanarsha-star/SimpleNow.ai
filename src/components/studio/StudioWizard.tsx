@@ -27,6 +27,7 @@ export default function StudioWizard({ id }: { id: string }) {
   const [show, setShow] = useState<Show | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [title, setTitle] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [tab, setTab] = useState<Tab>(1);
   const [doc, setDoc] = useState<any>(null);
   const [busy, setBusy] = useState("");
@@ -38,8 +39,9 @@ export default function StudioWizard({ id }: { id: string }) {
   useEffect(() => {
     (async () => {
       try {
-        const d = await api<{ show: Show }>(`/api/studio/shows/${id}`);
+        const d = await api<{ show: Show; isAdmin?: boolean }>(`/api/studio/shows/${id}`);
         setShow(d.show);
+        setIsAdmin(!!d.isAdmin);
         setPlan(normalizePlan(d.show.plan));
         setTitle(d.show.title);
         if (d.show.plan?.deck) {
@@ -455,7 +457,13 @@ export default function StudioWizard({ id }: { id: string }) {
           </div>
 
           <div className={card}>
-            <Toggle label="Q&A: people ask on their phones; you approve each answer before it's spoken" on={plan.qa.enabled} set={(v) => update((p) => void (p.qa.enabled = v))} />
+            <Toggle label="Q&A: people can ask questions" on={plan.qa.enabled} set={(v) => update((p) => void (p.qa.enabled = v))} />
+            {plan.qa.enabled && (
+              <div className="mt-2 space-y-2 pl-6">
+                <Toggle label="The presenter answers by himself in Q&A (off: you draft and approve each answer on the remote)" on={plan.qa.auto} set={(v) => update((p) => void (p.qa.auto = v))} />
+                <Toggle label="Also listen to questions asked out loud in the room (the TV asks for microphone access)" on={plan.qa.voice} set={(v) => update((p) => void (p.qa.voice = v))} />
+              </div>
+            )}
           </div>
 
           <div className={card}>
@@ -523,7 +531,7 @@ export default function StudioWizard({ id }: { id: string }) {
             </div>
           </div>
 
-          <PronunciationCard showId={id} plan={plan} hasSlides={plan.slides.length > 0} />
+          {isAdmin && <PronunciationCard showId={id} plan={plan} hasSlides={plan.slides.length > 0} />}
 
           <div className={card}>
             <div className="mb-3 font-semibold">Personality and rules</div>
@@ -535,6 +543,9 @@ export default function StudioWizard({ id }: { id: string }) {
               ))}
             </div>
             <div className="mt-1 text-xs text-ink-muted">{PRESETS[plan.personality.preset].style}</div>
+            <div className="mt-3">
+              <Field l="Instructions (anything you'd tell a co-presenter; followed in the script and in Q&A)" v={plan.instructions} on={(v) => update((p) => void (p.instructions = v))} area />
+            </div>
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <Field l="Rules (one per line)" v={plan.personality.rules} on={(v) => update((p) => void (p.personality.rules = v))} area />
               <Field l="Must say (points to cover)" v={plan.personality.mustSay} on={(v) => update((p) => void (p.personality.mustSay = v))} area />
@@ -546,7 +557,7 @@ export default function StudioWizard({ id }: { id: string }) {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="font-semibold">Script</div>
-                <div className="text-xs text-ink-muted">This is exactly what the presenter will say. Edit freely. Only Q&A answers are made up live, and you approve each one.</div>
+                <div className="text-xs text-ink-muted">This is exactly what the presenter will say. Edit freely. Only Q&A answers are made up live, from your deck and instructions.</div>
               </div>
               <button className={primary} disabled={!!busy || !plan.slides.length} onClick={() => genScript()}>
                 {plan.script.generatedAt ? "↻ Rewrite whole script" : "✨ Write the script"}

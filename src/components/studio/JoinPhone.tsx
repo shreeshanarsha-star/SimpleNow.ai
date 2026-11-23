@@ -253,7 +253,7 @@ export default function JoinPhone({ code }: { code: string }) {
               Send
             </button>
           </div>
-          {st.questions.length > 0 && <div className="mt-1 text-center text-xs text-white/50">{st.questions.length} sent · {st.questions.filter((q) => q.status === "answered").length} answered</div>}
+          {st.questions.length > 0 && <div className="mt-1 text-center text-xs text-white/50">{st.questions.length} sent · {st.questions.filter((q) => q.status === "answered" || q.status === "not_covered").length} answered</div>}
         </div>
       )}
     </>

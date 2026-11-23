@@ -21,6 +21,6 @@ export async function showResults(showId: string, plan: Plan) {
   for (const a of qa) quizCounts[a.idx] = (quizCounts[a.idx] || 0) + 1;
   const questions = rows
     .filter((a) => a.kind === "ask")
-    .map((a) => ({ id: a.id as number, text: (a.text as string) || "", name: names.get(a.person_id as string) || "Someone", status: a.status as string, draft: (a.draft as string) || "", at: a.created_at as string }));
+    .map((a) => ({ id: a.id as number, text: (a.text as string) || "", name: a.item === "voice" ? "Room (voice)" : a.item === "remote" ? "Typed on remote" : names.get(a.person_id as string) || "Someone", status: a.status as string, draft: (a.draft as string) || "", at: a.created_at as string }));
   return { people: people || [], polls, ranking, quizCounts, questions };
 }

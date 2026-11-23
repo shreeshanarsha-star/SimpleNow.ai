@@ -6,24 +6,49 @@ import { buildRunOfShow, reduce } from "./engine";
 import { emptyLive, normalizePlan, type Action, type Live, type Plan } from "./types";
 
 export { db, json, ownerGuard } from "@/lib/presenter/server";
-import { ownerGuard as fullOwnerGuard } from "@/lib/presenter/server";
+import { json as jsonRes } from "@/lib/presenter/server";
+import { requireUser } from "@/lib/supabase/requireAdmin";
 import { createHash } from "node:crypto";
 
-// The live TV/remote poll several times a second. Re-checking the owner against Supabase
-// on every poll costs two database round trips, so a verified session cookie is trusted
-// for 60 seconds on this server instance.
-const guardCache = new Map<string, { userId: string; until: number }>();
-export async function fastOwnerGuard(req: Request): Promise<{ userId: string } | Response> {
-  const cookie = req.headers.get("cookie") || "";
+/**
+ * Studio is open to every signed-in SimpleNow user (not guests). Each user works only on
+ * their own presentations; the platform owner (admin) can open anyone's.
+ * The live TV/remote poll several times a second, so a verified session cookie is trusted
+ * for 60 seconds on this server instance instead of re-checking Supabase on every poll.
+ */
+export type StudioUser = { userId: string; isAdmin: boolean; email: string | null };
+const guardCache = new Map<string, { u: StudioUser; until: number }>();
+export async function studioGuard(req?: Request): Promise<StudioUser | Response> {
+  const cookie = req?.headers.get("cookie") || "";
   const key = cookie ? createHash("sha256").update(cookie).digest("hex") : "";
   const hit = key ? guardCache.get(key) : undefined;
-  if (hit && hit.until > Date.now()) return { userId: hit.userId };
-  const g = await fullOwnerGuard();
-  if (!(g instanceof Response) && key) {
-    if (guardCache.size > 200) guardCache.clear();
-    guardCache.set(key, { userId: g.userId, until: Date.now() + 60_000 });
+  if (hit && hit.until > Date.now()) return hit.u;
+  try {
+    const { user, supabase } = await requireUser();
+    if (user.is_anonymous || !user.email) return jsonRes({ error: "Please sign in with your SimpleNow account." }, 401);
+    const { data: profile } = await supabase.from("profiles").select("is_admin").eq("id", user.id).maybeSingle();
+    const u: StudioUser = { userId: user.id, isAdmin: !!profile?.is_admin, email: user.email };
+    if (key) {
+      if (guardCache.size > 500) guardCache.clear();
+      guardCache.set(key, { u, until: Date.now() + 60_000 });
+    }
+    return u;
+  } catch (err) {
+    if (err instanceof Response) return err;
+    return jsonRes({ error: "Not authorised" }, 401);
   }
-  return g;
+}
+/** Kept for older imports. */
+export const fastOwnerGuard = studioGuard;
+
+export function canUse(show: { owner_id: string } | null, u: StudioUser) {
+  return !!show && (u.isAdmin || show.owner_id === u.userId);
+}
+
+/** The Anam persona assigned to a user by the platform owner (null = default presenter). */
+export async function userPersona(userId: string): Promise<{ personaId: string; name: string } | null> {
+  const { data } = await db().from("presenter_studio_users").select("persona_id,presenter_name").eq("user_id", userId).maybeSingle();
+  return data?.persona_id ? { personaId: data.persona_id as string, name: (data.presenter_name as string) || "" } : null;
 }
 
 export type ShowRow = {
@@ -136,6 +161,7 @@ export function briefing(plan: Plan) {
   const lines = [
     `PRESENTER: ${plan.presenter.name || "the presenter"}, an AI co-presenter shown as a talking avatar on a screen, speaking out loud to a live room.`,
     `SESSION: ${p.intent}. Purpose: ${p.purpose || "(not given)"}. Audience: ${p.audience || "(not given)"}. Length: about ${p.minutes} minutes. Time of day: ${p.timeOfDay} (never say a greeting for another time of day; say "today").`,
+    plan.instructions ? `INSTRUCTIONS FROM THE PRESENTER (follow them; they override the defaults below unless they ask you to invent facts): ${plan.instructions.slice(0, 3000)}` : "",
     `ULTIMATE MESSAGE (weave in naturally where it fits, never forced): ${p.message || "(not given)"}`,
     p.outcome ? `DESIRED OUTCOME (what people should do after): ${p.outcome}` : "",
     `STYLE: ${preset}`,

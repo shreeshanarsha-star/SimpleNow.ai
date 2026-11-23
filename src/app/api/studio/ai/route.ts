@@ -1,11 +1,11 @@
-import { briefing, db, getShow, json, ownerGuard, parseJSON, studioAI } from "@/lib/studio/server";
+import { briefing, canUse, db, getShow, json, parseJSON, studioAI, studioGuard } from "@/lib/studio/server";
 import type { Plan } from "@/lib/studio/types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 type Body = {
-  task: "purpose" | "polls" | "quiz" | "script" | "line" | "answer" | "pronounce";
+  task: "purpose" | "polls" | "quiz" | "script" | "line" | "answer" | "pronounce" | "setup";
   showId: string;
   plan?: Plan; // the wizard's unsaved plan (preferred over the stored one)
   from?: number;
@@ -16,6 +16,8 @@ type Body = {
   instruction?: string;
   question?: string;
   questionId?: number;
+  recent?: Array<{ q: string; a: string }>; // earlier Q&A in this session, for follow-ups
+  said?: string; // a bridge line the presenter has just said while this answer was prepared
 };
 
 const deckText = (plan: Plan, max = 14000) =>
@@ -25,12 +27,12 @@ const deckText = (plan: Plan, max = 14000) =>
     .slice(0, max);
 
 export async function POST(req: Request) {
-  const g = await ownerGuard();
+  const g = await studioGuard(req);
   if (g instanceof Response) return g;
   const b = (await req.json().catch(() => null)) as Body | null;
   if (!b?.task || !b.showId) return json({ error: "Missing task" }, 400);
   const show = await getShow(b.showId);
-  if (!show) return json({ error: "Not found" }, 404);
+  if (!show || !canUse(show, g)) return json({ error: "Not found" }, 404);
   const plan = b.plan || show.plan;
   try {
     switch (b.task) {
@@ -90,14 +92,50 @@ export async function POST(req: Request) {
       case "answer": {
         const q = (b.question || "").trim().slice(0, 500);
         if (!q) return json({ error: "Empty question" }, 400);
+        const recent = (b.recent || []).slice(-4).map((x) => `Q: ${x.q}\nA: ${x.a}`).join("\n");
         const out = await studioAI(
-          `${briefing(plan)}\n\nDECK (your only source of facts):\n${deckText(plan, 16000)}\n\nAn audience member asks (typed on a phone or transcribed, so silently correct likely typos or mishearing and answer what they meant): "${q}"\nBegin with a short, corrected restatement of the question (for example "Someone asked how we can start safely."), then answer out loud in 2-4 short sentences (about 20-30 seconds). Use ONLY facts in the deck. If the deck doesn't cover it, say honestly that you don't have verified details on that today and offer the closest related point from the session, or suggest following up with the presenter. Never guess numbers or company facts. You may start with one cue tag such as [warm] or [curious]. Return ONLY the spoken answer.`,
-          400,
+          `${briefing(plan)}
+
+DECK (your only source of facts):
+${deckText(plan, 16000)}
+${recent ? `\nEARLIER QUESTIONS IN THIS Q&A (for follow-ups like "what about that"):\n${recent}\n` : ""}
+A person in the room just asked you (typed on a phone, or heard by a microphone, so silently fix obvious typos or mishearing and answer what they meant): "${q}"
+
+${b.said ? `You have JUST said "${b.said.slice(0, 120)}" to buy a moment, so do NOT thank them or say "good question" again; go straight on. ` : ""}Answer the way a warm, confident human expert answers live on stage: talk to them, not about them. Start with a brief natural acknowledgement or a short restatement so the room knows the question (for example "Good one: how do we start safely?" or "So, the question is whether this replaces jobs."), then answer in 2 to 4 short spoken sentences, about 15 to 30 seconds. Sound like conversation, not a report: contractions, one clear point, a concrete example from the deck if there is one.
+Use ONLY facts in the deck and the instructions. If they don't cover it, don't guess: say kindly that you don't have verified details on that today, give the closest helpful point from the session if there is one, and say the team will follow up. Never invent numbers, names or company facts. If it's not a question (a comment or thanks), respond briefly and warmly. If it's rude or off-topic, steer back politely in one sentence.
+You may start one sentence with a cue tag such as [warm], [curious] or [happy].
+Return ONLY JSON: {"say": "what you say out loud", "covered": true if the deck or instructions answered it, false otherwise}`,
+          450,
           25_000
         );
-        const text = out.replace(/^["']|["']$/g, "").trim();
-        if (b.questionId) await db().from("presenter_show_answers").update({ draft: text, status: "drafted" }).eq("id", b.questionId).eq("show_id", b.showId);
-        return json({ text });
+        let say = "";
+        let covered = true;
+        try {
+          const j = parseJSON<{ say?: string; covered?: boolean }>(out);
+          say = String(j.say || "").trim();
+          covered = j.covered !== false;
+        } catch {
+          say = out.replace(/^["']|["']$/g, "").trim();
+        }
+        if (!say) throw new Error("Empty answer");
+        if (b.questionId) await db().from("presenter_show_answers").update({ draft: say }).eq("id", b.questionId).eq("show_id", b.showId);
+        return json({ text: say, covered });
+      }
+      case "setup": {
+        // The simple Create page: turn the presenter's free-text instructions into settings.
+        const out = await studioAI(
+          `A presenter uploaded this slide deck and wrote these instructions for their AI co-presenter.
+
+INSTRUCTIONS: ${(plan.instructions || "(none: use sensible defaults)").slice(0, 3000)}
+
+DECK:
+${deckText(plan, 12000)}
+
+Work out the session settings. Follow the instructions exactly where they say something; otherwise choose sensible defaults from the deck (polls on with 2 polls, quiz off, Q&A on). Use only what the deck and instructions say for facts.
+Return ONLY JSON: {"title": "short title", "intent": one of "awareness","training","induction","townhall","sales","workshop","other", "purpose": "one sentence", "audience": "short", "message": "the single ultimate message, one sentence", "closingLine": "a memorable closing line (use the instructions' own words if they give one)", "outcome": "what people should do after, one sentence", "minutes": number, "timeOfDay": "morning"|"afternoon"|"evening", "eventDate": "YYYY-MM-DD" or "", "preset": "warm"|"formal"|"energetic"|"calm", "presenterName": "the presenter's name if the instructions give one, else empty", "rules": "the presenter's rules in short sentences", "mustSay": "anything they must say", "avoid": "words or topics to avoid", "polls": number 0-5, "quiz": number 0 or 3-15, "qa": true|false, "voiceQuestions": true|false (false only if they say questions should be typed only), "mode": "assisted" (moves through slides by itself) or "manual" (only if they say they will click through)}`,
+          1200
+        );
+        return json({ setup: parseJSON(out) });
       }
       case "pronounce": {
         const out = await studioAI(

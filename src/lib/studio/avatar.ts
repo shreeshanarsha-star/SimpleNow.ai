@@ -51,6 +51,9 @@ export class Presenter {
   private silenceTimer: ReturnType<typeof setInterval> | null = null;
   private speakCalledAt = 0;
   private lastInterruptAt = 0;
+  private wantMic = false;
+  private seenUser = new Set<string>();
+  private micTimer: ReturnType<typeof setTimeout> | null = null;
   speaking = false;
   status: Status = "off";
   /** ms from speak() to the first word arriving (last line). */
@@ -64,6 +67,9 @@ export class Presenter {
       onBeat?: (beat: number, of: number) => void;
       token: () => Promise<string>;
       voiceOnly?: boolean;
+      /** Q&A by voice: open the microphone (muted unless listening and not speaking). */
+      listen?: boolean;
+      onHeard?: (text: string) => void;
     }
   ) {}
 
@@ -144,8 +150,21 @@ export class Presenter {
 
   private async open(slot: number, standby = false): Promise<AnamClient> {
     const sessionToken = await this.opts.token();
-    // No microphone at all in scripted shows: no echo, no permission prompt.
-    const c = createClient(sessionToken, { disableInputAudio: true });
+    // Microphone only when voice questions are on; it stays muted except while listening in Q&A
+    // and never while the presenter is talking (no echo, no barge-in during slides).
+    const c = createClient(sessionToken, { disableInputAudio: !this.opts.listen });
+    if (this.opts.listen) {
+      c.addListener(AnamEvent.MESSAGE_HISTORY_UPDATED, (msgs) => {
+        let heard = "";
+        for (const m of msgs) {
+          if (m.role !== "user" || this.seenUser.has(m.id)) continue;
+          this.seenUser.add(m.id);
+          if (c === this.client && this.wantMic) heard = m.content;
+        }
+        if (heard) this.opts.onHeard?.(heard);
+      });
+      c.addListener(AnamEvent.SESSION_READY, () => this.applyMic());
+    }
     c.addListener(AnamEvent.SESSION_READY, () => {
       if (this.standby === c) this.standbyReady = true;
     });
@@ -208,7 +227,36 @@ export class Presenter {
       this.standbyReady = false;
     }
     await c.streamToVideoElement(this.opts.videoId(slot));
+    if (this.opts.listen) {
+      try {
+        c.muteInputAudio();
+      } catch {}
+    }
     return c;
+  }
+
+  /** Listen to the room (Q&A only). The mic is open only while listening AND not speaking. */
+  setListening(on: boolean) {
+    this.wantMic = on && !!this.opts.listen;
+    this.applyMic();
+  }
+
+  private applyMic(delayed = false) {
+    if (!this.opts.listen) return;
+    if (this.micTimer) clearTimeout(this.micTimer);
+    const apply = () => {
+      const open = this.wantMic && !this.speaking;
+      for (const c of [this.client, this.standby]) {
+        if (!c) continue;
+        try {
+          if (open && c === this.client) c.unmuteInputAudio();
+          else c.muteInputAudio();
+        } catch {}
+      }
+    };
+    // Re-open a moment after speech ends so the tail of our own voice isn't heard as a question.
+    if (delayed) this.micTimer = setTimeout(apply, 700);
+    else apply();
   }
 
   private async reconnect() {
@@ -237,6 +285,7 @@ export class Presenter {
     if (v) v.muted = false;
     this.opts.onSlot(this.slot);
     this.setStatus("ok");
+    this.applyMic();
     if (old) {
       try {
         old.interruptPersona();
@@ -270,6 +319,7 @@ export class Presenter {
       clearTimeout(t.timer);
       t.resolve({ completed, beat: completed ? t.beats.length - 1 : t.idx });
     }
+    this.applyMic(true);
     // Planned swap at the first pause after 8:45.
     if (this.client && this.standbyReady && Date.now() - this.startedAt > SWAP_IDLE_MS) setTimeout(() => !this.speaking && this.promote(), 200);
   }
@@ -356,6 +406,7 @@ export class Presenter {
     this.lastLatencyMs = null;
     return new Promise<SpeakResult>((resolve) => {
       this.speaking = true;
+      this.applyMic();
       this.turn = { beats, ids: [], idx: from, from, resolve, timer: setTimeout(() => {}, 0), started: Date.now(), firstHeard: false, correlationId: "", viaBrowser: false };
       this.opts.onBeat?.(from, beats.length);
       if (this.client) this.sendBeats(from);

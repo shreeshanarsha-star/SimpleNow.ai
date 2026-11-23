@@ -28,11 +28,14 @@ export type Preset = "warm" | "formal" | "energetic" | "calm";
 
 export type Plan = {
   purpose: Purpose;
+  /** Free-text instructions from the presenter (the simple Create page). Shree follows them everywhere. */
+  instructions: string;
   deck: { name: string; pages: number; uploadedAt: string } | null;
   slides: Slide[];
   polls: { enabled: boolean; items: Poll[] };
   quiz: { enabled: boolean; placement: "before" | "after"; seconds: number; items: QuizQ[] };
-  qa: { enabled: boolean };
+  /** auto: the presenter answers audience questions by himself; voice: also listens to the room during Q&A. */
+  qa: { enabled: boolean; auto: boolean; voice: boolean };
   audience: { mode: "anonymous" | "list"; people: Person[] };
   presenter: { kind: "shree" | "anam" | "voice"; personaId: string; name: string };
   personality: { preset: Preset; rules: string; mustSay: string; avoid: string };
@@ -60,11 +63,12 @@ export const INTENTS: Record<Intent, string> = {
 export function emptyPlan(): Plan {
   return {
     purpose: { intent: "awareness", purpose: "", audience: "", message: "", closingLine: "", outcome: "", success: "", minutes: 45, eventDate: "", timeOfDay: "morning" },
+    instructions: "",
     deck: null,
     slides: [],
     polls: { enabled: true, items: [] },
     quiz: { enabled: false, placement: "after", seconds: 20, items: [] },
-    qa: { enabled: true },
+    qa: { enabled: true, auto: true, voice: true },
     audience: { mode: "anonymous", people: [] },
     presenter: { kind: "shree", personaId: "", name: "Shree" },
     personality: { preset: "warm", rules: "", mustSay: "", avoid: "" },

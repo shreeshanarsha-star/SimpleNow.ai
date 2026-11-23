@@ -39,6 +39,11 @@ export default function ShowTV({ id }: { id: string }) {
   const [showMetrics, setShowMetrics] = useState(false);
   const sayId = useRef<number | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  // Autonomous Q&A: questions heard by the mic wait here; answering one at a time.
+  const voiceQueue = useRef<Array<{ id: number; text: string }>>([]);
+  const answering = useRef(false);
+  const recentQA = useRef<Array<{ q: string; a: string }>>([]);
+  const [qaNow, setQaNow] = useState("");
   const stage = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -232,6 +237,104 @@ export default function ShowTV({ id }: { id: string }) {
     }
   }, [armed, live?.say?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Q&A: listen to the room only during the Q&A step (and not on hold).
+  const inQA = !!(armed && live?.started && !live.ended && !live.held && steps[live.step]?.kind === "qa");
+  useEffect(() => {
+    pres.current?.setListening(inQA && !!d?.plan.qa.voice);
+  }, [inQA, d?.plan.qa.voice]);
+
+  /** Answer one question naturally: a short bridge while the answer is prepared, then the answer. */
+  const answerOne = useCallback(
+    async (q: { id: number; text: string; voice: boolean }) => {
+      const p = pres.current;
+      const z = latest.current;
+      if (!p || !z) return;
+      const stepNo = z.live.step;
+      const stillHere = () => {
+        const c = latest.current;
+        return !!c && c.live.step === stepNo && !c.live.held && !c.live.ended;
+      };
+      const bridges = q.voice
+        ? ["[curious] Good question.", "[warm] Thanks for asking that.", "Ah, good one.", "[curious] Interesting question."]
+        : ["[curious] A question's come in on the phones.", "[warm] Here's one from the phones.", "Another question from the room."];
+      const bridge = bridges[Math.floor(Math.random() * bridges.length)];
+      setQaNow(q.text);
+      showLine(bridge);
+      beatAt.current = { step: -2, beat: 0 };
+      const bridgeDone = p.speak(bridge);
+      let text = "";
+      let covered = true;
+      try {
+        const r = await api<{ text: string; covered: boolean }>(
+          "/api/studio/ai",
+          jsonInit("POST", { task: "answer", showId: id, question: q.text, questionId: q.id, recent: recentQA.current.slice(-4), said: stripCues(bridge) })
+        );
+        text = r.text;
+        covered = r.covered;
+      } catch {
+        text = "[warm] I'd like to get that one exactly right, so let's take it offline and the team will follow up with you.";
+        covered = false;
+      }
+      const b = await bridgeDone;
+      if (!b.completed || !stillHere()) {
+        await api(`/api/studio/live/${id}`, jsonInit("POST", { question: { id: q.id, op: "reopen" } })).catch(() => {});
+        return;
+      }
+      showLine(text);
+      beatAt.current = { step: -2, beat: 0 };
+      const done = await p.speak(text);
+      setCaption("");
+      setQaNow("");
+      if (!done.completed && !stillHere()) {
+        await api(`/api/studio/live/${id}`, jsonInit("POST", { question: { id: q.id, op: "reopen" } })).catch(() => {});
+        return;
+      }
+      recentQA.current.push({ q: q.text, a: stripCues(text) });
+      await api(`/api/studio/live/${id}`, jsonInit("POST", { question: { id: q.id, op: covered ? "answered" : "not_covered" } })).catch(() => {});
+      load();
+    },
+    [id, load] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // The auto-answer loop: after the Q&A intro has been spoken, take the next question (room voice first, then phones).
+  useEffect(() => {
+    if (!inQA || !d?.plan.qa.auto) return;
+    const t = setInterval(async () => {
+      const p = pres.current;
+      const z = latest.current;
+      if (answering.current || !p || p.speaking || !z || z.live.spoken !== z.live.step || z.live.held) return;
+      answering.current = true;
+      try {
+        const v = voiceQueue.current.shift();
+        if (v) return await answerOne({ ...v, voice: true });
+        const next = (z.results?.questions || []).filter((q) => q.status === "new").sort((a, b) => a.id - b.id)[0];
+        if (!next) return;
+        const c = await api<{ ok: boolean }>(`/api/studio/live/${id}`, jsonInit("POST", { question: { id: next.id, op: "claim" } }));
+        if (c.ok) await answerOne({ id: next.id, text: next.text, voice: false });
+      } catch {
+        /* try again on the next tick */
+      } finally {
+        answering.current = false;
+      }
+    }, 700);
+    return () => clearInterval(t);
+  }, [inQA, d?.plan.qa.auto, answerOne, id]);
+
+  /** A question heard by the microphone during Q&A. */
+  const onHeard = useCallback(
+    async (raw: string) => {
+      const text = raw.replace(/\*\*?inaudible\*?\*?/gi, "").trim();
+      if (text.split(/\s+/).filter(Boolean).length < 3) return;
+      const z = latest.current;
+      const auto = !!z?.plan.qa.auto;
+      try {
+        const r = await api<{ id: number }>(`/api/studio/live/${id}`, jsonInit("POST", { ask: { text, source: auto ? "voice" : "voice-log" } }));
+        if (auto && r.id) voiceQueue.current.push({ id: r.id, text });
+      } catch {}
+    },
+    [id]
+  );
+
   // Metrics for testing (press D on the TV): approve → first word, line start latency, session age.
   useEffect(() => {
     const t = setInterval(() => setMetrics((m) => ({ ...m, session: pres.current?.sessionAge() || 0 })), 2000);
@@ -270,6 +373,8 @@ export default function ShowTV({ id }: { id: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [armed, command]);
 
+  const onHeardRef = useRef(onHeard);
+  onHeardRef.current = onHeard;
   const arm = async () => {
     setArmed(true);
     document.documentElement.requestFullscreen?.().catch(() => {});
@@ -292,6 +397,8 @@ export default function ShowTV({ id }: { id: string }) {
         return r.sessionToken;
       },
       voiceOnly: plan?.presenter.kind === "voice",
+      listen: !!plan && plan.qa.enabled && plan.qa.voice && plan.presenter.kind !== "voice",
+      onHeard: (t) => onHeardRef.current(t),
     });
     pres.current = p;
     await p.start();
@@ -347,7 +454,8 @@ export default function ShowTV({ id }: { id: string }) {
           {step?.kind === "qa" && (
             <div className="text-center">
               <div className="text-6xl font-bold">Ask anything</div>
-              <div className="mt-4 text-2xl text-white/70">Type your question on your phone</div>
+              <div className="mt-4 text-2xl text-white/70">{d.plan.qa.voice ? "Ask out loud, or type it on your phone" : "Type your question on your phone"}</div>
+              {qaNow && <div className="mx-auto mt-6 max-w-3xl rounded-2xl bg-white/10 px-6 py-4 text-2xl">“{qaNow}”</div>}
               {qr && <img src={qr} alt="" className="mx-auto mt-6 h-48 w-48 rounded-xl bg-white p-2" />}
             </div>
           )}
