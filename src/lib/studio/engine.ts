@@ -60,8 +60,10 @@ export function defaultOpening(plan: Plan) {
   return `${greet}, everyone. I'm ${plan.presenter.name || "your presenter"}, and I'm really glad to be with you today.${p.purpose ? ` ${p.purpose}` : ""}`;
 }
 
-export function qaLine() {
-  return "[warm] Now it's your turn. Ask me anything on your phones, and I'll answer what I can from today's material.";
+export function qaLine(voice = false) {
+  return voice
+    ? "[warm] Now it's your turn. Ask me anything, out loud or on your phones, and I'll answer what I can from today's material."
+    : "[warm] Now it's your turn. Ask me anything on your phones, and I'll answer what I can from today's material.";
 }
 
 export function quizIntroLine(plan: Plan) {
@@ -117,7 +119,7 @@ export function buildRunOfShow(plan: Plan): Step[] {
 
   if (plan.quiz.placement === "after") quiz();
 
-  if (plan.qa.enabled) steps.push({ kind: "qa", label: "Q&A", slide: null, say: qaLine(), estSec: 300 });
+  if (plan.qa.enabled) steps.push({ kind: "qa", label: "Q&A", slide: null, say: qaLine(plan.qa.auto !== false && !!plan.qa.voice), estSec: 300 });
   const hasResults = (plan.quiz.enabled && plan.quiz.items.length > 0) || polls.length > 0;
   if (hasResults) steps.push({ kind: "results", label: "Results", slide: null, say: "", estSec: 30 });
   const close = closingText(plan);

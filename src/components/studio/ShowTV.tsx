@@ -324,7 +324,10 @@ export default function ShowTV({ id }: { id: string }) {
   const onHeard = useCallback(
     async (raw: string) => {
       const text = raw.replace(/\*\*?inaudible\*?\*?/gi, "").trim();
-      if (text.split(/\s+/).filter(Boolean).length < 3) return;
+      // Only real questions: room chatter ("very", "yeah, it's a mouth voice") must not become a question.
+      const words = text.split(/\s+/).filter(Boolean);
+      const asks = /\?|^(what|why|how|when|where|who|which|can|could|will|would|should|is|are|do|does|did|have|has)\b|\b(tell me|explain|what about|how about)\b/i.test(text);
+      if (words.length < 4 || !asks) return;
       const z = latest.current;
       const auto = !!z?.plan.qa.auto;
       try {
@@ -376,6 +379,7 @@ export default function ShowTV({ id }: { id: string }) {
   const onHeardRef = useRef(onHeard);
   onHeardRef.current = onHeard;
   const arm = async () => {
+    if (pres.current) return; // a double click must never start two avatar sessions (found 23 Nov)
     setArmed(true);
     document.documentElement.requestFullscreen?.().catch(() => {});
     try {
