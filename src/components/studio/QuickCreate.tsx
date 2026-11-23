@@ -92,8 +92,19 @@ export default function QuickCreate({ onCreated }: { onCreated?: () => void }) {
       if (setup.presenterName && setup.presenterName.length < 40) plan.presenter.name = setup.presenterName;
       plan.qa = { enabled: setup.qa !== false, auto: true, voice: setup.voiceQuestions !== false };
       plan.mode = setup.mode === "manual" ? "manual" : "assisted";
-      const nPolls = Math.max(0, Math.min(5, Number(setup.polls ?? 2) || 0));
-      const nQuiz = Math.max(0, Math.min(15, Number(setup.quiz ?? 0) || 0));
+      // What the instructions literally say wins over the AI's reading of them.
+      const ins = instructions.toLowerCase();
+      const said = (word: string, dflt: number) => {
+        if (new RegExp(`\\b(no|without|skip|don'?t want( a| any)?)\\s+(a\\s+)?${word}`).test(ins)) return 0;
+        const m = ins.match(new RegExp(`(\\d+|one|two|three|four|five|six|seven|eight|nine|ten)[\\s-]+(?:question\\s+)?${word}`));
+        const words: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+        if (m) return words[m[1]] ?? Number(m[1]);
+        return new RegExp(`\\b${word}`).test(ins) ? dflt : -1;
+      };
+      const pollsAsked = said("poll", 2);
+      const quizAsked = said("quiz", 5);
+      const nPolls = Math.max(0, Math.min(5, pollsAsked >= 0 ? pollsAsked : Number(setup.polls ?? 2) || 0));
+      const nQuiz = Math.max(0, Math.min(15, quizAsked >= 0 ? (quizAsked > 0 ? Math.max(3, quizAsked) : 0) : Number(setup.quiz ?? 0) || 0));
       plan.polls = { enabled: nPolls > 0, items: [] };
       plan.quiz = { ...plan.quiz, enabled: nQuiz > 0, items: [] };
 

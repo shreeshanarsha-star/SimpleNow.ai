@@ -118,6 +118,8 @@ Return ONLY JSON: {"say": "what you say out loud", "covered": true if the deck o
           say = out.replace(/^["']|["']$/g, "").trim();
         }
         if (!say) throw new Error("Empty answer");
+        // A bridge line was already spoken: drop a second "good question" at the start.
+        if (b.said) say = say.replace(/^((?:\[[a-z]+\]\s*)?)(?:(?:good|great|nice|interesting|excellent)\s+(?:one|question)|thanks? (?:you )?for (?:asking|that)[^.!:]*)[.!:,]?\s*/i, "$1").trim().replace(/^((?:\[[a-z]+\]\s*)?)([a-z])/, (_m, cue: string, c: string) => cue + c.toUpperCase());
         if (b.questionId) await db().from("presenter_show_answers").update({ draft: say }).eq("id", b.questionId).eq("show_id", b.showId);
         return json({ text: say, covered });
       }
